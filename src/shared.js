@@ -89,12 +89,21 @@
     showOpusLimit: true
   };
 
+  // Key daily/monthly buckets by the user's LOCAL date, not UTC. Using
+  // toISOString() (UTC) made "today" roll over at UTC midnight, so a US user
+  // would see their daily budget reset in the afternoon/evening instead of at
+  // their own local midnight.
   function todayKey(date = new Date()) {
-    return date.toISOString().slice(0, 10);
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, "0");
+    const d = String(date.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
   }
 
   function monthKey(date = new Date()) {
-    return date.toISOString().slice(0, 7);
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, "0");
+    return `${y}-${m}`;
   }
 
   function emptyUsage(now = Date.now()) {
@@ -114,6 +123,12 @@
       months: {},
       conversations: {},
       recentEvents: [],
+      // Ring buffer of recently-applied event ids, used to make addUsageEvent
+      // idempotent. Needed because an event can be delivered twice: the
+      // background writes it, then dies before acknowledging, so the content
+      // script's fallback path re-submits the same event. Without dedup that
+      // would double-count usage.
+      appliedEventIds: [],
       lastResetReason: "initial"
     };
   }
@@ -155,9 +170,15 @@
     const normalized = normalizeWhitespace(text);
     if (!normalized) return { tokens: 0, method: "none" };
 
+    const model = MODEL_PRICES[modelKey] || MODEL_PRICES[DEFAULT_SETTINGS.defaultModel];
     if (tokenizerAvailable()) {
       try {
-        const tokens = globalThis.GPTTokenizer_o200k_base.countTokens(normalized);
+        const rawTokens = globalThis.GPTTokenizer_o200k_base.countTokens(normalized);
+        // Apply the same tokenizerMultiplier the heuristic path uses. o200k is
+        // not Claude's tokenizer; for several models Claude's tokenizer runs
+        // denser, so both estimate paths must scale by the same factor or the
+        // number would jump ~23% depending on which path happened to run.
+        const tokens = Math.ceil(rawTokens * (model.tokenizerMultiplier || 1));
         return { tokens, method: "tokenizer" };
       } catch {
         // Fall through to heuristic on any tokenizer error (e.g. unexpected
@@ -213,7 +234,53 @@
     return bucket;
   }
 
+  // Keep historical buckets bounded. days/months/conversations otherwise grow
+  // forever and are preserved across session resets, so a long-running user
+  // would slowly inflate the stored blob (re-serialized on every debounced
+  // write) toward the chrome.storage.local quota, at which point writes start
+  // failing silently and usage tracking stops persisting.
+  const MAX_DAY_BUCKETS = 90;
+  const MAX_MONTH_BUCKETS = 12;
+  const MAX_CONVERSATIONS = 50;
+
+  function keepNewestKeys(map, limit, tieBreakByString = false) {
+    if (!map) return;
+    const keys = Object.keys(map);
+    if (keys.length <= limit) return;
+    const ordered = keys.sort((a, b) => {
+      const la = map[a]?.lastUpdatedAt;
+      const lb = map[b]?.lastUpdatedAt;
+      if (typeof la === "number" || typeof lb === "number") {
+        return (lb || 0) - (la || 0);
+      }
+      // Date-string keys (days/months) sort lexicographically = chronologically.
+      return tieBreakByString ? (a < b ? 1 : -1) : 0;
+    });
+    for (const key of ordered.slice(limit)) delete map[key];
+  }
+
+  function pruneUsage(usage) {
+    keepNewestKeys(usage.days, MAX_DAY_BUCKETS, true);
+    keepNewestKeys(usage.months, MAX_MONTH_BUCKETS, true);
+    keepNewestKeys(usage.conversations, MAX_CONVERSATIONS, false);
+    return usage;
+  }
+
+  const MAX_APPLIED_EVENT_IDS = 300;
+
   function addUsageEvent(usage, event, settings) {
+    // Idempotency guard: if this exact event was already folded in (e.g. the
+    // background applied it, then the content-script fallback re-submitted it
+    // after a lost acknowledgement), skip it so usage isn't double-counted.
+    if (event.id) {
+      if (!Array.isArray(usage.appliedEventIds)) usage.appliedEventIds = [];
+      if (usage.appliedEventIds.includes(event.id)) return usage;
+      usage.appliedEventIds.push(event.id);
+      if (usage.appliedEventIds.length > MAX_APPLIED_EVENT_IDS) {
+        usage.appliedEventIds = usage.appliedEventIds.slice(-MAX_APPLIED_EVENT_IDS);
+      }
+    }
+
     const now = event.at || Date.now();
     const day = todayKey(new Date(now));
     const month = monthKey(new Date(now));
@@ -225,7 +292,13 @@
     usage.months[month] = updateBucket(usage.months[month] || {}, event);
     usage.conversations[conversation] = updateBucket(usage.conversations[conversation] || {}, event);
     usage.conversations[conversation].lastUpdatedAt = now;
-    usage.conversations[conversation].title = event.title || usage.conversations[conversation].title || conversation;
+    // Intentionally do NOT persist a human-readable conversation title.
+    // claude.ai's title is auto-derived from the user's prompt content (names,
+    // case topics, deal names for the HR/Legal/Finance audience this targets),
+    // so storing it would violate the "no prompt-derived text on disk" posture.
+    // The opaque conversation id is enough — the title is never displayed.
+
+    pruneUsage(usage);
 
     const publicEvent = {
       at: now,
@@ -254,6 +327,15 @@
       conversations: usage.conversations || {},
       lastResetReason: reason
     };
+  }
+
+  // The "used today" figure the widget/popup show as their headline number must
+  // come from the same daily bucket the budget line uses. Reading usage.totals
+  // instead (a session accumulator that resetSession() clears while preserving
+  // days) let the headline read "$0.00 used today" while the budget line still
+  // said "$3.00 of $5.00 daily budget" right after a five-hour/manual reset.
+  function getTodayUsage(usage, date = new Date()) {
+    return usage.days?.[todayKey(date)] || {};
   }
 
   function getBudgetProgress(usage, settings) {
@@ -331,6 +413,8 @@
     makeStorageKey,
     currentConversationId,
     addUsageEvent,
+    pruneUsage,
+    getTodayUsage,
     shouldResetSession,
     resetSession,
     getBudgetProgress,

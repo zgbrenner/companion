@@ -83,45 +83,69 @@
     return pieces.join(" ").replace(/\s+/g, " ").trim();
   }
 
-  function isClaudeConversationUrl(url) {
-    const value = String(url || "");
-    return /claude\.ai/i.test(value) && /api|completion|message|chat|conversation|usage/i.test(value);
+  // Real origin check, not a substring test. A substring match on "claude.ai"
+  // would treat a third-party URL that merely embeds that string (a referrer
+  // echoed in a query param, a redirect target) as same-origin and read its body.
+  function isClaudeOrigin(url) {
+    try {
+      const host = new URL(url, location.href).hostname.toLowerCase();
+      return host === "claude.ai" || host.endsWith(".claude.ai");
+    } catch {
+      return false;
+    }
   }
+
+  // A live assistant *generation* stream, as opposed to loading an existing
+  // conversation's history/list JSON. Matching chat/conversation/message broadly
+  // meant that opening or switching to an existing chat replayed its stored
+  // messages as brand-new "output", spiking tokens and dollars with no
+  // generation. We additionally require POST + an event-stream content-type
+  // below, so this is only the first gate.
+  function isGenerationUrl(url) {
+    return /(completion|append_message|retry_completion|\/stream)/i.test(String(url || ""));
+  }
+
+  function isUsageUrl(url) {
+    return /\/usage(\b|\/|\?|#|$)/i.test(String(url || ""));
+  }
+
+  // Overall ceiling on accumulated stream text so a pathologically long
+  // response can't grow totalText without bound before it's shipped and tokenized.
+  const MAX_STREAM_CHARS = 200000;
 
   async function readStreamClone(response, requestUrl) {
     if (!response || !response.body) return;
-    const contentType = response.headers?.get?.("content-type") || "";
-    if (!/event-stream|json|text/i.test(contentType)) return;
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let totalText = "";
-    let rawBytes = 0;
+    let capped = false;
 
     try {
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        rawBytes += value?.byteLength || 0;
         const chunk = decoder.decode(value, { stream: true });
         const extracted = extractTextFromChunk(chunk);
-        if (extracted) {
+        if (extracted && !capped) {
           totalText += " " + extracted;
-          emit({
-            kind: "response-chunk",
-            url: requestUrl,
-            extractedChars: extracted.length,
-            rawBytes,
-            at: Date.now()
-          });
+          if (totalText.length >= MAX_STREAM_CHARS) {
+            totalText = totalText.slice(0, MAX_STREAM_CHARS);
+            capped = true;
+          }
         }
       }
-    } catch (error) {
-      emit({ kind: "stream-read-error", url: requestUrl, message: String(error?.message || error), at: Date.now() });
+    } catch {
+      // Swallow read errors: a partial output count is better than none, and we
+      // deliberately avoid emitting error detail that could echo request info.
     } finally {
       const clean = totalText.replace(/\s+/g, " ").trim();
       if (clean) {
-        emit({ kind: "response-complete", url: requestUrl, textSampleLength: clean.length, text: clean, rawBytes, at: Date.now() });
+        // We emit only the assistant text needed to count output tokens, and
+        // only for genuine generation streams (gated by the caller). No
+        // per-chunk events, no raw bytes — minimize what crosses onto the
+        // page-global event bus.
+        emit({ kind: "response-complete", textLength: clean.length, text: clean, at: Date.now() });
       }
     }
   }
@@ -129,31 +153,32 @@
   const originalFetch = window.fetch;
   window.fetch = async function patchedFetch(input, init) {
     const requestUrl = typeof input === "string" ? input : input?.url;
-    const requestMethod = init?.method || input?.method || "GET";
-
-    if (isClaudeConversationUrl(requestUrl)) {
-      emit({ kind: "request", url: requestUrl, method: requestMethod, at: Date.now() });
-    }
-
     const response = await originalFetch.apply(this, arguments);
 
-    if (isClaudeConversationUrl(requestUrl)) {
-      emit({ kind: "response", url: requestUrl, status: response.status, at: Date.now() });
+    // Only ever inspect first-party claude.ai responses.
+    if (!isClaudeOrigin(requestUrl)) return response;
 
-      const lowerUrl = String(requestUrl || "").toLowerCase();
-      if (lowerUrl.includes("usage")) {
-        response.clone().json().then(json => {
-          emitUsage({ kind: "usage-endpoint", url: requestUrl, payload: json, at: Date.now() });
-        }).catch(() => {});
-      }
+    const requestMethod = String(init?.method || input?.method || "GET").toUpperCase();
 
-      if (/completion|message|chat|conversation/i.test(String(requestUrl || ""))) {
+    // Usage endpoint: signal only that fresh usage data appeared, so the content
+    // script can re-read it via its own credentialed fetch. We deliberately do
+    // NOT forward the payload — broadcasting raw account JSON onto the
+    // page-global event bus would expose it to any other script on the page.
+    if (isUsageUrl(requestUrl)) {
+      emitUsage({ kind: "usage-endpoint", at: Date.now() });
+    }
+
+    // Assistant generation stream only: POST, a generation-shaped path, and an
+    // actual event-stream response. This is the sole path that produces
+    // "output" token counts; anything else (history, lists, feature flags) is
+    // ignored so it can't be mistaken for a new response.
+    if (requestMethod === "POST" && isGenerationUrl(requestUrl)) {
+      const contentType = response.headers?.get?.("content-type") || "";
+      if (/event-stream/i.test(contentType)) {
         readStreamClone(response.clone(), requestUrl);
       }
     }
 
     return response;
   };
-
-  emit({ kind: "installed", at: Date.now() });
 })();

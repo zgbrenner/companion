@@ -8,12 +8,15 @@
   let lastPromptHash = "";
   let lastPromptAt = 0;
   let outputBuffer = "";
+  let outputBufferConversationId = null;
+  let outputBufferModelKey = null;
   let outputFlushTimer = null;
   let saveTimer = null;
   let nativeUsage = null;
   let nativeUsageError = null;
   let nativeUsageTimer = null;
   let lastTokenEstimateMethod = "heuristic";
+  let lastUsageSnapshotRefreshAt = 0;
   const NATIVE_USAGE_REFRESH_MS = 60 * 1000;
 
   function injectNetworkWatcher() {
@@ -36,9 +39,11 @@
     const stored = await chrome.storage.local.get([STORAGE_KEY, "cuc:settings"]);
     settings = { ...CUC.DEFAULT_SETTINGS, ...(stored["cuc:settings"] || {}) };
     usage = stored[STORAGE_KEY] || CUC.emptyUsage();
+    // Let the background (single writer) perform any stale-session reset, so two
+    // tabs loading at once don't both reset. The fresh state returns via
+    // storage.onChanged; we don't write from here.
     if (CUC.shouldResetSession(usage, settings)) {
-      usage = CUC.resetSession(usage, "five-hour-window");
-      await saveState();
+      chrome.runtime.sendMessage({ type: "cuc:maybe-reset-session" }).catch(() => {});
     }
   }
 
@@ -47,9 +52,70 @@
     saveTimer = setTimeout(saveState, 250);
   }
 
+  // Send a usage delta to the background service worker, which is the single
+  // serialized writer of the usage aggregate — this is what makes concurrent
+  // usage from multiple claude.ai tabs safe (no lost updates). We do NOT mutate
+  // local `usage` here; the authoritative new state comes back via
+  // storage.onChanged and re-renders every tab. If the worker is somehow
+  // unreachable, fall back to a local write so a single-tab user never loses an
+  // event (multi-tab safety is best-effort only in that rare window).
+  function recordEvent(event) {
+    // Stable unique id so the event is idempotent: if the fallback fires after
+    // the background already applied it (lost acknowledgement), addUsageEvent
+    // dedupes on this id instead of double-counting.
+    event.id = event.id || `${event.at || Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
+    // Optimistically fold the event into local state right away. Two reasons:
+    // (1) instant widget feedback instead of waiting for the background write +
+    // storage.onChanged round-trip; (2) a rapid follow-up send computes its
+    // carry-forward context (getContextTokensForConversation reads local
+    // `usage`) against this event instead of a stale copy. This is display/
+    // compute-only — content never writes the usage blob on the normal path;
+    // the authoritative state still arrives via onChanged, and addUsageEvent is
+    // idempotent on event.id, so the optimistic apply is never double-counted.
+    usage = CUC.addUsageEvent(usage, event, settings);
+    renderWidget();
+
+    let settled = false;
+    const fallback = async () => {
+      if (settled) return;
+      settled = true;
+      // Re-read the freshest stored state before applying, so this best-effort
+      // local write doesn't clobber events another tab committed in the
+      // meantime. addUsageEvent is idempotent on event.id.
+      try {
+        const stored = await chrome.storage.local.get([STORAGE_KEY]);
+        usage = CUC.addUsageEvent(stored[STORAGE_KEY] || usage, event, settings);
+      } catch {
+        usage = CUC.addUsageEvent(usage, event, settings);
+      }
+      saveStateSoon();
+    };
+    try {
+      chrome.runtime.sendMessage({ type: "cuc:record-event", event })
+        .then(response => { if (!response?.ok) fallback(); })
+        .catch(fallback);
+    } catch {
+      fallback();
+    }
+  }
+
   async function saveState() {
     usage.lastUpdatedAt = Date.now();
-    await chrome.storage.local.set({ [STORAGE_KEY]: usage });
+    try {
+      await chrome.storage.local.set({ [STORAGE_KEY]: usage });
+    } catch (error) {
+      // Most likely QUOTA_BYTES. pruneUsage() bounds growth so this should be
+      // rare, but if it happens, drop the coldest history and retry once so new
+      // usage keeps persisting rather than silently failing forever.
+      CUC.pruneUsage(usage);
+      usage.recentEvents = (usage.recentEvents || []).slice(0, 10);
+      try {
+        await chrome.storage.local.set({ [STORAGE_KEY]: usage });
+      } catch {
+        // Give up on this write; in-memory state still drives the widget.
+      }
+    }
     renderWidget();
   }
 
@@ -99,13 +165,6 @@
       if (text.includes("low")) return "Low";
     }
     return null;
-  }
-
-  function getConversationTitle() {
-    const title = document.title?.replace(/\s*\|\s*Claude\s*$/i, "").trim();
-    if (title && title.toLowerCase() !== "claude") return title.slice(0, 90);
-    const h1 = document.querySelector("h1")?.innerText?.trim();
-    return h1?.slice(0, 90) || CUC.currentConversationId();
   }
 
   function countAttachmentChips() {
@@ -169,12 +228,20 @@
     return Math.min(estimate, MAX_CONTEXT_WINDOW_TOKENS);
   }
 
-  function recordInput(text, reason = "send") {
+  function recordInput(text, reason = "send", attachmentCountArg = null) {
     const clean = String(text || "").trim();
-    if (!clean) return;
+    // Count attachments from the argument if the caller snapshotted them at
+    // send time (the composer chips are often torn out of the DOM within a few
+    // ms of sending, so counting them here — after the delay — would read 0).
+    const attachmentCount = attachmentCountArg != null ? attachmentCountArg : countAttachmentChips();
+    // Allow attachment-only sends (a file with no typed prompt). Only bail when
+    // there is genuinely nothing to record.
+    if (!clean && attachmentCount === 0) return;
 
     const now = Date.now();
-    const promptHash = hashString(clean);
+    // Dedupe on prompt text + attachment count so an attachment-only send (empty
+    // text) isn't collapsed with the next one.
+    const promptHash = hashString(`${clean} ${attachmentCount}`);
     if (promptHash === lastPromptHash && now - lastPromptAt < 4000) return;
     lastPromptHash = promptHash;
     lastPromptAt = now;
@@ -183,14 +250,13 @@
     const promptEstimate = CUC.estimateTokensPrecise(clean, modelKey);
     const promptTokens = promptEstimate.tokens;
     const contextTokens = getContextTokensForConversation(modelKey);
-    const attachmentCount = countAttachmentChips();
     const attachmentTokens = attachmentCount * 3500;
     const rawInputTokens = Math.ceil(promptTokens + attachmentTokens);
     const inputTokens = rawInputTokens + contextTokens;
     const estimatedUsd = CUC.estimateCostUsd(inputTokens, 0, modelKey, settings);
     lastTokenEstimateMethod = promptEstimate.method;
 
-    usage = CUC.addUsageEvent(usage, {
+    recordEvent({
       at: now,
       kind: "input",
       inputTokens,
@@ -200,34 +266,37 @@
       modelKey,
       attachmentCount,
       conversationId: CUC.currentConversationId(),
-      title: getConversationTitle(),
       reason
-    }, settings);
-    saveStateSoon();
+    });
   }
 
   function flushOutputBuffer(reason = "stream") {
     const text = outputBuffer.trim();
+    // Attribute output to the model/conversation active when the stream was
+    // captured, not whatever is on screen at flush time — the user may have
+    // switched chats during the debounce window.
+    const modelKey = outputBufferModelKey || detectModelKey();
+    const conversationId = outputBufferConversationId || CUC.currentConversationId();
     outputBuffer = "";
+    outputBufferConversationId = null;
+    outputBufferModelKey = null;
+    clearTimeout(outputFlushTimer);
     if (!text) return;
 
-    const modelKey = detectModelKey();
     const outputEstimate = CUC.estimateTokensPrecise(text, modelKey);
     const outputTokens = outputEstimate.tokens;
     lastTokenEstimateMethod = outputEstimate.method;
     const estimatedUsd = CUC.estimateCostUsd(0, outputTokens, modelKey, settings);
-    usage = CUC.addUsageEvent(usage, {
+    recordEvent({
       at: Date.now(),
       kind: "output",
       inputTokens: 0,
       outputTokens,
       estimatedUsd,
       modelKey,
-      conversationId: CUC.currentConversationId(),
-      title: getConversationTitle(),
+      conversationId,
       reason
-    }, settings);
-    saveStateSoon();
+    });
   }
 
   function isInsideComposer(el) {
@@ -245,8 +314,10 @@
       // actually inside the composer — otherwise any Enter press anywhere
       // on the page (search boxes, settings fields) gets misread as a send.
       if (!isInsideComposer(document.activeElement)) return;
+      // Snapshot text AND attachment count now, before the composer clears.
       const text = getComposerText();
-      setTimeout(() => recordInput(text, "keyboard-send"), 20);
+      const attachmentCount = countAttachmentChips();
+      setTimeout(() => recordInput(text, "keyboard-send", attachmentCount), 20);
     }, true);
 
     document.addEventListener("click", event => {
@@ -261,7 +332,8 @@
       const nearComposer = Boolean(button.closest("[data-testid*='composer'], form"));
       if (!looksLikeSend && !(nearComposer && /send/.test(label))) return;
       const text = getComposerText();
-      setTimeout(() => recordInput(text, "button-send"), 20);
+      const attachmentCount = countAttachmentChips();
+      setTimeout(() => recordInput(text, "button-send", attachmentCount), 20);
     }, true);
   }
 
@@ -269,18 +341,28 @@
     window.addEventListener("cuc:network-event", event => {
       const detail = event.detail || {};
       if (detail.kind === "response-complete" && detail.text) {
+        // Capture attribution at the moment the stream arrives, before any
+        // SPA navigation can change the active conversation/model underneath us.
+        if (!outputBuffer) {
+          outputBufferConversationId = CUC.currentConversationId();
+          outputBufferModelKey = detectModelKey();
+        }
         outputBuffer += " " + detail.text;
         clearTimeout(outputFlushTimer);
         outputFlushTimer = setTimeout(() => flushOutputBuffer("network-stream"), 600);
       }
     });
 
-    window.addEventListener("cuc:usage-snapshot", event => {
-      // Placeholder for future endpoint adapter. We intentionally do not persist
-      // the raw payload because it could contain account data. A future adapter
-      // should normalize only percentages, reset times, and high-level usage.
-      usage.lastUsageEndpointSeenAt = event.detail?.at || Date.now();
-      saveStateSoon();
+    window.addEventListener("cuc:usage-snapshot", () => {
+      // claude.ai just fetched its own usage data, so ours may be stale —
+      // refresh opportunistically (throttled). We never persist the raw payload
+      // (it's not even forwarded across the world boundary anymore), and we do
+      // not write the usage aggregate from here: the background is the single
+      // writer, so a content-side write would reintroduce the multi-tab race.
+      const now = Date.now();
+      if (now - lastUsageSnapshotRefreshAt < 15000) return;
+      lastUsageSnapshotRefreshAt = now;
+      refreshNativeUsage();
     });
   }
 
@@ -499,14 +581,18 @@
     if (!widget) return;
     widget.classList.toggle("cuc-hidden", !settings.showWidget);
 
-    const totalTokens = (usage.totals?.inputTokens || 0) + (usage.totals?.outputTokens || 0);
+    // Headline figure is "used today" — read the same daily bucket the budget
+    // line uses, not usage.totals (a session accumulator cleared on reset),
+    // otherwise the two disagree right after a five-hour/manual reset.
+    const today = CUC.getTodayUsage(usage);
+    const totalTokens = (today.inputTokens || 0) + (today.outputTokens || 0);
     const progress = CUC.getBudgetProgress(usage, settings);
     const level = CUC.usageLevel(progress);
     const pct = progress.budget ? CUC.clamp((progress.value / progress.budget) * 100, 0, 100) : 0;
     const modelKey = detectModelKey();
     const model = CUC.MODEL_PRICES[modelKey] || CUC.MODEL_PRICES[settings.defaultModel];
     const effort = detectEffortLevel();
-    const spend = usage.totals?.estimatedUsd || 0;
+    const spend = today.estimatedUsd || 0;
 
     // Main figure follows the display-mode toggle: dollars, tokens, or both
     // shown as "$1.20 · 45k tokens" — one line, not a two-card grid.
@@ -604,7 +690,10 @@
       if (location.pathname === lastPath) return;
       lastPath = location.pathname;
       lastPromptHash = "";
-      outputBuffer = "";
+      // Flush any buffered output for the chat we're leaving — it's attributed
+      // to the captured conversation id, so it lands on the right chat rather
+      // than being silently discarded.
+      flushOutputBuffer("navigation");
       if (settings.widgetAnchorMode !== "floating") placeWidget();
       renderWidget();
     };
@@ -622,14 +711,17 @@
       return result;
     };
     window.addEventListener("popstate", onPathChange);
-    setInterval(onPathChange, 1000);
+    // Fallback poll for history mutations the patched push/replaceState miss.
+    // pushState/replaceState/popstate already cover the common cases, so this
+    // can be slow, and it skips work entirely while the tab is backgrounded.
+    setInterval(() => { if (!document.hidden) onPathChange(); }, 2000);
 
     // React re-renders can replace the composer DOM node even without a
     // path change (e.g. attaching a file, switching models). If that
-    // detaches our docked widget from the page, periodically check and
-    // re-insert rather than leaving the widget invisible until next nav.
+    // detaches our docked widget from the page, re-insert it. Skipped while
+    // the tab is hidden so backgrounded tabs don't poll the DOM forever.
     setInterval(() => {
-      if (!widget || settings.widgetAnchorMode === "floating") return;
+      if (document.hidden || !widget || settings.widgetAnchorMode === "floating") return;
       if (!document.body.contains(widget)) placeWidget();
     }, 2000);
   }
@@ -665,7 +757,11 @@
   function observeNativeUsageRefresh() {
     refreshNativeUsage();
     clearInterval(nativeUsageTimer);
-    nativeUsageTimer = setInterval(refreshNativeUsage, NATIVE_USAGE_REFRESH_MS);
+    // Don't poll the usage endpoint while the tab is backgrounded; the
+    // visibilitychange handler below refreshes immediately on return.
+    nativeUsageTimer = setInterval(() => {
+      if (!document.hidden) refreshNativeUsage();
+    }, NATIVE_USAGE_REFRESH_MS);
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "visible") refreshNativeUsage();
     });
@@ -688,11 +784,6 @@
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (message?.type === "cuc:get-state") {
       sendResponse({ settings, usage, nativeUsage, nativeUsageError });
-      return true;
-    }
-    if (message?.type === "cuc:reset-session") {
-      usage = CUC.resetSession(usage, "manual");
-      saveState().then(() => sendResponse({ ok: true }));
       return true;
     }
     if (message?.type === "cuc:show-widget") {

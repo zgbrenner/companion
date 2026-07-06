@@ -84,7 +84,15 @@
       throw new Error(`usage request failed: ${response.status}`);
     }
     const payload = await response.json();
-    return normalizeUsagePayload(payload);
+    const normalized = normalizeUsagePayload(payload);
+    // A 200 with none of the expected buckets means the endpoint shape drifted
+    // (this endpoint is undocumented and can change without notice). Surface it
+    // as an error so the UI shows "unavailable" instead of a silently blank
+    // section that looks like everything is fine.
+    if (!normalized.fiveHour && !normalized.sevenDay && !normalized.sevenDayOpus) {
+      throw new Error("unexpected-usage-shape");
+    }
+    return normalized;
   }
 
   // Normalize into a stable internal shape so the rest of the extension

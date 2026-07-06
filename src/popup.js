@@ -26,11 +26,14 @@ async function loadState() {
 }
 
 function render(usage, settings) {
-  const totalTokens = (usage.totals?.inputTokens || 0) + (usage.totals?.outputTokens || 0);
+  // Headline reads today's bucket (same source as the budget line), not the
+  // session accumulator that a reset clears — keeps the two figures consistent.
+  const today = CUC.getTodayUsage(usage);
+  const totalTokens = (today.inputTokens || 0) + (today.outputTokens || 0);
   const progress = CUC.getBudgetProgress(usage, settings);
   const level = CUC.usageLevel(progress);
   const pct = progress.budget ? CUC.clamp((progress.value / progress.budget) * 100, 0, 100) : 0;
-  const spend = usage.totals?.estimatedUsd || 0;
+  const spend = today.estimatedUsd || 0;
 
   const costText = CUC.formatUsd(spend);
   const tokensText = `${CUC.formatTokens(totalTokens)} tokens`;
@@ -118,10 +121,17 @@ async function boot() {
   document.getElementById("settings").addEventListener("click", () => chrome.runtime.openOptionsPage());
 
   document.getElementById("reset").addEventListener("click", async () => {
+    // Route the reset through the background single-writer. Awaiting the
+    // response guarantees the write finished before we re-read storage.
+    try {
+      await chrome.runtime.sendMessage({ type: "cuc:reset-session", reason: "manual-popup" });
+    } catch {
+      // Background unreachable — fall back to a direct write.
+      const current = await loadState();
+      await chrome.storage.local.set({ [STORAGE_KEY]: CUC.resetSession(current.usage, "manual-popup") });
+    }
     const current = await loadState();
-    const reset = CUC.resetSession(current.usage, "manual-popup");
-    await chrome.storage.local.set({ [STORAGE_KEY]: reset });
-    render(reset, current.settings);
+    render(current.usage, current.settings);
   });
 
   document.getElementById("show-widget").addEventListener("click", async () => {

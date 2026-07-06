@@ -18,8 +18,20 @@ the character/word heuristic automatically if it's missing or throws.
 To update to a newer `gpt-tokenizer` version: get `dist/o200k_base.js` from a
 fresh `npm install gpt-tokenizer`, confirm the version in its `package.json`
 matches what you intended, and replace `src/o200k_base.js` with it. No other file
-needs to change — the three load-order references (`manifest.json`,
-`popup.html`, `options.html`) already point at this filename.
+needs to change — the only load-order reference is in `manifest.json`.
+
+## Load timing (as of the 0.4.x audit)
+
+`o200k_base.js` (~2MB) is loaded as its **own** content-script entry at
+`run_at: "document_idle"`, separate from `shared.js`/`native-usage.js`/`content.js`
+(which load at `document_start`). This keeps the 2MB parse/compile off the page's
+critical startup path. Until it finishes loading, `estimateTokensPrecise()` falls
+back to the character/word heuristic automatically, then silently upgrades to the
+tokenizer once `globalThis.GPTTokenizer_o200k_base` is available.
+
+It is intentionally **not** loaded in `popup.html` / `options.html` — neither the
+popup nor the options page counts tokens (they only render already-stored numbers),
+so loading 2MB there would just slow them down for nothing.
 
 ## Remember
 
