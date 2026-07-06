@@ -1,0 +1,81 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Vistage Claude Usage Companion</title>
+  <link rel="stylesheet" href="options.css" />
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Claude Usage</h1>
+      <p class="org-tag">Vistage Worldwide, Inc. — internal tool</p>
+      <p>Choose how usage should be shown, and set your daily budget.</p>
+    </header>
+
+    <section class="card">
+      <h2>Display</h2>
+      <label>
+        Show usage as
+        <select id="displayMode">
+          <option value="dollars">Dollars only</option>
+          <option value="tokens">Tokens only</option>
+          <option value="both">Dollars and tokens</option>
+        </select>
+      </label>
+      <label>
+        Model estimate
+        <select id="defaultModel"></select>
+      </label>
+    </section>
+
+    <section class="card">
+      <h2>Daily budget</h2>
+      <label>
+        Daily budget, USD
+        <input id="dailyBudgetUsd" type="number" min="0" step="0.25" />
+      </label>
+    </section>
+
+    <section class="card">
+      <h2>Native limits (from Claude.ai)</h2>
+      <p class="hint">Reads Claude's own session/weekly usage directly — not an estimate. Uses an undocumented endpoint that Anthropic could change without notice; if it stops working, this section shows an error and the dollar/token estimate above keeps working as normal.</p>
+      <label class="checkbox">
+        <input id="showNativeLimits" type="checkbox" />
+        Show native session/weekly limits
+      </label>
+      <label class="checkbox">
+        <input id="showOpusLimit" type="checkbox" />
+        Show weekly Opus limit (if your plan has one)
+      </label>
+      <label>
+        Team account
+        <button id="clear-org-cache" type="button" class="secondary">Clear cached organization</button>
+      </label>
+      <p class="hint">If native limits look wrong, use this to force re-detection.</p>
+    </section>
+
+    <section class="card">
+      <h2>Widget position</h2>
+      <p class="hint">By default the widget sits pinned just under the chat box. Drag its header on claude.ai to move it anywhere; use this to snap it back.</p>
+      <button id="reset-widget-position" type="button" class="secondary">Reset widget to default position</button>
+    </section>
+
+    <section class="card note">
+      <h2>About these numbers</h2>
+      <p>The dollar/token figures are an API-equivalent estimate using public Anthropic pricing, not a guaranteed invoice amount — Claude.ai plans use usage limits, not per-token billing, unless your organization uses API-style billing. The native limits section reads Claude's own usage data directly and is not an estimate.</p>
+    </section>
+
+    <footer>
+      <button id="save">Save settings</button>
+      <button id="reset-defaults" class="secondary">Reset defaults</button>
+      <span id="status"></span>
+    </footer>
+  </main>
+  <script src="shared.js"></script>
+  <script src="o200k_base.js"></script>
+  <script src="native-usage.js"></script>
+  <script src="options.js"></script>
+</body>
+</html>

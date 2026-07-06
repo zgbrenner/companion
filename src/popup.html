@@ -1,0 +1,46 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Vistage Claude Usage Companion</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <main class="popup">
+    <header>
+      <h1>Claude Usage</h1>
+      <p class="org-tag">Vistage Worldwide, Inc. — internal tool</p>
+    </header>
+
+    <section class="main-row">
+      <div class="main-value" id="cost">$0.00</div>
+      <div class="main-label">used today<span id="tokens-inline"></span></div>
+    </section>
+    <div class="bar"><div id="bar-fill"></div></div>
+    <p class="budget-line" id="budget-value">$0.00 of $5.00 daily budget</p>
+
+    <section class="native" id="native-section">
+      <div class="native-row" id="native-session-row">
+        <div class="native-label"><span>Session</span><span id="native-session-value">—</span></div>
+        <div class="bar bar--thin"><div id="native-session-bar"></div></div>
+      </div>
+      <div class="native-row" id="native-weekly-row">
+        <div class="native-label"><span>Weekly</span><span id="native-weekly-value">—</span></div>
+        <div class="bar bar--thin"><div id="native-weekly-bar"></div></div>
+      </div>
+      <p class="native-note" id="native-note"></p>
+    </section>
+
+    <section class="actions">
+      <button id="show-widget">Show widget</button>
+      <button id="reset">Reset session</button>
+      <button id="settings">Settings</button>
+    </section>
+  </main>
+  <script src="shared.js"></script>
+  <script src="o200k_base.js"></script>
+  <script src="native-usage.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

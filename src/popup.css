@@ -1,0 +1,145 @@
+body {
+  margin: 0;
+  width: 300px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, ui-sans-serif, system-ui, sans-serif;
+  color: #1c2430;
+  background: #ffffff;
+}
+
+.popup {
+  padding: 14px;
+}
+
+h1 {
+  font-size: 15px;
+  font-weight: 650;
+  margin: 0;
+  color: #2b3648;
+}
+
+p {
+  margin: 0;
+}
+
+.org-tag {
+  margin-top: 3px;
+  font-size: 11px;
+  color: #6b7684;
+}
+
+.main-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+
+.main-value {
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.1;
+  color: #1c2430;
+}
+
+.main-label {
+  font-size: 12px;
+  color: #6b7684;
+}
+
+.budget-line {
+  font-size: 11px;
+  color: #6b7684;
+  margin-top: 6px;
+}
+
+.bar {
+  height: 6px;
+  border-radius: 999px;
+  background: #eaeef3;
+  overflow: hidden;
+  margin-top: 8px;
+}
+
+#bar-fill {
+  height: 100%;
+  width: 0%;
+  background: #3d7a5c;
+}
+
+#bar-fill.medium {
+  background: #b4791f;
+}
+
+#bar-fill.high {
+  background: #b23b3b;
+}
+
+.native {
+  margin: 14px 0 0;
+  padding-top: 12px;
+  border-top: 1px solid #eaeef3;
+}
+
+.native-row {
+  margin-bottom: 7px;
+}
+
+.native-row:last-of-type {
+  margin-bottom: 0;
+}
+
+.native-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: #4a5568;
+  margin-bottom: 3px;
+}
+
+.native-note {
+  font-size: 11px;
+  color: #6b7684;
+  margin-top: 6px;
+}
+
+.bar--thin {
+  height: 4px;
+  margin-top: 4px;
+}
+
+.bar--thin > div {
+  height: 100%;
+  width: 0%;
+  background: #3d7a5c;
+}
+
+.bar--thin > div.medium {
+  background: #b4791f;
+}
+
+.bar--thin > div.high {
+  background: #b23b3b;
+}
+
+.actions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 6px;
+  margin-top: 14px;
+}
+
+button {
+  border: 1px solid #dde3ea;
+  background: white;
+  border-radius: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+  color: #2b3648;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+button:hover {
+  background: #f4f6f9;
+}
