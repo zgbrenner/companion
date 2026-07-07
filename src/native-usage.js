@@ -108,22 +108,22 @@
     const usagePayload = await fetchJson(`https://claude.ai/api/organizations/${orgId}/usage`);
     const normalized = normalizeUsagePayload(usagePayload);
     const expectedLimit = await configuredEnterpriseLimitUsd();
-    if (
-      normalized.monthlySpendLimit &&
-      expectedLimit > 0 &&
-      Math.abs(normalized.monthlySpendLimit.limitUsd - expectedLimit) > 0.01
-    ) {
-      normalized.monthlySpendLimitRejected = {
-        foundLimitUsd: normalized.monthlySpendLimit.limitUsd,
-        expectedLimitUsd: expectedLimit
-      };
-      normalized.monthlySpendLimit = null;
-    }
+
+    const capResult = applyCapAdvisory(normalized.monthlySpendLimit, expectedLimit);
+    normalized.monthlySpendLimit = capResult.spendLimit;
+    normalized.monthlySpendLimitRejected = capResult.rejected;
+
     // Prefer /usage.extra_usage, which reflects the member-visible usage-credit
     // card. /overage_spend_limit can be the organization-wide cap (for example
     // $5000) and must not replace a per-employee cap like $100.
     if (!normalized.monthlySpendLimit) {
-      normalized.monthlySpendLimit = await fetchMonthlySpendLimit(orgId);
+      const fallback = await fetchMonthlySpendLimit(orgId, expectedLimit);
+      if (fallback.spendLimit) {
+        normalized.monthlySpendLimit = fallback.spendLimit;
+        normalized.monthlySpendLimitRejected = null;
+      } else if (fallback.rejected) {
+        normalized.monthlySpendLimitRejected = fallback.rejected;
+      }
     }
 
     // A 200 with none of the expected buckets means the endpoint shape drifted
@@ -144,25 +144,71 @@
     if (response.status === 401 || response.status === 403) {
       throw new Error("not-logged-in");
     }
+    if (response.status === 429) {
+      throw new Error("rate-limited");
+    }
     if (!response.ok) {
       throw new Error(`request failed: ${response.status}`);
     }
     return response.json();
   }
 
-  async function fetchMonthlySpendLimit(orgId, fallback = null) {
+  // Compares a normalized spend-limit reading against the admin-configured
+  // expected cap. Three outcomes:
+  //   - matches (or no expectation configured): pass through unchanged.
+  //   - close in value but different (a genuine cap change, e.g. admin bumped
+  //     the per-employee limit): keep showing the real data, but attach a
+  //     capAdvisory so the UI can note the mismatch instead of hiding it.
+  //   - off by ~100x (classic cents-vs-dollars unit drift): the number would
+  //     be wildly misleading if displayed, so reject it outright.
+  function applyCapAdvisory(spendLimit, expectedLimitUsd) {
+    if (!spendLimit) return { spendLimit: null, rejected: null };
+    if (!(expectedLimitUsd > 0)) return { spendLimit, rejected: null };
+
+    const diff = Math.abs(spendLimit.limitUsd - expectedLimitUsd);
+    if (diff <= 0.01) return { spendLimit, rejected: null };
+
+    if (isLikelyUnitDrift(spendLimit.limitUsd, expectedLimitUsd)) {
+      return {
+        spendLimit: null,
+        rejected: {
+          foundLimitUsd: spendLimit.limitUsd,
+          expectedLimitUsd,
+          reason: "unit-drift"
+        }
+      };
+    }
+
+    return {
+      spendLimit: {
+        ...spendLimit,
+        capAdvisory: { foundLimitUsd: spendLimit.limitUsd, expectedLimitUsd }
+      },
+      rejected: null
+    };
+  }
+
+  // Heuristic: a returned limit that is ~100x (or ~1/100x) the expected cap
+  // looks like a cents/dollars unit mismatch rather than a genuine cap
+  // change, so it gets rejected rather than displayed as an "advisory".
+  // Tolerance is +/-20% around the 100x ratio to allow for rounding.
+  function isLikelyUnitDrift(foundLimitUsd, expectedLimitUsd) {
+    if (!(foundLimitUsd > 0) || !(expectedLimitUsd > 0)) return false;
+    const ratio = foundLimitUsd / expectedLimitUsd;
+    const within = (target) => ratio > target * 0.8 && ratio < target * 1.2;
+    return within(100) || within(0.01);
+  }
+
+  async function fetchMonthlySpendLimit(orgId, expectedLimitUsd) {
     try {
       const payload = await fetchJson(`https://claude.ai/api/organizations/${orgId}/overage_spend_limit`);
       const normalized = normalizeMonthlySpendLimit(payload);
-      if (!normalized) return fallback;
-      const expectedLimit = await configuredEnterpriseLimitUsd();
-      if (expectedLimit > 0 && Math.abs(normalized.limitUsd - expectedLimit) > 0.01) {
-        return fallback;
-      }
-      return normalized;
+      if (!normalized) return { spendLimit: null, rejected: null };
+      return applyCapAdvisory(normalized, expectedLimitUsd);
     } catch (error) {
-      if (String(error?.message || error) === "not-logged-in") throw error;
-      return fallback;
+      const message = String(error?.message || error);
+      if (message === "not-logged-in" || message === "rate-limited") throw error;
+      return { spendLimit: null, rejected: null };
     }
   }
 
@@ -196,13 +242,18 @@
       currency: extraUsage.currency,
       outOfCredits: Number(extraUsage.used_credits) >= Number(extraUsage.monthly_limit),
       disabledReason: extraUsage.disabled_reason,
-      resetsAt: null
+      // /usage.extra_usage carries no reset timestamp. The cap replenishes
+      // monthly, so fall back to "first of next month UTC" as an approximate
+      // reset date rather than showing nothing.
+      resetsAt: nextMonthFirstDayUtcIso(),
+      resetsAtApprox: true
     });
   }
 
   function normalizeMonthlySpendLimit(payload) {
     if (!payload || typeof payload !== "object") return null;
     if (payload.used_credits == null || payload.monthly_credit_limit == null) return null;
+    const disabledUntil = payload.disabled_until || null;
     return normalizeSpendLimitValues({
       isEnabled: payload.is_enabled,
       usedCents: payload.used_credits,
@@ -210,11 +261,14 @@
       currency: payload.currency,
       outOfCredits: payload.out_of_credits,
       disabledReason: payload.disabled_reason,
-      resetsAt: payload.disabled_until || null
+      // Prefer the endpoint's own reset timestamp when present; only fall
+      // back to the approximate monthly-rollover date when it's missing.
+      resetsAt: disabledUntil || nextMonthFirstDayUtcIso(),
+      resetsAtApprox: !disabledUntil
     });
   }
 
-  function normalizeSpendLimitValues({ isEnabled, usedCents, limitCents, currency, outOfCredits, disabledReason, resetsAt }) {
+  function normalizeSpendLimitValues({ isEnabled, usedCents, limitCents, currency, outOfCredits, disabledReason, resetsAt, resetsAtApprox }) {
     const usedUsd = Number(usedCents) / 100;
     const limitUsd = Number(limitCents) / 100;
     if (!Number.isFinite(usedUsd) || !Number.isFinite(limitUsd) || limitUsd <= 0) return null;
@@ -226,9 +280,17 @@
       currency: typeof currency === "string" ? currency : "USD",
       utilizationPct: (usedUsd / limitUsd) * 100,
       resetsAt,
+      resetsAtApprox: Boolean(resetsAtApprox),
       outOfCredits: Boolean(outOfCredits),
       disabledReason: typeof disabledReason === "string" ? disabledReason : null
     };
+  }
+
+  // First day of next month, 00:00 UTC, as an ISO string. Used as a client-side
+  // approximation of the monthly cap reset when the API doesn't provide one.
+  function nextMonthFirstDayUtcIso(now = new Date()) {
+    const next = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1, 0, 0, 0));
+    return next.toISOString();
   }
 
   function formatResetCountdown(isoTimestamp) {
@@ -248,9 +310,29 @@
     return `${days}d ${remHours}h`;
   }
 
+  // Renders a reset hint for a normalized spend-limit object: an exact
+  // countdown when the source gave us a real timestamp, or a visibly
+  // approximate "~<Month> <day>" label when we fell back to the client-side
+  // monthly-rollover guess.
+  function formatResetLabel(spendLimit) {
+    if (!spendLimit?.resetsAt) return null;
+    if (spendLimit.resetsAtApprox) {
+      const date = new Date(spendLimit.resetsAt);
+      if (Number.isNaN(date.getTime())) return null;
+      const month = date.toLocaleString("en-US", { month: "short", timeZone: "UTC" });
+      const day = date.getUTCDate();
+      return `resets ~${month} ${day}`;
+    }
+    const countdown = formatResetCountdown(spendLimit.resetsAt);
+    return countdown ? `resets in ${countdown}` : null;
+  }
+
   globalThis.ClaudeUsageCompanionNative = {
     fetchNativeUsage,
     clearCachedOrgId,
-    formatResetCountdown
+    formatResetCountdown,
+    formatResetLabel,
+    // Exposed for unit testing pure helpers; not used elsewhere in the extension.
+    _internal: { isLikelyUnitDrift, applyCapAdvisory, nextMonthFirstDayUtcIso }
   };
 })();

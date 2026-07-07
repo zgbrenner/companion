@@ -41,10 +41,12 @@
         Organization ID
         <input id="organizationId" type="text" spellcheck="false" />
       </label>
+      <p class="hint" id="organizationId-warning" style="display:none;color:#b45309;"></p>
       <label>
         Employee monthly limit, USD
         <input id="enterpriseMonthlyLimitUsd" type="number" min="0" step="1" />
       </label>
+      <p class="hint">This is the expected per-employee cap, used only as an advisory comparison — if Claude returns a different cap it's still shown (with a note), not hidden. Only values that look like a cents/dollars unit mismatch get rejected.</p>
       <label>
         Team account
         <button id="clear-org-cache" type="button" class="secondary">Clear cached organization</button>

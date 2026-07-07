@@ -15,9 +15,18 @@
   let nativeUsage = null;
   let nativeUsageError = null;
   let nativeUsageTimer = null;
+  let nativeUsageBackoffMs = null;
   let lastTokenEstimateMethod = "heuristic";
   let lastUsageSnapshotRefreshAt = 0;
   const NATIVE_USAGE_REFRESH_MS = 60 * 1000;
+  const NATIVE_USAGE_MAX_BACKOFF_MS = 10 * 60 * 1000;
+
+  // +/-20% jitter so multiple tabs polling the same account don't all hit the
+  // usage endpoint in lockstep every 60s.
+  function jitteredNativeUsageInterval() {
+    const jitterFactor = 1 + (Math.random() * 0.4 - 0.2);
+    return Math.round(NATIVE_USAGE_REFRESH_MS * jitterFactor);
+  }
 
   // Per-conversation network-detected model, replacing a single sticky global.
   // A single global meant that once any chat's request revealed a model
@@ -683,6 +692,10 @@
       note.textContent = "Sign in to claude.ai to see native limits.";
       value.textContent = "—";
       bar.style.width = "0%";
+    } else if (nativeUsageError === "rate-limited") {
+      note.textContent = "Claude is rate-limiting usage lookups; retrying with backoff.";
+      value.textContent = "—";
+      bar.style.width = "0%";
     } else if (nativeUsageError) {
       note.textContent = "Native limits unavailable right now.";
       value.textContent = "—";
@@ -695,24 +708,26 @@
       const spendLimit = nativeUsage.monthlySpendLimit;
       if (!spendLimit) {
         note.textContent = nativeUsage.monthlySpendLimitRejected
-          ? `Claude returned ${CUC.formatUsd(nativeUsage.monthlySpendLimitRejected.foundLimitUsd)}, expected ${CUC.formatUsd(nativeUsage.monthlySpendLimitRejected.expectedLimitUsd)}.`
+          ? `Claude returned ${CUC.formatUsd(nativeUsage.monthlySpendLimitRejected.foundLimitUsd)}, expected ${CUC.formatUsd(nativeUsage.monthlySpendLimitRejected.expectedLimitUsd)} — looks like a units mismatch, not a real cap change.`
           : "Employee monthly spend limit unavailable right now.";
         value.textContent = "—";
         bar.style.width = "0%";
         return;
       }
       const pct = CUC.clamp(spendLimit.utilizationPct, 0, 100);
-      const resetText = CUCNative?.formatResetCountdown
-        ? CUCNative.formatResetCountdown(spendLimit.resetsAt)
-        : null;
-      value.textContent = resetText
-        ? `${CUC.formatUsd(spendLimit.usedUsd)} of ${CUC.formatUsd(spendLimit.limitUsd)} · resets in ${resetText}`
+      const resetLabel = CUCNative?.formatResetLabel ? CUCNative.formatResetLabel(spendLimit) : null;
+      value.textContent = resetLabel
+        ? `${CUC.formatUsd(spendLimit.usedUsd)} of ${CUC.formatUsd(spendLimit.limitUsd)} · ${resetLabel}`
         : `${CUC.formatUsd(spendLimit.usedUsd)} of ${CUC.formatUsd(spendLimit.limitUsd)}`;
       bar.style.width = `${pct}%`;
       bar.className = `cuc-progress-bar ${nativeUsageBarLevel(pct)}`;
-      note.textContent = spendLimit.outOfCredits
-        ? "Monthly usage-credit limit reached"
-        : "Monthly usage-credit spend from Claude.ai";
+      if (spendLimit.outOfCredits) {
+        note.textContent = "Monthly usage-credit limit reached";
+      } else if (spendLimit.capAdvisory) {
+        note.textContent = `Cap differs from expected ${CUC.formatUsd(spendLimit.capAdvisory.expectedLimitUsd)} — update Settings if this changed.`;
+      } else {
+        note.textContent = "Monthly usage-credit spend from Claude.ai";
+      }
     }
   }
 
@@ -779,13 +794,27 @@
   }
 
   async function refreshNativeUsage() {
-    if (!settings.showNativeLimits || !CUCNative) return;
+    if (!settings.showNativeLimits || !CUCNative) {
+      scheduleNextNativeUsagePoll();
+      return;
+    }
     try {
       nativeUsage = await CUCNative.fetchNativeUsage();
       nativeUsageError = null;
+      // A successful fetch clears any backoff accumulated from prior 429s.
+      nativeUsageBackoffMs = null;
     } catch (error) {
       nativeUsage = null;
       nativeUsageError = String(error?.message || error);
+      if (nativeUsageError === "rate-limited") {
+        // Exponential backoff starting at 2x the base interval, capped at 10
+        // minutes, reset on the next successful fetch.
+        nativeUsageBackoffMs = nativeUsageBackoffMs
+          ? Math.min(nativeUsageBackoffMs * 2, NATIVE_USAGE_MAX_BACKOFF_MS)
+          : NATIVE_USAGE_REFRESH_MS * 2;
+      } else {
+        nativeUsageBackoffMs = null;
+      }
     }
     try {
       await chrome.storage.local.set({
@@ -796,18 +825,28 @@
       // best-effort; the in-page widget still has the in-memory value
     }
     renderWidget();
+    scheduleNextNativeUsagePoll();
+  }
+
+  function scheduleNextNativeUsagePoll() {
+    clearTimeout(nativeUsageTimer);
+    const delay = nativeUsageBackoffMs || jitteredNativeUsageInterval();
+    nativeUsageTimer = setTimeout(() => {
+      // Don't poll the usage endpoint while the tab is backgrounded; the
+      // visibilitychange handler below refreshes immediately on return. If
+      // still hidden when this timer fires, just reschedule rather than
+      // spending a poll attempt.
+      if (!document.hidden) refreshNativeUsage();
+      else scheduleNextNativeUsagePoll();
+    }, delay);
   }
 
   function observeNativeUsageRefresh() {
     refreshNativeUsage();
-    clearInterval(nativeUsageTimer);
-    // Don't poll the usage endpoint while the tab is backgrounded; the
-    // visibilitychange handler below refreshes immediately on return.
-    nativeUsageTimer = setInterval(() => {
-      if (!document.hidden) refreshNativeUsage();
-    }, NATIVE_USAGE_REFRESH_MS);
     document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "visible") refreshNativeUsage();
+      // Skip the immediate refresh while backing off from a 429 — a tab
+      // switch shouldn't undo the backoff we just applied.
+      if (document.visibilityState === "visible" && !nativeUsageBackoffMs) refreshNativeUsage();
     });
   }
 
