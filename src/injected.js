@@ -21,7 +21,7 @@
     }
   }
 
-  function extractTextFromObject(obj) {
+  function extractTextFallback(obj) {
     if (!obj || typeof obj !== "object") return "";
 
     const pieces = [];
@@ -58,6 +58,36 @@
     };
     visit(obj);
     return pieces.join(" ");
+  }
+
+  function extractTextFromObject(obj) {
+    if (!obj || typeof obj !== "object") return { text: "", isDelta: false };
+
+    if (obj.type === "content_block_delta") {
+      const delta = obj.delta;
+      if (delta?.type === "text_delta" && typeof delta.text === "string") {
+        return { text: delta.text, isDelta: true };
+      }
+      if (delta?.type === "thinking_delta" && typeof delta.thinking === "string") {
+        return { text: delta.thinking, isDelta: true };
+      }
+      return { text: "", isDelta: true };
+    }
+
+    if (obj.type === "completion" && typeof obj.completion === "string") {
+      return { text: obj.completion, isDelta: true };
+    }
+
+    if ([
+      "message_start",
+      "message_stop",
+      "message_delta",
+      "content_block_start"
+    ].includes(obj.type)) {
+      return { text: "", isDelta: true };
+    }
+
+    return { text: extractTextFallback(obj), isDelta: false };
   }
 
   function findModelId(obj) {
@@ -99,27 +129,67 @@
     return null;
   }
 
-  function extractTextFromChunk(raw) {
-    const text = String(raw || "");
-    const lines = text.split(/\r?\n/);
+  function findNextDataBoundary(text) {
+    const match = /\r?\ndata:/i.exec(text.slice(1));
+    if (!match) return null;
+    return { index: 1 + match.index, length: match[0].startsWith("\r\n") ? 2 : 1 };
+  }
+
+  function findFrameBoundary(text) {
+    const blank = /\r?\n\r?\n/.exec(text);
+    const nextData = findNextDataBoundary(text);
+    if (!blank) return nextData;
+    const blankBoundary = { index: blank.index, length: blank[0].length };
+    if (!nextData || blankBoundary.index <= nextData.index) return blankBoundary;
+    return nextData;
+  }
+
+  function extractTextFromFrame(rawFrame) {
+    const lines = String(rawFrame || "").split(/\r?\n/);
     const pieces = [];
+    let sawDataLine = false;
 
     for (const line of lines) {
       const trimmed = line.trim();
-      if (!trimmed || trimmed === "data: [DONE]") continue;
+      if (!trimmed) continue;
 
       if (trimmed.startsWith("data:")) {
+        sawDataLine = true;
         const payload = trimmed.slice(5).trim();
+        if (!payload || payload === "[DONE]") continue;
         const parsed = maybeParseJson(payload);
         if (parsed) pieces.push(extractTextFromObject(parsed));
         continue;
       }
 
-      const parsed = maybeParseJson(trimmed);
-      if (parsed) pieces.push(extractTextFromObject(parsed));
+      if (!sawDataLine) {
+        const parsed = maybeParseJson(trimmed);
+        if (parsed) pieces.push(extractTextFromObject(parsed));
+      }
     }
 
-    return pieces.join(" ").replace(/\s+/g, " ").trim();
+    return pieces.filter(piece => piece.text);
+  }
+
+  function extractTextFromChunk(raw, buffer = "", flush = false) {
+    let text = `${buffer || ""}${String(raw || "")}`;
+    const pieces = [];
+
+    while (text) {
+      const boundary = findFrameBoundary(text);
+      if (!boundary) {
+        if (flush) {
+          pieces.push(...extractTextFromFrame(text));
+          text = "";
+        }
+        break;
+      }
+
+      pieces.push(...extractTextFromFrame(text.slice(0, boundary.index)));
+      text = text.slice(boundary.index + boundary.length);
+    }
+
+    return { pieces, remainder: text };
   }
 
   // Real origin check, not a substring test. A substring match on "claude.ai"
@@ -169,27 +239,56 @@
     return `${cleanExisting} ${cleanNext}`;
   }
 
-  async function readStreamClone(response, requestUrl) {
+  function appendExtractedText(existing, extracted) {
+    const cleanNext = String(extracted?.text || "").replace(/\s+/g, " ").trim();
+    if (!cleanNext) return existing;
+    if (!String(existing || "").trim()) return cleanNext;
+    if (extracted.isDelta) return `${existing} ${cleanNext}`;
+    return appendWithoutRepeating(existing, cleanNext);
+  }
+
+  function extractConversationId(url) {
+    try {
+      const path = new URL(url, location.href).pathname;
+      const match = path.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+      return match ? match[0] : null;
+    } catch {
+      return null;
+    }
+  }
+
+  let nextRequestCounter = 0;
+  function createRequestId() {
+    nextRequestCounter += 1;
+    return `${Date.now()}-${nextRequestCounter}-${Math.random().toString(36).slice(2, 10)}`;
+  }
+
+  async function readStreamClone(response, requestInfo) {
     if (!response || !response.body) return;
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let totalText = "";
+    let pendingText = "";
     let capped = false;
 
     try {
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
-        const chunk = decoder.decode(value, { stream: true });
-        const extracted = extractTextFromChunk(chunk);
-        if (extracted && !capped) {
-          totalText = appendWithoutRepeating(totalText, extracted);
+        const chunk = done ? decoder.decode() : decoder.decode(value, { stream: true });
+        const extracted = extractTextFromChunk(chunk, pendingText, done);
+        pendingText = extracted.remainder;
+
+        for (const piece of extracted.pieces) {
+          if (!piece.text || capped) continue;
+          totalText = appendExtractedText(totalText, piece);
           if (totalText.length >= MAX_STREAM_CHARS) {
             totalText = totalText.slice(0, MAX_STREAM_CHARS);
             capped = true;
+            break;
           }
         }
+        if (done) break;
       }
     } catch {
       // Swallow read errors: a partial output count is better than none, and we
@@ -201,7 +300,15 @@
         // only for genuine generation streams (gated by the caller). No
         // per-chunk events, no raw bytes — minimize what crosses onto the
         // page-global event bus.
-        emit({ kind: "response-complete", textLength: clean.length, text: clean, at: Date.now() });
+        emit({
+          kind: "response-complete",
+          requestId: requestInfo.requestId,
+          conversationId: requestInfo.conversationId,
+          modelId: requestInfo.modelId,
+          textLength: clean.length,
+          text: clean,
+          at: Date.now()
+        });
       }
     }
   }
@@ -230,12 +337,32 @@
     // ignored so it can't be mistaken for a new response.
     if (requestMethod === "POST" && isGenerationUrl(requestUrl)) {
       const requestJson = await parseRequestJson(input, init);
-      const requestModel = findModelId(requestJson);
-      if (requestModel) emit({ kind: "model-detected", modelId: requestModel, at: Date.now() });
+      const requestModel = findModelId(requestJson) || null;
 
       const contentType = response.headers?.get?.("content-type") || "";
       if (/event-stream/i.test(contentType)) {
-        readStreamClone(response.clone(), requestUrl);
+        const requestInfo = {
+          requestId: createRequestId(),
+          conversationId: extractConversationId(requestUrl),
+          modelId: requestModel
+        };
+        emit({
+          kind: "generation-start",
+          requestId: requestInfo.requestId,
+          conversationId: requestInfo.conversationId,
+          modelId: requestInfo.modelId,
+          at: Date.now()
+        });
+        if (requestModel) {
+          emit({
+            kind: "model-detected",
+            requestId: requestInfo.requestId,
+            conversationId: requestInfo.conversationId,
+            modelId: requestModel,
+            at: Date.now()
+          });
+        }
+        readStreamClone(response.clone(), requestInfo);
       }
     }
 
