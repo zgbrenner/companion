@@ -15,17 +15,18 @@ The extension can display usage as:
 - Estimated input tokens from user prompts.
 - Estimated output tokens from Claude responses.
 - Estimated conversation/context weight.
-- Session usage for Claude's rolling usage-window style.
-- Daily and monthly estimates.
-- **Native session/weekly/Opus limits, read directly from Claude.ai's own usage endpoint** — not an estimate. See "Native limits" below.
+- Estimated usage in the current chat.
+- Optional daily self-limit set by the user.
+- **Enterprise usage limits, read directly from Claude.ai's own usage endpoint** — not an estimate. See "Native limits" below.
 
 ## Native limits (ground truth, not an estimate)
 
-Alongside the dollar/token estimate, the widget shows Claude's own 5-hour session, weekly, and weekly-Opus usage percentages, pulled from an internal Claude.ai endpoint the same way Claude's own settings page does. This is exact, not approximated — it's the same data Anthropic shows you, just without leaving your chat.
+Alongside the current-chat dollar/token estimate, the widget shows Claude's monthly usage-credit spend limit, pulled from internal Claude.ai endpoints the same way Claude's own settings page does. This is exact, not approximated — it's the same data Anthropic shows you, just without leaving your chat.
 
 How it works:
 - Discovers your organization ID via `GET /api/organizations` (cached 24h in `chrome.storage.local`).
-- Polls `GET /api/organizations/{orgId}/usage` every 60 seconds and on tab focus.
+- If `organizationId` is configured in Settings, uses that organization directly instead of auto-discovery.
+- Polls `GET /api/organizations/{orgId}/usage` and `GET /api/organizations/{orgId}/overage_spend_limit` every 60 seconds and on tab focus.
 - Your session cookie rides along automatically because the request originates from a content script running on a claude.ai page — the extension never reads, stores, or transmits the cookie itself.
 
 Caveats, stated plainly:
@@ -35,7 +36,7 @@ Caveats, stated plainly:
 
 ## Target users
 
-Built for Vistage Worldwide, Inc. staff using Claude.ai — not aimed at developers, so the widget stays simple: one dollar/token figure, a daily budget bar, and Claude's own native limits.
+Built for Vistage Worldwide, Inc. staff using Claude.ai — not aimed at developers, so the widget stays simple: current chat usage, the enterprise limit, and an optional daily self-limit.
 
 ## Install locally
 
@@ -71,6 +72,12 @@ src/options.js             Settings logic
 src/shared.js              Shared defaults and pricing helpers
 ```
 
+## Updates
+
+The Settings page includes a "Check for updates" button. It checks the latest GitHub release for `zgbrenner/claudecompanion`; if the repo has no releases, it checks `main`'s `manifest.json` version.
+
+Chrome/Edge extensions cannot safely overwrite their own installed package at runtime. When an update is available, the button opens GitHub so the user can install or reload the updated unpacked extension.
+
 ## Design principles
 
 1. **Do not store prompt text.** The extension briefly reads prompt/response text only to estimate counts, then discards the text.
@@ -98,6 +105,20 @@ The extension uses a real tokenizer (`src/o200k_base.js`, from the `gpt-tokenize
 - Read the actual conversation message tree (like Claude's own API returns) instead of scraping composer text, for more reliable per-conversation token totals.
 
 ## Changelog
+
+### 0.4.2
+
+**Widget reduced to three bars:**
+- Usage in this chat — a local dollar/token ballpark estimate scoped to the active conversation.
+- Enterprise limit — the monthly usage-credit spend and limit returned by Claude.ai's `overage_spend_limit` endpoint.
+- Daily self-limit — optional, user-configurable, and local-only.
+
+**Accuracy and model detection:**
+- Model detection now listens to Claude generation request payloads when available, then falls back to the visible model picker.
+- Toolbar popup asks the active claude.ai tab for its conversation id/state so "this chat" does not accidentally render as a popup-local page.
+- Docked widget re-checks that it is still directly under the composer after Claude.ai React rerenders.
+- Enterprise limit now means the organization's monthly usage-credit spend cap, not Claude's rolling weekly utilization meter.
+- Added an explicit organization id setting; Vistage's org id defaults to `1e16048b-a724-40fd-b78b-bcf3c7f9af9a`.
 
 ### 0.4.0
 

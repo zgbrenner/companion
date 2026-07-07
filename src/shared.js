@@ -69,6 +69,7 @@
     // session/monthly views since daily is the framing people actually use.
     budgetMode: "daily",
     dailyBudgetUsd: 5,
+    showDailyLimit: true,
     monthlyBudgetUsd: 75,
     sessionBudgetUsd: 2.5,
     planName: "Claude Pro / Max / Team",
@@ -85,8 +86,8 @@
     widgetPosition: null,
     widgetAnchorMode: "docked",
     widgetCollapsed: false,
-    showNativeLimits: true,
-    showOpusLimit: true
+    organizationId: "1e16048b-a724-40fd-b78b-bcf3c7f9af9a",
+    showNativeLimits: true
   };
 
   // Key daily/monthly buckets by the user's LOCAL date, not UTC. Using
@@ -141,7 +142,8 @@
     const normalized = normalizeWhitespace(text);
     if (!normalized) return 0;
 
-    const model = MODEL_PRICES[modelKey] || MODEL_PRICES[DEFAULT_SETTINGS.defaultModel];
+    const resolvedKey = resolveModelKey(modelKey);
+    const model = MODEL_PRICES[resolvedKey] || MODEL_PRICES[resolveModelKey(DEFAULT_SETTINGS.defaultModel)];
     const chars = normalized.length;
     const words = normalized.split(/\s+/).filter(Boolean).length;
 
@@ -170,7 +172,8 @@
     const normalized = normalizeWhitespace(text);
     if (!normalized) return { tokens: 0, method: "none" };
 
-    const model = MODEL_PRICES[modelKey] || MODEL_PRICES[DEFAULT_SETTINGS.defaultModel];
+    const resolvedKey = resolveModelKey(modelKey);
+    const model = MODEL_PRICES[resolvedKey] || MODEL_PRICES[resolveModelKey(DEFAULT_SETTINGS.defaultModel)];
     if (tokenizerAvailable()) {
       try {
         const rawTokens = globalThis.GPTTokenizer_o200k_base.countTokens(normalized);
@@ -329,13 +332,15 @@
     };
   }
 
-  // The "used today" figure the widget/popup show as their headline number must
-  // come from the same daily bucket the budget line uses. Reading usage.totals
-  // instead (a session accumulator that resetSession() clears while preserving
-  // days) let the headline read "$0.00 used today" while the budget line still
-  // said "$3.00 of $5.00 daily budget" right after a five-hour/manual reset.
+  // The optional daily self-limit bar reads from the local-day bucket. Do not
+  // use usage.totals here: that five-hour session accumulator can reset while
+  // the daily user-facing limit should keep counting until local midnight.
   function getTodayUsage(usage, date = new Date()) {
     return usage.days?.[todayKey(date)] || {};
+  }
+
+  function getConversationUsage(usage, conversationId = currentConversationId()) {
+    return usage.conversations?.[conversationId] || {};
   }
 
   function getBudgetProgress(usage, settings) {
@@ -386,10 +391,24 @@
 
   function detectModelFromText(text) {
     const lower = String(text || "").toLowerCase();
+    if (!lower) return null;
     if (lower.includes("fable") || lower.includes("mythos")) return "claude-fable-5";
     if (lower.includes("opus")) return "claude-opus-4-8";
     if (lower.includes("haiku")) return "claude-haiku-4-5";
     if (lower.includes("sonnet 5")) return "claude-sonnet-5-intro";
+    if (lower.includes("sonnet")) return "claude-sonnet-4-6";
+    return null;
+  }
+
+  function detectModelFromId(modelId) {
+    const lower = String(modelId || "").toLowerCase();
+    if (!lower) return null;
+    if (lower.includes("fable") || lower.includes("mythos")) return "claude-fable-5";
+    if (lower.includes("opus")) return "claude-opus-4-8";
+    if (lower.includes("haiku")) return "claude-haiku-4-5";
+    if (lower.includes("sonnet-5") || lower.includes("sonnet_5") || lower.includes("sonnet 5")) {
+      return "claude-sonnet-5-intro";
+    }
     if (lower.includes("sonnet")) return "claude-sonnet-4-6";
     return null;
   }
@@ -418,9 +437,11 @@
     shouldResetSession,
     resetSession,
     getBudgetProgress,
+    getConversationUsage,
     usageLevel,
     plainEnglishTip,
     detectModelFromText,
+    detectModelFromId,
     resolveModelKey,
     accurateUntilLabel,
     todayKey,

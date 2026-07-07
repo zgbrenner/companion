@@ -109,6 +109,38 @@
   margin-top: 8px;
 }
 
+.cuc-meter {
+  margin-top: 10px;
+}
+
+.cuc-meter:first-child {
+  margin-top: 0;
+}
+
+.cuc-meter-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 11px;
+  color: #4a5568;
+}
+
+.cuc-meter-label span:first-child {
+  flex-shrink: 0;
+  font-weight: 600;
+}
+
+.cuc-meter-label span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #1c2430;
+  font-weight: 650;
+  text-align: right;
+}
+
 .cuc-progress-bar {
   height: 100%;
   width: 0%;

@@ -11,7 +11,7 @@
     <header>
       <h1>Claude Usage</h1>
       <p class="org-tag">Vistage Worldwide, Inc. — internal tool</p>
-      <p>Choose how usage should be shown, and set your daily budget.</p>
+      <p>Choose how chat usage should be shown, and set your optional daily self-limit.</p>
     </header>
 
     <section class="card">
@@ -31,29 +31,33 @@
     </section>
 
     <section class="card">
-      <h2>Daily budget</h2>
+      <h2>Daily self-limit</h2>
+      <label class="checkbox">
+        <input id="showDailyLimit" type="checkbox" />
+        Show daily self-limit bar
+      </label>
       <label>
-        Daily budget, USD
+        Daily limit, USD
         <input id="dailyBudgetUsd" type="number" min="0" step="0.25" />
       </label>
     </section>
 
     <section class="card">
-      <h2>Native limits (from Claude.ai)</h2>
-      <p class="hint">Reads Claude's own session/weekly usage directly — not an estimate. Uses an undocumented endpoint that Anthropic could change without notice; if it stops working, this section shows an error and the dollar/token estimate above keeps working as normal.</p>
+      <h2>Enterprise limit (from Claude.ai)</h2>
+      <p class="hint">Reads Claude's monthly usage-credit spend limit directly — not an estimate. Uses an undocumented endpoint that Anthropic could change without notice; if it stops working, this section shows an error and the chat estimate still works.</p>
       <label class="checkbox">
         <input id="showNativeLimits" type="checkbox" />
-        Show native session/weekly limits
+        Show enterprise usage limit
       </label>
-      <label class="checkbox">
-        <input id="showOpusLimit" type="checkbox" />
-        Show weekly Opus limit (if your plan has one)
+      <label>
+        Organization ID
+        <input id="organizationId" type="text" spellcheck="false" />
       </label>
       <label>
         Team account
         <button id="clear-org-cache" type="button" class="secondary">Clear cached organization</button>
       </label>
-      <p class="hint">If native limits look wrong, use this to force re-detection.</p>
+      <p class="hint">With an Organization ID set, that ID is used directly. Clear the cache only matters if the Organization ID field is blank.</p>
     </section>
 
     <section class="card">
@@ -62,9 +66,17 @@
       <button id="reset-widget-position" type="button" class="secondary">Reset widget to default position</button>
     </section>
 
+    <section class="card">
+      <h2>Updates</h2>
+      <p class="hint">Checks GitHub for the newest release. If no release exists, checks the version on main. Browser extensions cannot replace their own installed files directly, so the button opens GitHub when an update is available.</p>
+      <button id="check-updates" type="button" class="secondary">Check for updates</button>
+      <button id="open-github" type="button" class="secondary">Open GitHub</button>
+      <p class="hint" id="update-status">Current version: checking not run yet.</p>
+    </section>
+
     <section class="card note">
       <h2>About these numbers</h2>
-      <p>The dollar/token figures are an API-equivalent estimate using public Anthropic pricing, not a guaranteed invoice amount — Claude.ai plans use usage limits, not per-token billing, unless your organization uses API-style billing. The native limits section reads Claude's own usage data directly and is not an estimate.</p>
+      <p>The chat dollar/token figures are API-equivalent ballpark estimates using public Anthropic pricing, not guaranteed invoice amounts. The enterprise limit bar reads Claude's own usage data directly and is not an estimate.</p>
     </section>
 
     <footer>

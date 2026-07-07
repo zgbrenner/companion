@@ -60,6 +60,45 @@
     return pieces.join(" ");
   }
 
+  function findModelId(obj) {
+    if (!obj || typeof obj !== "object") return "";
+    const visit = (node, depth = 0) => {
+      if (!node || depth > 5) return "";
+      if (typeof node === "string") return "";
+      if (Array.isArray(node)) {
+        for (const child of node) {
+          const found = visit(child, depth + 1);
+          if (found) return found;
+        }
+        return "";
+      }
+      if (typeof node !== "object") return "";
+
+      for (const key of ["model", "model_id", "modelId", "selected_model"]) {
+        const value = node[key];
+        if (typeof value === "string" && value.length < 120) return value;
+      }
+      for (const key of Object.keys(node)) {
+        const found = visit(node[key], depth + 1);
+        if (found) return found;
+      }
+      return "";
+    };
+    return visit(obj);
+  }
+
+  async function parseRequestJson(input, init) {
+    const body = init?.body;
+    if (typeof body === "string") return maybeParseJson(body);
+    if (body instanceof URLSearchParams) return maybeParseJson(body.toString());
+    try {
+      if (input instanceof Request) return await input.clone().json();
+    } catch {
+      // Not JSON or already consumed; best-effort only.
+    }
+    return null;
+  }
+
   function extractTextFromChunk(raw) {
     const text = String(raw || "");
     const lines = text.split(/\r?\n/);
@@ -113,6 +152,23 @@
   // response can't grow totalText without bound before it's shipped and tokenized.
   const MAX_STREAM_CHARS = 200000;
 
+  function appendWithoutRepeating(existing, next) {
+    const cleanNext = String(next || "").replace(/\s+/g, " ").trim();
+    if (!cleanNext) return existing;
+    const cleanExisting = String(existing || "").replace(/\s+/g, " ").trim();
+    if (!cleanExisting) return cleanNext;
+    if (cleanNext.startsWith(cleanExisting)) return cleanNext;
+    if (cleanExisting.endsWith(cleanNext)) return cleanExisting;
+
+    const maxOverlap = Math.min(cleanExisting.length, cleanNext.length, 2000);
+    for (let size = maxOverlap; size >= 20; size -= 1) {
+      if (cleanExisting.slice(-size) === cleanNext.slice(0, size)) {
+        return `${cleanExisting}${cleanNext.slice(size)}`;
+      }
+    }
+    return `${cleanExisting} ${cleanNext}`;
+  }
+
   async function readStreamClone(response, requestUrl) {
     if (!response || !response.body) return;
 
@@ -128,7 +184,7 @@
         const chunk = decoder.decode(value, { stream: true });
         const extracted = extractTextFromChunk(chunk);
         if (extracted && !capped) {
-          totalText += " " + extracted;
+          totalText = appendWithoutRepeating(totalText, extracted);
           if (totalText.length >= MAX_STREAM_CHARS) {
             totalText = totalText.slice(0, MAX_STREAM_CHARS);
             capped = true;
@@ -173,6 +229,10 @@
     // "output" token counts; anything else (history, lists, feature flags) is
     // ignored so it can't be mistaken for a new response.
     if (requestMethod === "POST" && isGenerationUrl(requestUrl)) {
+      const requestJson = await parseRequestJson(input, init);
+      const requestModel = findModelId(requestJson);
+      if (requestModel) emit({ kind: "model-detected", modelId: requestModel, at: Date.now() });
+
       const contentType = response.headers?.get?.("content-type") || "";
       if (/event-stream/i.test(contentType)) {
         readStreamClone(response.clone(), requestUrl);

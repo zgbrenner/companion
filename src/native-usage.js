@@ -4,19 +4,37 @@
 // Endpoints (undocumented, may change without notice):
 //   GET https://claude.ai/api/organizations                -> org list, cached 24h
 //   GET https://claude.ai/api/organizations/{orgId}/usage   -> { five_hour, seven_day, seven_day_opus }
+//   GET https://claude.ai/api/organizations/{orgId}/overage_spend_limit
+//                                                        -> monthly usage-credit spend/limit
 //
 // The browser attaches the session cookie automatically because these requests
 // originate from a content script running on a claude.ai page with host
 // permission for claude.ai. This code never reads or stores the cookie itself.
 //
-// Response shape (as observed by prior open-source extensions targeting this
-// endpoint; not officially documented by Anthropic, so shape may drift):
+// /usage response shape (as observed by prior open-source extensions targeting
+// this endpoint; not officially documented by Anthropic, so shape may drift):
 //   { five_hour: { utilization: <0-100>, resets_at: <ISO8601> },
 //     seven_day: { utilization: <0-100>, resets_at: <ISO8601> },
-//     seven_day_opus: { utilization: <0-100>, resets_at: <ISO8601> } }
+//     seven_day_opus: { utilization: <0-100>, resets_at: <ISO8601> },
+//     extra_usage: { used_credits, monthly_limit, currency, ... } }
+//
+// /overage_spend_limit response shape:
+//   { is_enabled, monthly_credit_limit, used_credits, currency,
+//     out_of_credits, disabled_reason, disabled_until, ... }
 (() => {
   const CACHE_KEY = "cuc:native-org-cache";
   const ORG_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+
+  async function configuredOrgId() {
+    const defaults = globalThis.ClaudeUsageCompanion?.DEFAULT_SETTINGS || {};
+    try {
+      const stored = await chrome.storage.local.get(["cuc:settings"]);
+      const settings = { ...defaults, ...(stored["cuc:settings"] || {}) };
+      return String(settings.organizationId || "").trim();
+    } catch {
+      return String(defaults.organizationId || "").trim();
+    }
+  }
 
   async function getCachedOrgId() {
     try {
@@ -49,6 +67,9 @@
   }
 
   async function discoverOrgId() {
+    const configured = await configuredOrgId();
+    if (configured) return configured;
+
     const cached = await getCachedOrgId();
     if (cached) return cached;
 
@@ -73,7 +94,22 @@
 
   async function fetchNativeUsage() {
     const orgId = await discoverOrgId();
-    const response = await fetch(`https://claude.ai/api/organizations/${orgId}/usage`, {
+    const usagePayload = await fetchJson(`https://claude.ai/api/organizations/${orgId}/usage`);
+    const normalized = normalizeUsagePayload(usagePayload);
+    normalized.monthlySpendLimit = await fetchMonthlySpendLimit(orgId, normalized.monthlySpendLimit);
+
+    // A 200 with none of the expected buckets means the endpoint shape drifted
+    // (this endpoint is undocumented and can change without notice). Surface it
+    // as an error so the UI shows "unavailable" instead of a silently blank
+    // section that looks like everything is fine.
+    if (!normalized.fiveHour && !normalized.sevenDay && !normalized.sevenDayOpus && !normalized.monthlySpendLimit) {
+      throw new Error("unexpected-usage-shape");
+    }
+    return normalized;
+  }
+
+  async function fetchJson(url) {
+    const response = await fetch(url, {
       method: "GET",
       credentials: "include"
     });
@@ -81,18 +117,19 @@
       throw new Error("not-logged-in");
     }
     if (!response.ok) {
-      throw new Error(`usage request failed: ${response.status}`);
+      throw new Error(`request failed: ${response.status}`);
     }
-    const payload = await response.json();
-    const normalized = normalizeUsagePayload(payload);
-    // A 200 with none of the expected buckets means the endpoint shape drifted
-    // (this endpoint is undocumented and can change without notice). Surface it
-    // as an error so the UI shows "unavailable" instead of a silently blank
-    // section that looks like everything is fine.
-    if (!normalized.fiveHour && !normalized.sevenDay && !normalized.sevenDayOpus) {
-      throw new Error("unexpected-usage-shape");
+    return response.json();
+  }
+
+  async function fetchMonthlySpendLimit(orgId, fallback = null) {
+    try {
+      const payload = await fetchJson(`https://claude.ai/api/organizations/${orgId}/overage_spend_limit`);
+      return normalizeMonthlySpendLimit(payload);
+    } catch (error) {
+      if (String(error?.message || error) === "not-logged-in") throw error;
+      return fallback;
     }
-    return normalized;
   }
 
   // Normalize into a stable internal shape so the rest of the extension
@@ -110,7 +147,52 @@
       fetchedAt: Date.now(),
       fiveHour: pick("five_hour"),
       sevenDay: pick("seven_day"),
-      sevenDayOpus: pick("seven_day_opus")
+      sevenDayOpus: pick("seven_day_opus"),
+      monthlySpendLimit: normalizeExtraUsage(payload?.extra_usage)
+    };
+  }
+
+  function normalizeExtraUsage(extraUsage) {
+    if (!extraUsage || typeof extraUsage !== "object") return null;
+    if (extraUsage.used_credits == null || extraUsage.monthly_limit == null) return null;
+    return normalizeSpendLimitValues({
+      isEnabled: extraUsage.is_enabled,
+      usedCents: extraUsage.used_credits,
+      limitCents: extraUsage.monthly_limit,
+      currency: extraUsage.currency,
+      outOfCredits: Number(extraUsage.used_credits) >= Number(extraUsage.monthly_limit),
+      disabledReason: extraUsage.disabled_reason,
+      resetsAt: null
+    });
+  }
+
+  function normalizeMonthlySpendLimit(payload) {
+    if (!payload || typeof payload !== "object") return null;
+    if (payload.used_credits == null || payload.monthly_credit_limit == null) return null;
+    return normalizeSpendLimitValues({
+      isEnabled: payload.is_enabled,
+      usedCents: payload.used_credits,
+      limitCents: payload.monthly_credit_limit,
+      currency: payload.currency,
+      outOfCredits: payload.out_of_credits,
+      disabledReason: payload.disabled_reason,
+      resetsAt: payload.disabled_until || null
+    });
+  }
+
+  function normalizeSpendLimitValues({ isEnabled, usedCents, limitCents, currency, outOfCredits, disabledReason, resetsAt }) {
+    const usedUsd = Number(usedCents) / 100;
+    const limitUsd = Number(limitCents) / 100;
+    if (!Number.isFinite(usedUsd) || !Number.isFinite(limitUsd) || limitUsd <= 0) return null;
+    return {
+      isEnabled: Boolean(isEnabled),
+      usedUsd,
+      limitUsd,
+      currency: typeof currency === "string" ? currency : "USD",
+      utilizationPct: (usedUsd / limitUsd) * 100,
+      resetsAt,
+      outOfCredits: Boolean(outOfCredits),
+      disabledReason: typeof disabledReason === "string" ? disabledReason : null
     };
   }
 

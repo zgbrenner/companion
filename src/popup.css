@@ -47,6 +47,34 @@ p {
   color: #6b7684;
 }
 
+.meter {
+  margin-top: 14px;
+}
+
+.meter-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 11px;
+  color: #4a5568;
+}
+
+.meter-label span:first-child {
+  flex-shrink: 0;
+  font-weight: 600;
+}
+
+.meter-label span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #1c2430;
+  font-weight: 650;
+  text-align: right;
+}
+
 .budget-line {
   font-size: 11px;
   color: #6b7684;
@@ -61,17 +89,26 @@ p {
   margin-top: 8px;
 }
 
-#bar-fill {
+#bar-fill,
+#chat-bar,
+#enterprise-bar,
+#daily-bar {
   height: 100%;
   width: 0%;
   background: #3d7a5c;
 }
 
-#bar-fill.medium {
+#bar-fill.medium,
+#chat-bar.medium,
+#enterprise-bar.medium,
+#daily-bar.medium {
   background: #b4791f;
 }
 
-#bar-fill.high {
+#bar-fill.high,
+#chat-bar.high,
+#enterprise-bar.high,
+#daily-bar.high {
   background: #b23b3b;
 }
 

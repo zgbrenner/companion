@@ -13,23 +13,21 @@
       <p class="org-tag">Vistage Worldwide, Inc. — internal tool</p>
     </header>
 
-    <section class="main-row">
-      <div class="main-value" id="cost">$0.00</div>
-      <div class="main-label">used today<span id="tokens-inline"></span></div>
+    <section class="meter">
+      <div class="meter-label"><span>Usage in this chat</span><span id="chat-value">$0.00</span></div>
+      <div class="bar"><div id="chat-bar"></div></div>
+      <p class="budget-line" id="chat-detail">0 tokens · ballpark estimate</p>
     </section>
-    <div class="bar"><div id="bar-fill"></div></div>
-    <p class="budget-line" id="budget-value">$0.00 of $5.00 daily budget</p>
 
     <section class="native" id="native-section">
-      <div class="native-row" id="native-session-row">
-        <div class="native-label"><span>Session</span><span id="native-session-value">—</span></div>
-        <div class="bar bar--thin"><div id="native-session-bar"></div></div>
-      </div>
-      <div class="native-row" id="native-weekly-row">
-        <div class="native-label"><span>Weekly</span><span id="native-weekly-value">—</span></div>
-        <div class="bar bar--thin"><div id="native-weekly-bar"></div></div>
-      </div>
+      <div class="meter-label"><span>Enterprise limit</span><span id="enterprise-value">—</span></div>
+      <div class="bar"><div id="enterprise-bar"></div></div>
       <p class="native-note" id="native-note"></p>
+    </section>
+
+    <section class="meter" id="daily-section">
+      <div class="meter-label"><span>Daily self-limit</span><span id="daily-value">$0.00 of $5.00</span></div>
+      <div class="bar"><div id="daily-bar"></div></div>
     </section>
 
     <section class="actions">

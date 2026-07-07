@@ -17,6 +17,7 @@
   let nativeUsageTimer = null;
   let lastTokenEstimateMethod = "heuristic";
   let lastUsageSnapshotRefreshAt = 0;
+  let networkDetectedModelKey = null;
   const NATIVE_USAGE_REFRESH_MS = 60 * 1000;
 
   function injectNetworkWatcher() {
@@ -120,6 +121,7 @@
   }
 
   function detectModelKey() {
+    if (networkDetectedModelKey) return networkDetectedModelKey;
     // Prefer a scoped model-picker control if we can find one — scanning the
     // whole page for words like "opus" or "haiku" produces false positives
     // when those words appear in chat history rather than an active selector.
@@ -340,6 +342,13 @@
   function observeNetworkEvents() {
     window.addEventListener("cuc:network-event", event => {
       const detail = event.detail || {};
+      if (detail.kind === "model-detected" && detail.modelId) {
+        const detected = CUC.detectModelFromId(detail.modelId) || CUC.detectModelFromText(detail.modelId);
+        if (detected) {
+          networkDetectedModelKey = detected;
+          renderWidget();
+        }
+      }
       if (detail.kind === "response-complete" && detail.text) {
         // Capture attribution at the moment the stream arrives, before any
         // SPA navigation can change the active conversation/model underneath us.
@@ -382,36 +391,30 @@
           </div>
         </div>
         <div class="cuc-body" data-cuc="body">
-          <div class="cuc-main-row">
-            <div class="cuc-main-value" data-cuc="cost">$0.00</div>
-            <div class="cuc-main-label">used today<span data-cuc="tokens-inline"></span></div>
+          <div class="cuc-meter">
+            <div class="cuc-meter-label">
+              <span>Usage in this chat</span>
+              <span data-cuc="chat-value">$0.00</span>
+            </div>
+            <div class="cuc-progress"><div class="cuc-progress-bar" data-cuc="chat-bar"></div></div>
+            <div class="cuc-budget-line" data-cuc="chat-detail">0 tokens · ballpark estimate</div>
           </div>
-          <div class="cuc-progress"><div class="cuc-progress-bar" data-cuc="budget-bar"></div></div>
-          <div class="cuc-budget-line" data-cuc="budget-value">$0.00 of $5.00 daily budget</div>
 
-          <div class="cuc-native" data-cuc="native-section">
-            <div class="cuc-native-row" data-cuc="native-session-row">
-              <div class="cuc-native-label">
-                <span>Session</span>
-                <span data-cuc="native-session-value">—</span>
-              </div>
-              <div class="cuc-progress cuc-progress--thin"><div class="cuc-progress-bar" data-cuc="native-session-bar"></div></div>
+          <div class="cuc-meter" data-cuc="enterprise-section">
+            <div class="cuc-meter-label">
+              <span>Enterprise limit</span>
+              <span data-cuc="enterprise-value">—</span>
             </div>
-            <div class="cuc-native-row" data-cuc="native-weekly-row">
-              <div class="cuc-native-label">
-                <span>Weekly</span>
-                <span data-cuc="native-weekly-value">—</span>
-              </div>
-              <div class="cuc-progress cuc-progress--thin"><div class="cuc-progress-bar" data-cuc="native-weekly-bar"></div></div>
+            <div class="cuc-progress"><div class="cuc-progress-bar" data-cuc="enterprise-bar"></div></div>
+            <div class="cuc-budget-line" data-cuc="enterprise-note">Loading Claude usage…</div>
+          </div>
+
+          <div class="cuc-meter" data-cuc="daily-section">
+            <div class="cuc-meter-label">
+              <span>Daily self-limit</span>
+              <span data-cuc="daily-value">$0.00 of $5.00</span>
             </div>
-            <div class="cuc-native-row" data-cuc="native-opus-row">
-              <div class="cuc-native-label">
-                <span>Weekly · Opus</span>
-                <span data-cuc="native-opus-value">—</span>
-              </div>
-              <div class="cuc-progress cuc-progress--thin"><div class="cuc-progress-bar" data-cuc="native-opus-bar"></div></div>
-            </div>
-            <div class="cuc-native-note" data-cuc="native-note"></div>
+            <div class="cuc-progress"><div class="cuc-progress-bar" data-cuc="daily-bar"></div></div>
           </div>
 
           <div class="cuc-footer">
@@ -581,43 +584,46 @@
     if (!widget) return;
     widget.classList.toggle("cuc-hidden", !settings.showWidget);
 
-    // Headline figure is "used today" — read the same daily bucket the budget
-    // line uses, not usage.totals (a session accumulator cleared on reset),
-    // otherwise the two disagree right after a five-hour/manual reset.
-    const today = CUC.getTodayUsage(usage);
-    const totalTokens = (today.inputTokens || 0) + (today.outputTokens || 0);
+    const conversation = CUC.getConversationUsage(usage);
+    const chatTokens = (conversation.inputTokens || 0) + (conversation.outputTokens || 0);
     const progress = CUC.getBudgetProgress(usage, settings);
     const level = CUC.usageLevel(progress);
     const pct = progress.budget ? CUC.clamp((progress.value / progress.budget) * 100, 0, 100) : 0;
     const modelKey = detectModelKey();
     const model = CUC.MODEL_PRICES[modelKey] || CUC.MODEL_PRICES[settings.defaultModel];
     const effort = detectEffortLevel();
-    const spend = today.estimatedUsd || 0;
+    const chatSpend = conversation.estimatedUsd || 0;
 
-    // Main figure follows the display-mode toggle: dollars, tokens, or both
-    // shown as "$1.20 · 45k tokens" — one line, not a two-card grid.
-    const costText = CUC.formatUsd(spend);
-    const tokensText = `${CUC.formatTokens(totalTokens)} tokens`;
-    let mainValue = costText;
-    let tokensInline = "";
+    const chatCostText = CUC.formatUsd(chatSpend);
+    const chatTokensText = `${CUC.formatTokens(chatTokens)} tokens`;
+    let chatValue = chatCostText;
+    let chatDetail = `${chatTokensText} · ballpark estimate`;
     if (settings.displayMode === "tokens") {
-      mainValue = tokensText;
+      chatValue = chatTokensText;
+      chatDetail = `${chatCostText} · ballpark estimate`;
     } else if (settings.displayMode === "both") {
-      tokensInline = ` · ${tokensText}`;
+      chatValue = `${chatCostText} · ${chatTokensText}`;
+      chatDetail = "Ballpark estimate for this chat";
     }
 
-    widget.querySelector("[data-cuc='cost']").textContent = mainValue;
-    widget.querySelector("[data-cuc='tokens-inline']").textContent = tokensInline;
-    widget.querySelector("[data-cuc='budget-value']").textContent = `${CUC.formatUsd(progress.value)} of ${CUC.formatUsd(progress.budget)} daily budget`;
-    widget.querySelector("[data-cuc='budget-bar']").style.width = `${pct}%`;
-    widget.querySelector("[data-cuc='budget-bar']").className = `cuc-progress-bar ${level}`;
+    const chatPct = CUC.clamp((chatTokens / MAX_CONTEXT_WINDOW_TOKENS) * 100, 0, 100);
+    widget.querySelector("[data-cuc='chat-value']").textContent = chatValue;
+    widget.querySelector("[data-cuc='chat-detail']").textContent = chatDetail;
+    widget.querySelector("[data-cuc='chat-bar']").style.width = `${chatPct}%`;
+    widget.querySelector("[data-cuc='chat-bar']").className = `cuc-progress-bar ${nativeUsageBarLevel(chatPct)}`;
+
+    const dailySection = widget.querySelector("[data-cuc='daily-section']");
+    dailySection.style.display = settings.showDailyLimit ? "block" : "none";
+    widget.querySelector("[data-cuc='daily-value']").textContent = `${CUC.formatUsd(progress.value)} of ${CUC.formatUsd(progress.budget)}`;
+    widget.querySelector("[data-cuc='daily-bar']").style.width = `${pct}%`;
+    widget.querySelector("[data-cuc='daily-bar']").className = `cuc-progress-bar ${level}`;
     widget.querySelector("[data-cuc='model']").textContent = effort
       ? `${model?.label || "Model estimate"} · ${effort} effort`
       : (model?.label || "Model estimate");
     const methodNote = lastTokenEstimateMethod === "tokenizer" ? "tokenizer estimate" : "rough estimate";
     widget.querySelector("[data-cuc='accurate-until']").textContent = `${CUC.accurateUntilLabel(modelKey)} · ${methodNote}`;
 
-    renderNativeUsageSection();
+    renderEnterpriseLimit();
   }
 
   function nativeUsageBarLevel(pct) {
@@ -626,8 +632,8 @@
     return "low";
   }
 
-  function renderNativeUsageSection() {
-    const section = widget.querySelector("[data-cuc='native-section']");
+  function renderEnterpriseLimit() {
+    const section = widget.querySelector("[data-cuc='enterprise-section']");
     if (!section) return;
 
     if (!settings.showNativeLimits) {
@@ -636,47 +642,43 @@
     }
     section.style.display = "block";
 
-    const note = widget.querySelector("[data-cuc='native-note']");
+    const note = widget.querySelector("[data-cuc='enterprise-note']");
+    const value = widget.querySelector("[data-cuc='enterprise-value']");
+    const bar = widget.querySelector("[data-cuc='enterprise-bar']");
 
     if (nativeUsageError === "not-logged-in") {
       note.textContent = "Sign in to claude.ai to see native limits.";
+      value.textContent = "—";
+      bar.style.width = "0%";
     } else if (nativeUsageError) {
       note.textContent = "Native limits unavailable right now.";
+      value.textContent = "—";
+      bar.style.width = "0%";
     } else if (!nativeUsage) {
-      note.textContent = "Loading native limits…";
+      note.textContent = "Loading Claude usage…";
+      value.textContent = "—";
+      bar.style.width = "0%";
     } else {
-      note.textContent = "";
-    }
-
-    const renderRow = (rowKey, valueKey, barKey, bucket, showRow = true) => {
-      const row = widget.querySelector(`[data-cuc='${rowKey}']`);
-      if (!row) return;
-      if (!showRow || !bucket) {
-        row.style.display = "none";
+      const spendLimit = nativeUsage.monthlySpendLimit;
+      if (!spendLimit) {
+        note.textContent = "Monthly spend limit unavailable right now.";
+        value.textContent = "—";
+        bar.style.width = "0%";
         return;
       }
-      row.style.display = "block";
-      const pct = CUC.clamp(bucket.utilizationPct, 0, 100);
+      const pct = CUC.clamp(spendLimit.utilizationPct, 0, 100);
       const resetText = CUCNative?.formatResetCountdown
-        ? CUCNative.formatResetCountdown(bucket.resetsAt)
+        ? CUCNative.formatResetCountdown(spendLimit.resetsAt)
         : null;
-      widget.querySelector(`[data-cuc='${valueKey}']`).textContent = resetText
-        ? `${pct}% · resets in ${resetText}`
-        : `${pct}%`;
-      const bar = widget.querySelector(`[data-cuc='${barKey}']`);
+      value.textContent = resetText
+        ? `${CUC.formatUsd(spendLimit.usedUsd)} of ${CUC.formatUsd(spendLimit.limitUsd)} · resets in ${resetText}`
+        : `${CUC.formatUsd(spendLimit.usedUsd)} of ${CUC.formatUsd(spendLimit.limitUsd)}`;
       bar.style.width = `${pct}%`;
       bar.className = `cuc-progress-bar ${nativeUsageBarLevel(pct)}`;
-    };
-
-    renderRow("native-session-row", "native-session-value", "native-session-bar", nativeUsage?.fiveHour);
-    renderRow("native-weekly-row", "native-weekly-value", "native-weekly-bar", nativeUsage?.sevenDay);
-    renderRow(
-      "native-opus-row",
-      "native-opus-value",
-      "native-opus-bar",
-      nativeUsage?.sevenDayOpus,
-      settings.showOpusLimit
-    );
+      note.textContent = spendLimit.outOfCredits
+        ? "Monthly usage-credit limit reached"
+        : "Monthly usage-credit spend from Claude.ai";
+    }
   }
 
   function observeSpaNavigation() {
@@ -722,7 +724,9 @@
     // the tab is hidden so backgrounded tabs don't poll the DOM forever.
     setInterval(() => {
       if (document.hidden || !widget || settings.widgetAnchorMode === "floating") return;
-      if (!document.body.contains(widget)) placeWidget();
+      const anchor = findComposerAnchor();
+      const isDockedAfterAnchor = anchor?.parentElement && widget.parentElement === anchor.parentElement && widget.previousElementSibling === anchor;
+      if (!document.body.contains(widget) || !isDockedAfterAnchor) placeWidget();
     }, 2000);
   }
 
@@ -783,7 +787,7 @@
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (message?.type === "cuc:get-state") {
-      sendResponse({ settings, usage, nativeUsage, nativeUsageError });
+      sendResponse({ settings, usage, nativeUsage, nativeUsageError, conversationId: CUC.currentConversationId() });
       return true;
     }
     if (message?.type === "cuc:show-widget") {
