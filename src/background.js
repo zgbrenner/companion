@@ -64,6 +64,12 @@ async function maybeResetStaleSession() {
   }
 }
 
+async function migrateConversationEvents(fromId, toId, events) {
+  const { usage } = await loadUsageAndSettings();
+  const next = CUC.migrateConversationEvents(usage, fromId, toId, events);
+  await writeUsage(next);
+}
+
 async function resetSession(reason) {
   const { usage } = await loadUsageAndSettings();
   await writeUsage(CUC.resetSession(usage, reason || "manual"));
@@ -87,6 +93,13 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       () => sendResponse({ ok: false })
     );
     return true; // keep the channel open for the async sendResponse
+  }
+  if (message?.type === "cuc:migrate-conversation-events" && message.fromId && message.toId && Array.isArray(message.events)) {
+    serialize(() => migrateConversationEvents(message.fromId, message.toId, message.events)).then(
+      () => sendResponse({ ok: true }),
+      () => sendResponse({ ok: false })
+    );
+    return true;
   }
   if (message?.type === "cuc:maybe-reset-session") {
     serialize(() => maybeResetStaleSession()).then(

@@ -17,8 +17,35 @@
   let nativeUsageTimer = null;
   let lastTokenEstimateMethod = "heuristic";
   let lastUsageSnapshotRefreshAt = 0;
-  let networkDetectedModelKey = null;
   const NATIVE_USAGE_REFRESH_MS = 60 * 1000;
+
+  // Per-conversation network-detected model, replacing a single sticky global.
+  // A single global meant that once any chat's request revealed a model
+  // (e.g. Opus), every OTHER conversation in the tab — including a brand-new
+  // chat that hasn't picked a model yet — inherited that same model forever.
+  // Map insertion order gives a cheap FIFO for the size cap below; entries are
+  // re-inserted on update so frequently-active conversations are pushed to
+  // the back and pruned last.
+  let networkModelByConversation = new Map();
+  const MAX_MODEL_MAP_ENTRIES = 20;
+
+  function setNetworkModelForConversation(conversationId, modelKey) {
+    if (!modelKey) return;
+    const key = conversationId || CUC.currentConversationId();
+    networkModelByConversation.delete(key);
+    networkModelByConversation.set(key, modelKey);
+    while (networkModelByConversation.size > MAX_MODEL_MAP_ENTRIES) {
+      const oldestKey = networkModelByConversation.keys().next().value;
+      networkModelByConversation.delete(oldestKey);
+    }
+  }
+
+  // Recent usage events recorded under the "home-or-new-chat" bucket by THIS
+  // tab, kept just long enough to migrate them once the real conversation id
+  // becomes known (see migrateHomeChatEvents below).
+  let homeChatEvents = [];
+  let lastKnownRealConversationId = null;
+  const HOME_CHAT_MIGRATION_WINDOW_MS = 2 * 60 * 1000;
 
   function injectNetworkWatcher() {
     const script = document.createElement("script");
@@ -77,6 +104,16 @@
     usage = CUC.addUsageEvent(usage, event, settings);
     renderWidget();
 
+    // Track events landing in the "home-or-new-chat" bucket so that once the
+    // real conversation id shows up (a moment later, once claude.ai assigns
+    // one), migrateHomeChatEvents() can move them out of the wrong bucket
+    // instead of leaving them stranded there forever.
+    if (event.conversationId === "home-or-new-chat") {
+      homeChatEvents.push(event);
+      const cutoff = Date.now() - HOME_CHAT_MIGRATION_WINDOW_MS;
+      homeChatEvents = homeChatEvents.filter(e => (e.at || 0) >= cutoff);
+    }
+
     let settled = false;
     const fallback = async () => {
       if (settled) return;
@@ -101,6 +138,44 @@
     }
   }
 
+  // Prompts sent before claude.ai assigns a conversation id land under the
+  // "home-or-new-chat" bucket (see CUC.currentConversationId()). Once the
+  // real id is discovered — from a network event's conversationId, or the
+  // URL settling on /chat/<id> — move this tab's recent events out of that
+  // shared bucket and into the real conversation, so a new chat's usage
+  // isn't permanently mixed into every other new chat opened in the tab.
+  function migrateHomeChatEvents(realConversationId) {
+    const cutoff = Date.now() - HOME_CHAT_MIGRATION_WINDOW_MS;
+    const recent = homeChatEvents.filter(e => (e.at || 0) >= cutoff);
+    homeChatEvents = [];
+    if (!realConversationId || realConversationId === "home-or-new-chat" || recent.length === 0) return;
+
+    usage = CUC.migrateConversationEvents(usage, "home-or-new-chat", realConversationId, recent);
+    renderWidget();
+    try {
+      chrome.runtime.sendMessage({
+        type: "cuc:migrate-conversation-events",
+        fromId: "home-or-new-chat",
+        toId: realConversationId,
+        events: recent
+      }).catch(() => {});
+    } catch {
+      // Best-effort only: the optimistic local fold above already keeps this
+      // tab's widget accurate even if the background never sees the migration.
+    }
+  }
+
+  // Call whenever a real (non-"home-or-new-chat") conversation id surfaces,
+  // from either a network event's detail.conversationId or a URL change.
+  // Cheap to call repeatedly: migrateHomeChatEvents() is a no-op once
+  // homeChatEvents has been drained for this id.
+  function onRealConversationIdDiscovered(conversationId) {
+    if (!conversationId || conversationId === "home-or-new-chat") return;
+    if (conversationId === lastKnownRealConversationId) return;
+    lastKnownRealConversationId = conversationId;
+    migrateHomeChatEvents(conversationId);
+  }
+
   async function saveState() {
     usage.lastUpdatedAt = Date.now();
     try {
@@ -121,7 +196,12 @@
   }
 
   function detectModelKey() {
-    if (networkDetectedModelKey) return networkDetectedModelKey;
+    // Prefer the model this specific conversation's own network requests
+    // revealed. Falling through to DOM/default (rather than some OTHER
+    // conversation's cached model) when this conversation has no entry yet
+    // is what keeps a freshly-opened chat from showing a stale model.
+    const networkModel = networkModelByConversation.get(CUC.currentConversationId());
+    if (networkModel) return networkModel;
     // Prefer a scoped model-picker control if we can find one — scanning the
     // whole page for words like "opus" or "haiku" produces false positives
     // when those words appear in chat history rather than an active selector.
@@ -243,7 +323,7 @@
     const now = Date.now();
     // Dedupe on prompt text + attachment count so an attachment-only send (empty
     // text) isn't collapsed with the next one.
-    const promptHash = hashString(`${clean} ${attachmentCount}`);
+    const promptHash = hashString(`${clean} ${attachmentCount}`);
     if (promptHash === lastPromptHash && now - lastPromptAt < 4000) return;
     lastPromptHash = promptHash;
     lastPromptAt = now;
@@ -339,24 +419,54 @@
     }, true);
   }
 
+  // Map a request-body modelId (from generation-start/model-detected/
+  // response-complete) through the same id/text normalization used
+  // everywhere else, so a raw API model id becomes one of our MODEL_PRICES keys.
+  function mapDetailModelKey(modelId) {
+    if (!modelId) return null;
+    return CUC.detectModelFromId(modelId) || CUC.detectModelFromText(modelId) || null;
+  }
+
   function observeNetworkEvents() {
     window.addEventListener("cuc:network-event", event => {
       const detail = event.detail || {};
-      if (detail.kind === "model-detected" && detail.modelId) {
-        const detected = CUC.detectModelFromId(detail.modelId) || CUC.detectModelFromText(detail.modelId);
+
+      if ((detail.kind === "model-detected" || detail.kind === "generation-start") && detail.modelId) {
+        const detected = mapDetailModelKey(detail.modelId);
         if (detected) {
-          networkDetectedModelKey = detected;
+          setNetworkModelForConversation(detail.conversationId, detected);
           renderWidget();
         }
       }
+
+      if (detail.kind === "generation-start" && detail.conversationId) {
+        onRealConversationIdDiscovered(detail.conversationId);
+      }
+
       if (detail.kind === "response-complete" && detail.text) {
-        // Capture attribution at the moment the stream arrives, before any
-        // SPA navigation can change the active conversation/model underneath us.
+        // Attribute this response using what the REQUEST told us (conversation
+        // id from the URL, model id from the request body) rather than
+        // whatever happens to be on screen — the user may have switched or
+        // even closed the chat before the stream finished. Only fall back to
+        // DOM/current-tab state when the request itself didn't carry it.
+        const eventConversationId = detail.conversationId || outputBufferConversationId || CUC.currentConversationId();
+        const eventModelKey = mapDetailModelKey(detail.modelId) || outputBufferModelKey || detectModelKey();
+
+        // If a differently-attributed response is already buffered, flush it
+        // under its own attribution first rather than silently relabeling it
+        // with this event's conversation/model.
+        if (outputBuffer && (outputBufferConversationId !== eventConversationId || outputBufferModelKey !== eventModelKey)) {
+          flushOutputBuffer("network-stream");
+        }
+
         if (!outputBuffer) {
-          outputBufferConversationId = CUC.currentConversationId();
-          outputBufferModelKey = detectModelKey();
+          outputBufferConversationId = eventConversationId;
+          outputBufferModelKey = eventModelKey;
         }
         outputBuffer += " " + detail.text;
+
+        if (detail.conversationId) onRealConversationIdDiscovered(detail.conversationId);
+
         clearTimeout(outputFlushTimer);
         outputFlushTimer = setTimeout(() => flushOutputBuffer("network-stream"), 600);
       }
@@ -448,6 +558,38 @@
     "form:has([contenteditable='true'])"
   ];
 
+  // Guard against docking to something enormous — a real composer wrapper is
+  // a small strip near the bottom of the viewport, not most of the page. Used
+  // by the fallback below to reject document.body/main scroll containers.
+  function isSaneAnchorCandidate(el) {
+    if (!el || el === document.body || el === document.documentElement) return false;
+    const rect = el.getBoundingClientRect?.();
+    if (!rect || rect.height <= 0) return false;
+    return rect.height <= window.innerHeight * 0.4;
+  }
+
+  // Last resort when none of the known testid/form selectors match (claude.ai
+  // markup changed underneath us). Find the live ProseMirror composer
+  // directly via [contenteditable="true"] and walk up looking for a stable
+  // wrapper: one that also contains a send-like button, or sits directly
+  // inside a fixed/sticky-positioned container (the usual composer dock).
+  function findComposerAnchorFallback() {
+    const editable = document.querySelector("[contenteditable='true']");
+    if (!editable) return null;
+
+    let node = editable;
+    for (let depth = 0; depth < 6 && node; depth += 1) {
+      const hasSendButton = Boolean(node.querySelector?.("button[aria-label*='send' i], button[type='submit']"));
+      const parentStyle = node.parentElement ? getComputedStyle(node.parentElement) : null;
+      const parentIsDockedContainer = parentStyle && (parentStyle.position === "fixed" || parentStyle.position === "sticky");
+      if ((hasSendButton || parentIsDockedContainer) && isSaneAnchorCandidate(node)) {
+        return node;
+      }
+      node = node.parentElement;
+    }
+    return isSaneAnchorCandidate(editable) ? editable : null;
+  }
+
   function findComposerAnchor() {
     for (const selector of COMPOSER_ANCHOR_SELECTORS) {
       try {
@@ -457,7 +599,7 @@
         // Ignore unsupported selector variants and try the next one.
       }
     }
-    return null;
+    return findComposerAnchorFallback();
   }
 
   function placeWidget() {
@@ -589,6 +731,10 @@
       // to the captured conversation id, so it lands on the right chat rather
       // than being silently discarded.
       flushOutputBuffer("navigation");
+      // The URL settling on /chat/<id> (e.g. right after sending the first
+      // message in a brand-new chat) is another way the real conversation id
+      // becomes known; migrate any stranded "home-or-new-chat" events for it.
+      onRealConversationIdDiscovered(CUC.currentConversationId());
       placeWidget();
       renderWidget();
     };
