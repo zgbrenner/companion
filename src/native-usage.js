@@ -88,6 +88,16 @@
       method: "GET",
       credentials: "include"
     });
+    // Mirror fetchJson's status mapping so a 429/401/403 here surfaces the
+    // same "rate-limited"/"not-logged-in" errors content.js already knows how
+    // to handle (backoff, sign-in prompt), instead of a generic message that
+    // content.js treats as an opaque "unavailable" failure.
+    if (response.status === 401 || response.status === 403) {
+      throw new Error("not-logged-in");
+    }
+    if (response.status === 429) {
+      throw new Error("rate-limited");
+    }
     if (!response.ok) {
       throw new Error(`organizations request failed: ${response.status}`);
     }

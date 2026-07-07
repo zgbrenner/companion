@@ -22,10 +22,16 @@
   const NATIVE_USAGE_MAX_BACKOFF_MS = 10 * 60 * 1000;
 
   // +/-20% jitter so multiple tabs polling the same account don't all hit the
-  // usage endpoint in lockstep every 60s.
-  function jitteredNativeUsageInterval() {
+  // usage endpoint in lockstep every 60s. Also used to jitter backoff delays
+  // (see scheduleNextNativeUsagePoll) so tabs that got 429'd together don't
+  // retry in lockstep at 120s/240s/480s either.
+  function jitterMs(baseMs) {
     const jitterFactor = 1 + (Math.random() * 0.4 - 0.2);
-    return Math.round(NATIVE_USAGE_REFRESH_MS * jitterFactor);
+    return Math.round(baseMs * jitterFactor);
+  }
+
+  function jitteredNativeUsageInterval() {
+    return jitterMs(NATIVE_USAGE_REFRESH_MS);
   }
 
   // Per-conversation network-detected model, replacing a single sticky global.
@@ -55,6 +61,28 @@
   let homeChatEvents = [];
   let lastKnownRealConversationId = null;
   const HOME_CHAT_MIGRATION_WINDOW_MS = 2 * 60 * 1000;
+
+  // In-memory map of eventId -> the conversationId it was migrated to. The
+  // record-event fallback (see recordEvent below) re-reads storage and folds
+  // the ORIGINAL event again if the initial cuc:record-event message fails;
+  // without this, that re-fold uses the event's original (pre-migration)
+  // conversationId — "home-or-new-chat" — silently undoing the migration this
+  // tab already applied. Bounded like usage.migratedEventIds so it can't grow
+  // unbounded in a long-lived tab.
+  let migratedEventTargets = new Map();
+  const MAX_MIGRATED_EVENT_TARGETS = 300;
+
+  function rememberMigratedEventTargets(events, toId) {
+    for (const event of events) {
+      if (!event?.id) continue;
+      migratedEventTargets.delete(event.id);
+      migratedEventTargets.set(event.id, toId);
+    }
+    while (migratedEventTargets.size > MAX_MIGRATED_EVENT_TARGETS) {
+      const oldestKey = migratedEventTargets.keys().next().value;
+      migratedEventTargets.delete(oldestKey);
+    }
+  }
 
   function injectNetworkWatcher() {
     const script = document.createElement("script");
@@ -127,14 +155,27 @@
     const fallback = async () => {
       if (settled) return;
       settled = true;
+      // If this event was already migrated out of "home-or-new-chat" (a
+      // moment ago, once the real conversation id showed up), fold it under
+      // the MIGRATED target id rather than its original event.conversationId.
+      // Otherwise this fallback — firing because the original cuc:record-event
+      // send rejected — would silently undo that migration by re-adding the
+      // event back into the stale "home-or-new-chat" bucket it was just moved
+      // out of. addUsageEvent's own idempotency (appliedEventIds) is keyed on
+      // event.id regardless of which conversationId it's folded under, so
+      // rewriting the id here doesn't risk a double-apply.
+      const migratedToId = event.id ? migratedEventTargets.get(event.id) : null;
+      const effectiveEvent = migratedToId && migratedToId !== event.conversationId
+        ? { ...event, conversationId: migratedToId }
+        : event;
       // Re-read the freshest stored state before applying, so this best-effort
       // local write doesn't clobber events another tab committed in the
       // meantime. addUsageEvent is idempotent on event.id.
       try {
         const stored = await chrome.storage.local.get([STORAGE_KEY]);
-        usage = CUC.addUsageEvent(CUC.normalizeUsage(stored[STORAGE_KEY]) || usage, event, settings);
+        usage = CUC.addUsageEvent(CUC.normalizeUsage(stored[STORAGE_KEY]) || usage, effectiveEvent, settings);
       } catch {
-        usage = CUC.addUsageEvent(usage, event, settings);
+        usage = CUC.addUsageEvent(usage, effectiveEvent, settings);
       }
       saveStateSoon();
     };
@@ -161,16 +202,39 @@
 
     usage = CUC.migrateConversationEvents(usage, "home-or-new-chat", realConversationId, recent);
     renderWidget();
+    // Remember the target for these event ids so the record-event fallback
+    // (see recordEvent above) can re-fold a since-rejected event under the
+    // migrated conversation id instead of stranding it back in
+    // "home-or-new-chat".
+    rememberMigratedEventTargets(recent, realConversationId);
+    sendMigrateConversationEventsMessage("home-or-new-chat", realConversationId, recent);
+  }
+
+  // Best-effort notification to the background of a local migration, retried
+  // once on failure/rejection since a lost message here means the background's
+  // authoritative state never gets the migration and multi-tab/service-worker
+  // restarts could otherwise leave it stranded. Not pure fire-and-forget: the
+  // in-memory migratedEventTargets map (populated by the caller) is what
+  // actually protects against re-stranding locally; this retry just improves
+  // the odds the background picks it up too.
+  function sendMigrateConversationEventsMessage(fromId, toId, events, attempt = 0) {
     try {
       chrome.runtime.sendMessage({
         type: "cuc:migrate-conversation-events",
-        fromId: "home-or-new-chat",
-        toId: realConversationId,
-        events: recent
-      }).catch(() => {});
+        fromId,
+        toId,
+        events
+      }).then(response => {
+        if (!response?.ok && attempt === 0) {
+          sendMigrateConversationEventsMessage(fromId, toId, events, 1);
+        }
+      }).catch(() => {
+        if (attempt === 0) sendMigrateConversationEventsMessage(fromId, toId, events, 1);
+      });
     } catch {
       // Best-effort only: the optimistic local fold above already keeps this
       // tab's widget accurate even if the background never sees the migration.
+      if (attempt === 0) sendMigrateConversationEventsMessage(fromId, toId, events, 1);
     }
   }
 
@@ -830,7 +894,7 @@
 
   function scheduleNextNativeUsagePoll() {
     clearTimeout(nativeUsageTimer);
-    const delay = nativeUsageBackoffMs || jitteredNativeUsageInterval();
+    const delay = nativeUsageBackoffMs ? jitterMs(nativeUsageBackoffMs) : jitteredNativeUsageInterval();
     nativeUsageTimer = setTimeout(() => {
       // Don't poll the usage endpoint while the tab is backgrounded; the
       // visibilitychange handler below refreshes immediately on return. If
