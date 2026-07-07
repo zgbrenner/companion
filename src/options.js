@@ -4,14 +4,12 @@ const REPO_URL = "https://github.com/zgbrenner/claudecompanion";
 const LATEST_RELEASE_API = "https://api.github.com/repos/zgbrenner/claudecompanion/releases/latest";
 const MAIN_MANIFEST_URL = "https://raw.githubusercontent.com/zgbrenner/claudecompanion/main/manifest.json";
 
-// Settings simplified to the three visible bars: chat usage, enterprise limit,
-// and an optional daily self-limit.
+// Settings simplified to the two visible bars: chat usage and enterprise limit.
 const fields = [
   "displayMode",
   "defaultModel",
-  "showDailyLimit",
-  "dailyBudgetUsd",
   "organizationId",
+  "enterpriseMonthlyLimitUsd",
   "showNativeLimits"
 ];
 
@@ -119,8 +117,8 @@ async function loadSettings() {
 async function readSettings() {
   const stored = await chrome.storage.local.get(["cuc:settings"]);
   // Merge onto the CURRENT stored settings, not DEFAULT_SETTINGS — otherwise
-  // saving from this trimmed-down page would silently wipe fields that
-  // aren't shown here (widget position, collapsed state, budgetMode).
+  // saving from this trimmed-down page would silently wipe fields that aren't
+  // shown here.
   const settings = { ...CUC.DEFAULT_SETTINGS, ...(stored["cuc:settings"] || {}) };
   for (const field of fields) {
     const el = document.getElementById(field);
@@ -129,8 +127,6 @@ async function readSettings() {
     else if (el.type === "number") settings[field] = Number(el.value);
     else settings[field] = el.value;
   }
-  settings.priceBasisLabel = "API-equivalent estimate";
-  settings.budgetMode = "daily";
   return settings;
 }
 
@@ -156,16 +152,6 @@ document.getElementById("clear-org-cache")?.addEventListener("click", async () =
   if (CUCNative?.clearCachedOrgId) await CUCNative.clearCachedOrgId();
   const status = document.getElementById("status");
   status.textContent = "Cleared. Refresh a claude.ai tab to re-detect.";
-  setTimeout(() => { status.textContent = ""; }, 2400);
-});
-document.getElementById("reset-widget-position")?.addEventListener("click", async () => {
-  const stored = await chrome.storage.local.get(["cuc:settings"]);
-  const settings = { ...CUC.DEFAULT_SETTINGS, ...(stored["cuc:settings"] || {}) };
-  settings.widgetPosition = null;
-  settings.widgetAnchorMode = "docked";
-  await chrome.storage.local.set({ "cuc:settings": settings });
-  const status = document.getElementById("status");
-  status.textContent = "Widget will snap back under the chat box.";
   setTimeout(() => { status.textContent = ""; }, 2400);
 });
 document.getElementById("check-updates")?.addEventListener("click", checkForUpdates);

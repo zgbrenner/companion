@@ -39,7 +39,7 @@
   async function loadState() {
     const stored = await chrome.storage.local.get([STORAGE_KEY, "cuc:settings"]);
     settings = { ...CUC.DEFAULT_SETTINGS, ...(stored["cuc:settings"] || {}) };
-    usage = stored[STORAGE_KEY] || CUC.emptyUsage();
+    usage = CUC.normalizeUsage(stored[STORAGE_KEY]);
     // Let the background (single writer) perform any stale-session reset, so two
     // tabs loading at once don't both reset. The fresh state returns via
     // storage.onChanged; we don't write from here.
@@ -86,7 +86,7 @@
       // meantime. addUsageEvent is idempotent on event.id.
       try {
         const stored = await chrome.storage.local.get([STORAGE_KEY]);
-        usage = CUC.addUsageEvent(stored[STORAGE_KEY] || usage, event, settings);
+        usage = CUC.addUsageEvent(CUC.normalizeUsage(stored[STORAGE_KEY]) || usage, event, settings);
       } catch {
         usage = CUC.addUsageEvent(usage, event, settings);
       }
@@ -385,7 +385,6 @@
           <span class="cuc-title">Vistage · Claude Usage</span>
           <div class="cuc-controls">
             <button class="cuc-button" data-cuc-action="cycle" title="Switch between dollars/tokens">$</button>
-            <button class="cuc-button" data-cuc-action="collapse" aria-label="Collapse">–</button>
             <button class="cuc-button" data-cuc-action="options" title="Settings">⚙</button>
             <button class="cuc-button" data-cuc-action="hide" title="Hide">✕</button>
           </div>
@@ -409,14 +408,6 @@
             <div class="cuc-budget-line" data-cuc="enterprise-note">Loading Claude usage…</div>
           </div>
 
-          <div class="cuc-meter" data-cuc="daily-section">
-            <div class="cuc-meter-label">
-              <span>Daily self-limit</span>
-              <span data-cuc="daily-value">$0.00 of $5.00</span>
-            </div>
-            <div class="cuc-progress"><div class="cuc-progress-bar" data-cuc="daily-bar"></div></div>
-          </div>
-
           <div class="cuc-footer">
             <span data-cuc="model">Model estimate</span>
             <span data-cuc="accurate-until">Accurate till 8/31</span>
@@ -426,18 +417,6 @@
     `;
 
     placeWidget();
-
-    if (settings.widgetCollapsed) {
-      widget.classList.add("cuc-collapsed");
-      const collapseBtn = widget.querySelector("[data-cuc-action='collapse']");
-      if (collapseBtn) {
-        collapseBtn.textContent = "+";
-        collapseBtn.setAttribute("aria-label", "Expand");
-      }
-    }
-
-    const header = widget.querySelector(".cuc-header");
-    makeDraggable(header, widget);
 
     widget.addEventListener("click", async event => {
       const action = event.target?.getAttribute?.("data-cuc-action");
@@ -450,14 +429,6 @@
       if (action === "options") {
         chrome.runtime.sendMessage({ type: "cuc:open-options" });
       }
-      if (action === "collapse") {
-        widget.classList.toggle("cuc-collapsed");
-        const collapsed = widget.classList.contains("cuc-collapsed");
-        event.target.textContent = collapsed ? "+" : "–";
-        event.target.setAttribute("aria-label", collapsed ? "Expand" : "Collapse");
-        settings.widgetCollapsed = collapsed;
-        await chrome.storage.local.set({ "cuc:settings": settings });
-      }
       if (action === "cycle") {
         const order = ["dollars", "tokens", "both"];
         const next = order[(order.indexOf(settings.displayMode) + 1) % order.length];
@@ -469,115 +440,43 @@
     renderWidget();
   }
 
-  // Verified composer container selector (confirmed against a live,
-  // actively-maintained claude.ai extension). If claude.ai changes its DOM
-  // and this stops matching, placeWidget() falls back to floating mode
-  // automatically rather than failing to appear at all.
-  const COMPOSER_ANCHOR_SELECTOR = "[data-testid='chat-input-grid-container']";
+  const COMPOSER_ANCHOR_SELECTORS = [
+    "[data-testid='chat-input-grid-container']",
+    "[data-testid*='chat-input']",
+    "[data-testid*='composer']",
+    "form:has(textarea)",
+    "form:has([contenteditable='true'])"
+  ];
 
   function findComposerAnchor() {
-    return document.querySelector(COMPOSER_ANCHOR_SELECTOR);
+    for (const selector of COMPOSER_ANCHOR_SELECTORS) {
+      try {
+        const anchor = document.querySelector(selector);
+        if (anchor) return anchor;
+      } catch {
+        // Ignore unsupported selector variants and try the next one.
+      }
+    }
+    return null;
   }
 
   function placeWidget() {
     if (!widget) return;
 
-    if (settings.widgetAnchorMode === "floating") {
-      placeWidgetFloating();
-      return;
-    }
-
     const anchor = findComposerAnchor();
-    if (!anchor || !anchor.parentElement) {
-      // Composer not found (page still loading, or claude.ai changed its
-      // markup) — fail safe into floating mode rather than not appearing.
-      placeWidgetFloating();
+    const dockTarget = anchor?.closest?.("form, [data-testid*='composer']") || anchor;
+    if (!dockTarget || !dockTarget.parentElement) {
+      widget.remove();
       return;
     }
 
     widget.classList.add("cuc-docked");
-    widget.classList.remove("cuc-floating");
     widget.style.position = "";
     widget.style.top = "";
     widget.style.left = "";
     widget.style.right = "";
     widget.style.bottom = "";
-    anchor.parentElement.insertBefore(widget, anchor.nextSibling);
-  }
-
-  function placeWidgetFloating() {
-    if (!widget) return;
-    widget.classList.add("cuc-floating");
-    widget.classList.remove("cuc-docked");
-    document.body.appendChild(widget);
-    widget.style.position = "fixed";
-    if (settings.widgetPosition && typeof settings.widgetPosition.top === "number") {
-      widget.style.top = `${settings.widgetPosition.top}px`;
-      widget.style.left = `${settings.widgetPosition.left}px`;
-      widget.style.right = "auto";
-      widget.style.bottom = "auto";
-    } else {
-      widget.style.right = "18px";
-      widget.style.bottom = "18px";
-      widget.style.top = "auto";
-      widget.style.left = "auto";
-    }
-  }
-
-  function makeDraggable(handle, target) {
-    if (!handle || !target) return;
-    let dragging = false;
-    let offsetX = 0;
-    let offsetY = 0;
-
-    handle.style.cursor = "grab";
-
-    handle.addEventListener("mousedown", event => {
-      // Don't start a drag when the person is clicking one of the header buttons.
-      if (event.target.closest("[data-cuc-action]")) return;
-      dragging = true;
-
-      // Capture the widget's current on-screen position BEFORE switching it
-      // to fixed positioning, so the drag starts from where it visually is
-      // (whether docked in the page flow or already floating) rather than
-      // jumping somewhere else the instant the drag begins.
-      const rect = target.getBoundingClientRect();
-      if (settings.widgetAnchorMode !== "floating") {
-        settings.widgetAnchorMode = "floating";
-        placeWidgetFloating();
-        target.style.top = `${rect.top}px`;
-        target.style.left = `${rect.left}px`;
-        target.style.right = "auto";
-        target.style.bottom = "auto";
-      }
-
-      offsetX = event.clientX - rect.left;
-      offsetY = event.clientY - rect.top;
-      handle.style.cursor = "grabbing";
-      event.preventDefault();
-    });
-
-    window.addEventListener("mousemove", event => {
-      if (!dragging) return;
-      const maxLeft = window.innerWidth - target.offsetWidth - 4;
-      const maxTop = window.innerHeight - target.offsetHeight - 4;
-      const left = CUC.clamp(event.clientX - offsetX, 4, Math.max(4, maxLeft));
-      const top = CUC.clamp(event.clientY - offsetY, 4, Math.max(4, maxTop));
-      target.style.left = `${left}px`;
-      target.style.top = `${top}px`;
-      target.style.right = "auto";
-      target.style.bottom = "auto";
-    });
-
-    window.addEventListener("mouseup", async () => {
-      if (!dragging) return;
-      dragging = false;
-      handle.style.cursor = "grab";
-      const rect = target.getBoundingClientRect();
-      settings.widgetPosition = { top: rect.top, left: rect.left };
-      settings.widgetAnchorMode = "floating";
-      await chrome.storage.local.set({ "cuc:settings": settings });
-    });
+    dockTarget.parentElement.insertBefore(widget, dockTarget.nextSibling);
   }
 
   function renderWidget() {
@@ -586,9 +485,6 @@
 
     const conversation = CUC.getConversationUsage(usage);
     const chatTokens = (conversation.inputTokens || 0) + (conversation.outputTokens || 0);
-    const progress = CUC.getBudgetProgress(usage, settings);
-    const level = CUC.usageLevel(progress);
-    const pct = progress.budget ? CUC.clamp((progress.value / progress.budget) * 100, 0, 100) : 0;
     const modelKey = detectModelKey();
     const model = CUC.MODEL_PRICES[modelKey] || CUC.MODEL_PRICES[settings.defaultModel];
     const effort = detectEffortLevel();
@@ -612,11 +508,6 @@
     widget.querySelector("[data-cuc='chat-bar']").style.width = `${chatPct}%`;
     widget.querySelector("[data-cuc='chat-bar']").className = `cuc-progress-bar ${nativeUsageBarLevel(chatPct)}`;
 
-    const dailySection = widget.querySelector("[data-cuc='daily-section']");
-    dailySection.style.display = settings.showDailyLimit ? "block" : "none";
-    widget.querySelector("[data-cuc='daily-value']").textContent = `${CUC.formatUsd(progress.value)} of ${CUC.formatUsd(progress.budget)}`;
-    widget.querySelector("[data-cuc='daily-bar']").style.width = `${pct}%`;
-    widget.querySelector("[data-cuc='daily-bar']").className = `cuc-progress-bar ${level}`;
     widget.querySelector("[data-cuc='model']").textContent = effort
       ? `${model?.label || "Model estimate"} · ${effort} effort`
       : (model?.label || "Model estimate");
@@ -661,7 +552,9 @@
     } else {
       const spendLimit = nativeUsage.monthlySpendLimit;
       if (!spendLimit) {
-        note.textContent = "Monthly spend limit unavailable right now.";
+        note.textContent = nativeUsage.monthlySpendLimitRejected
+          ? `Claude returned ${CUC.formatUsd(nativeUsage.monthlySpendLimitRejected.foundLimitUsd)}, expected ${CUC.formatUsd(nativeUsage.monthlySpendLimitRejected.expectedLimitUsd)}.`
+          : "Employee monthly spend limit unavailable right now.";
         value.textContent = "—";
         bar.style.width = "0%";
         return;
@@ -696,7 +589,7 @@
       // to the captured conversation id, so it lands on the right chat rather
       // than being silently discarded.
       flushOutputBuffer("navigation");
-      if (settings.widgetAnchorMode !== "floating") placeWidget();
+      placeWidget();
       renderWidget();
     };
 
@@ -723,9 +616,10 @@
     // detaches our docked widget from the page, re-insert it. Skipped while
     // the tab is hidden so backgrounded tabs don't poll the DOM forever.
     setInterval(() => {
-      if (document.hidden || !widget || settings.widgetAnchorMode === "floating") return;
+      if (document.hidden || !widget) return;
       const anchor = findComposerAnchor();
-      const isDockedAfterAnchor = anchor?.parentElement && widget.parentElement === anchor.parentElement && widget.previousElementSibling === anchor;
+      const dockTarget = anchor?.closest?.("form, [data-testid*='composer']") || anchor;
+      const isDockedAfterAnchor = dockTarget?.parentElement && widget.parentElement === dockTarget.parentElement && widget.previousElementSibling === dockTarget;
       if (!document.body.contains(widget) || !isDockedAfterAnchor) placeWidget();
     }, 2000);
   }
@@ -774,13 +668,12 @@
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== "local") return;
     if (changes["cuc:settings"]?.newValue) {
-      const previousAnchorMode = settings.widgetAnchorMode;
       settings = { ...CUC.DEFAULT_SETTINGS, ...changes["cuc:settings"].newValue };
-      if (settings.widgetAnchorMode !== previousAnchorMode) placeWidget();
+      placeWidget();
       renderWidget();
     }
     if (changes[STORAGE_KEY]?.newValue) {
-      usage = changes[STORAGE_KEY].newValue;
+      usage = CUC.normalizeUsage(changes[STORAGE_KEY].newValue);
       renderWidget();
     }
   });

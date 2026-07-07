@@ -21,7 +21,7 @@ function serialize(task) {
 async function loadUsageAndSettings() {
   const stored = await chrome.storage.local.get([STORAGE_KEY, "cuc:settings"]);
   const settings = { ...CUC.DEFAULT_SETTINGS, ...(stored["cuc:settings"] || {}) };
-  const usage = stored[STORAGE_KEY] || CUC.emptyUsage();
+  const usage = CUC.normalizeUsage(stored[STORAGE_KEY]);
   return { usage, settings };
 }
 

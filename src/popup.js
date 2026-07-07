@@ -23,7 +23,7 @@ async function loadState() {
     "cuc:native-usage-error"
   ]);
   return {
-    usage: stored[STORAGE_KEY] || CUC.emptyUsage(),
+    usage: CUC.normalizeUsage(stored[STORAGE_KEY]),
     settings: { ...CUC.DEFAULT_SETTINGS, ...(stored["cuc:settings"] || {}) },
     nativeUsage: stored["cuc:native-usage"] || null,
     nativeUsageError: stored["cuc:native-usage-error"] || null
@@ -35,9 +35,6 @@ const MAX_CONTEXT_WINDOW_TOKENS = 200_000;
 function render(usage, settings, conversationId = null) {
   const conversation = CUC.getConversationUsage(usage, conversationId || undefined);
   const chatTokens = (conversation.inputTokens || 0) + (conversation.outputTokens || 0);
-  const progress = CUC.getBudgetProgress(usage, settings);
-  const level = CUC.usageLevel(progress);
-  const pct = progress.budget ? CUC.clamp((progress.value / progress.budget) * 100, 0, 100) : 0;
   const chatPct = CUC.clamp((chatTokens / MAX_CONTEXT_WINDOW_TOKENS) * 100, 0, 100);
   const spend = conversation.estimatedUsd || 0;
 
@@ -57,12 +54,6 @@ function render(usage, settings, conversationId = null) {
   document.getElementById("chat-detail").textContent = chatDetail;
   document.getElementById("chat-bar").style.width = `${chatPct}%`;
   document.getElementById("chat-bar").className = nativeBarLevel(chatPct);
-
-  const dailySection = document.getElementById("daily-section");
-  dailySection.style.display = settings.showDailyLimit ? "block" : "none";
-  document.getElementById("daily-value").textContent = `${CUC.formatUsd(progress.value)} of ${CUC.formatUsd(progress.budget)}`;
-  document.getElementById("daily-bar").style.width = `${pct}%`;
-  document.getElementById("daily-bar").className = level;
 }
 
 function nativeBarLevel(pct) {
@@ -105,7 +96,9 @@ function renderNative(nativeUsage, nativeUsageError, settings) {
   if (!spendLimit) {
     value.textContent = "—";
     bar.style.width = "0%";
-    note.textContent = "Monthly spend limit unavailable right now.";
+    note.textContent = nativeUsage?.monthlySpendLimitRejected
+      ? `Claude returned ${CUC.formatUsd(nativeUsage.monthlySpendLimitRejected.foundLimitUsd)}, expected ${CUC.formatUsd(nativeUsage.monthlySpendLimitRejected.expectedLimitUsd)}.`
+      : "Employee monthly spend limit unavailable right now.";
     return;
   }
   const pct = CUC.clamp(spendLimit.utilizationPct, 0, 100);

@@ -91,8 +91,7 @@ p {
 
 #bar-fill,
 #chat-bar,
-#enterprise-bar,
-#daily-bar {
+#enterprise-bar {
   height: 100%;
   width: 0%;
   background: #3d7a5c;
@@ -100,15 +99,13 @@ p {
 
 #bar-fill.medium,
 #chat-bar.medium,
-#enterprise-bar.medium,
-#daily-bar.medium {
+#enterprise-bar.medium {
   background: #b4791f;
 }
 
 #bar-fill.high,
 #chat-bar.high,
-#enterprise-bar.high,
-#daily-bar.high {
+#enterprise-bar.high {
   background: #b23b3b;
 }
 

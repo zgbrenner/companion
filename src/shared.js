@@ -1,6 +1,7 @@
 (() => {
   const FIVE_HOURS_MS = 5 * 60 * 60 * 1000;
   const DAY_MS = 24 * 60 * 60 * 1000;
+  const USAGE_VERSION = 2;
   // Sonnet 5 intro pricing ends at 2026-09-01T00:00:00Z. After this, the
   // standard rate applies automatically — this must not rely on a person
   // manually flipping a dropdown after the date passes.
@@ -65,11 +66,6 @@
   const DEFAULT_SETTINGS = {
     displayMode: "both",
     defaultModel: "claude-sonnet-5-intro",
-    // budgetMode is fixed to "daily" — the settings page no longer exposes
-    // session/monthly views since daily is the framing people actually use.
-    budgetMode: "daily",
-    dailyBudgetUsd: 5,
-    showDailyLimit: true,
     monthlyBudgetUsd: 75,
     sessionBudgetUsd: 2.5,
     planName: "Claude Pro / Max / Team",
@@ -78,15 +74,13 @@
     // longer exposed as adjustable knobs in Settings, to keep the UI simple.
     // Change these values here if the defaults ever need retuning.
     showPlainEnglishTips: true,
-    countHiddenContext: true,
-    contextCarryForwardRatio: 0.55,
+    countHiddenContext: false,
+    contextCarryForwardRatio: 0,
     safetyMargin: 1.2,
     autoResetSession: true,
     priceBasisLabel: "API-equivalent estimate",
-    widgetPosition: null,
-    widgetAnchorMode: "docked",
-    widgetCollapsed: false,
     organizationId: "1e16048b-a724-40fd-b78b-bcf3c7f9af9a",
+    enterpriseMonthlyLimitUsd: 100,
     showNativeLimits: true
   };
 
@@ -109,7 +103,7 @@
 
   function emptyUsage(now = Date.now()) {
     return {
-      version: 1,
+      version: USAGE_VERSION,
       sessionStartedAt: now,
       lastUpdatedAt: now,
       totals: {
@@ -136,6 +130,11 @@
 
   function normalizeWhitespace(text) {
     return String(text || "").replace(/\s+/g, " ").trim();
+  }
+
+  function normalizeUsage(usage) {
+    if (!usage || usage.version !== USAGE_VERSION) return emptyUsage();
+    return usage;
   }
 
   function estimateTokensFromText(text, modelKey = "claude-sonnet-5-intro") {
@@ -332,61 +331,12 @@
     };
   }
 
-  // The optional daily self-limit bar reads from the local-day bucket. Do not
-  // use usage.totals here: that five-hour session accumulator can reset while
-  // the daily user-facing limit should keep counting until local midnight.
   function getTodayUsage(usage, date = new Date()) {
     return usage.days?.[todayKey(date)] || {};
   }
 
   function getConversationUsage(usage, conversationId = currentConversationId()) {
     return usage.conversations?.[conversationId] || {};
-  }
-
-  function getBudgetProgress(usage, settings) {
-    const day = todayKey();
-    const month = monthKey();
-    const daily = usage.days?.[day]?.estimatedUsd || 0;
-    const monthly = usage.months?.[month]?.estimatedUsd || 0;
-    const session = usage.totals?.estimatedUsd || 0;
-
-    if (settings.budgetMode === "monthly") {
-      return { label: "Monthly budget", value: monthly, budget: Number(settings.monthlyBudgetUsd || 0) };
-    }
-    if (settings.budgetMode === "session") {
-      return { label: "Session budget", value: session, budget: Number(settings.sessionBudgetUsd || 0) };
-    }
-    return { label: "Daily budget", value: daily, budget: Number(settings.dailyBudgetUsd || 0) };
-  }
-
-  function usageLevel(progress) {
-    if (!progress.budget) return "neutral";
-    const pct = progress.value / progress.budget;
-    if (pct >= 1) return "high";
-    if (pct >= 0.75) return "medium";
-    return "low";
-  }
-
-  function plainEnglishTip(usage, settings) {
-    const recent = usage.recentEvents || [];
-    const lastInput = recent.find(e => e.kind === "input");
-    const lastOutput = recent.find(e => e.kind === "output");
-    const progress = getBudgetProgress(usage, settings);
-    const level = usageLevel(progress);
-
-    if (level === "high") {
-      return `You are at or above your ${progress.label.toLowerCase()}. Consider starting a fresh chat, shortening file context, or switching to a lower-cost model.`;
-    }
-    if (lastInput && lastInput.inputTokens > 12000) {
-      return "This looks like a heavy prompt. Large files, long instructions, or long chat history may be driving usage.";
-    }
-    if (lastOutput && lastOutput.outputTokens > 5000) {
-      return "Claude produced a long response. Asking for shorter answers can reduce usage.";
-    }
-    if ((usage.totals?.messages || 0) >= 12) {
-      return "This chat has a lot of back-and-forth. A fresh chat with a short summary may use less context.";
-    }
-    return "Usage looks normal. For longer work, group related asks and ask for concise output.";
   }
 
   function detectModelFromText(text) {
@@ -420,9 +370,11 @@
   globalThis.ClaudeUsageCompanion = {
     FIVE_HOURS_MS,
     DAY_MS,
+    USAGE_VERSION,
     MODEL_PRICES,
     DEFAULT_SETTINGS,
     emptyUsage,
+    normalizeUsage,
     estimateTokensFromText,
     estimateTokensPrecise,
     tokenizerAvailable,
@@ -436,10 +388,7 @@
     getTodayUsage,
     shouldResetSession,
     resetSession,
-    getBudgetProgress,
     getConversationUsage,
-    usageLevel,
-    plainEnglishTip,
     detectModelFromText,
     detectModelFromId,
     resolveModelKey,

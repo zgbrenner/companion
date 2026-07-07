@@ -36,6 +36,17 @@
     }
   }
 
+  async function configuredEnterpriseLimitUsd() {
+    const defaults = globalThis.ClaudeUsageCompanion?.DEFAULT_SETTINGS || {};
+    try {
+      const stored = await chrome.storage.local.get(["cuc:settings"]);
+      const settings = { ...defaults, ...(stored["cuc:settings"] || {}) };
+      return Number(settings.enterpriseMonthlyLimitUsd || 0);
+    } catch {
+      return Number(defaults.enterpriseMonthlyLimitUsd || 0);
+    }
+  }
+
   async function getCachedOrgId() {
     try {
       const stored = await chrome.storage.local.get([CACHE_KEY]);
@@ -96,7 +107,24 @@
     const orgId = await discoverOrgId();
     const usagePayload = await fetchJson(`https://claude.ai/api/organizations/${orgId}/usage`);
     const normalized = normalizeUsagePayload(usagePayload);
-    normalized.monthlySpendLimit = await fetchMonthlySpendLimit(orgId, normalized.monthlySpendLimit);
+    const expectedLimit = await configuredEnterpriseLimitUsd();
+    if (
+      normalized.monthlySpendLimit &&
+      expectedLimit > 0 &&
+      Math.abs(normalized.monthlySpendLimit.limitUsd - expectedLimit) > 0.01
+    ) {
+      normalized.monthlySpendLimitRejected = {
+        foundLimitUsd: normalized.monthlySpendLimit.limitUsd,
+        expectedLimitUsd: expectedLimit
+      };
+      normalized.monthlySpendLimit = null;
+    }
+    // Prefer /usage.extra_usage, which reflects the member-visible usage-credit
+    // card. /overage_spend_limit can be the organization-wide cap (for example
+    // $5000) and must not replace a per-employee cap like $100.
+    if (!normalized.monthlySpendLimit) {
+      normalized.monthlySpendLimit = await fetchMonthlySpendLimit(orgId);
+    }
 
     // A 200 with none of the expected buckets means the endpoint shape drifted
     // (this endpoint is undocumented and can change without notice). Surface it
@@ -125,7 +153,13 @@
   async function fetchMonthlySpendLimit(orgId, fallback = null) {
     try {
       const payload = await fetchJson(`https://claude.ai/api/organizations/${orgId}/overage_spend_limit`);
-      return normalizeMonthlySpendLimit(payload);
+      const normalized = normalizeMonthlySpendLimit(payload);
+      if (!normalized) return fallback;
+      const expectedLimit = await configuredEnterpriseLimitUsd();
+      if (expectedLimit > 0 && Math.abs(normalized.limitUsd - expectedLimit) > 0.01) {
+        return fallback;
+      }
+      return normalized;
     } catch (error) {
       if (String(error?.message || error) === "not-logged-in") throw error;
       return fallback;
@@ -188,6 +222,7 @@
       isEnabled: Boolean(isEnabled),
       usedUsd,
       limitUsd,
+      source: "claude",
       currency: typeof currency === "string" ? currency : "USD",
       utilizationPct: (usedUsd / limitUsd) * 100,
       resetsAt,

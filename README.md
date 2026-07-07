@@ -14,9 +14,7 @@ The extension can display usage as:
 
 - Estimated input tokens from user prompts.
 - Estimated output tokens from Claude responses.
-- Estimated conversation/context weight.
 - Estimated usage in the current chat.
-- Optional daily self-limit set by the user.
 - **Enterprise usage limits, read directly from Claude.ai's own usage endpoint** — not an estimate. See "Native limits" below.
 
 ## Native limits (ground truth, not an estimate)
@@ -36,7 +34,7 @@ Caveats, stated plainly:
 
 ## Target users
 
-Built for Vistage Worldwide, Inc. staff using Claude.ai — not aimed at developers, so the widget stays simple: current chat usage, the enterprise limit, and an optional daily self-limit.
+Built for Vistage Worldwide, Inc. staff using Claude.ai — not aimed at developers, so the widget stays simple: current chat usage and the enterprise limit.
 
 ## Install locally
 
@@ -49,15 +47,15 @@ Built for Vistage Worldwide, Inc. staff using Claude.ai — not aimed at develop
 
 ## Widget position
 
-By default the widget docks in the page itself, right under the chat composer — not a floating overlay. Drag its header to move it anywhere on screen; once dragged, it switches to floating mode and remembers where you left it (persisted in `chrome.storage.local`). Use "Reset widget to default position" in Settings to snap it back under the chat box.
+The widget docks in the page itself, right under the chat composer. It is not draggable and does not have a floating mode.
 
-If Claude.ai's page structure changes and the composer can't be found, the widget automatically falls back to floating in the bottom-right corner rather than not appearing at all.
+If Claude.ai's page structure changes and the composer can't be found, the widget waits until it can find the composer again rather than floating somewhere else.
 
 ## Files
 
 ```text
 manifest.json              Chrome extension manifest
-src/content.js             Injects the in-page widget, docking/drag logic, and local estimator
+src/content.js             Injects the in-page widget, docking logic, and local estimator
 src/content.css            Widget styles
 src/injected.js            Page-context network/SSE observer
 src/native-usage.js        Reads Claude's own /usage endpoint (ground truth, not estimated)
@@ -106,12 +104,19 @@ The extension uses a real tokenizer (`src/o200k_base.js`, from the `gpt-tokenize
 
 ## Changelog
 
+### 0.4.3
+
+**Requested corrections:**
+- Enterprise limit now prefers Claude's member-visible `usage.extra_usage` bucket and rejects caps that do not match the configured employee monthly limit (`$100` by default), preventing the org-wide `$5000` cap from being displayed as an employee cap.
+- Removed the daily self-limit tracker from the widget, popup, and settings.
+- Removed all widget dragging, collapsing, saved position, and floating fallback behavior. The widget only docks under the composer.
+- Disabled hidden context carry-forward by default and reset local usage storage to version 2, so old overestimated chat totals do not carry forward.
+
 ### 0.4.2
 
-**Widget reduced to three bars:**
+**Widget reduced to two bars:**
 - Usage in this chat — a local dollar/token ballpark estimate scoped to the active conversation.
-- Enterprise limit — the monthly usage-credit spend and limit returned by Claude.ai's `overage_spend_limit` endpoint.
-- Daily self-limit — optional, user-configurable, and local-only.
+- Enterprise limit — the employee monthly usage-credit spend and limit from Claude.ai's usage data. The extension refuses to display an org-wide cap such as `$5000` as the employee limit when the configured employee cap is `$100`.
 
 **Accuracy and model detection:**
 - Model detection now listens to Claude generation request payloads when available, then falls back to the visible model picker.
@@ -119,6 +124,8 @@ The extension uses a real tokenizer (`src/o200k_base.js`, from the `gpt-tokenize
 - Docked widget re-checks that it is still directly under the composer after Claude.ai React rerenders.
 - Enterprise limit now means the organization's monthly usage-credit spend cap, not Claude's rolling weekly utilization meter.
 - Added an explicit organization id setting; Vistage's org id defaults to `1e16048b-a724-40fd-b78b-bcf3c7f9af9a`.
+- Removed daily self-limit tracking and all widget dragging/floating behavior.
+- Reset local usage storage to version 2 so old overestimated chat totals do not carry forward.
 
 ### 0.4.0
 
