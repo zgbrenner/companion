@@ -130,8 +130,28 @@ async function readSettings() {
   return settings;
 }
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Blank is a supported "auto-discover" mode, so this only flags values that
+// are present but don't look like a UUID. Non-blocking: callers still save.
+function organizationIdWarning(value) {
+  const trimmed = String(value || "").trim();
+  if (!trimmed) return null;
+  if (UUID_PATTERN.test(trimmed)) return null;
+  return "This doesn't look like a valid organization UUID. Saving anyway — leave blank to auto-discover instead.";
+}
+
+function renderOrganizationIdWarning(value) {
+  const warningEl = document.getElementById("organizationId-warning");
+  if (!warningEl) return;
+  const message = organizationIdWarning(value);
+  warningEl.textContent = message || "";
+  warningEl.style.display = message ? "block" : "none";
+}
+
 async function saveSettings() {
   const settings = await readSettings();
+  renderOrganizationIdWarning(settings.organizationId);
   await chrome.storage.local.set({ "cuc:settings": settings });
   const status = document.getElementById("status");
   status.textContent = "Saved";
@@ -146,6 +166,9 @@ async function resetDefaults() {
   setTimeout(() => { status.textContent = ""; }, 1800);
 }
 
+document.getElementById("organizationId")?.addEventListener("input", (event) => {
+  renderOrganizationIdWarning(event.target.value);
+});
 document.getElementById("save").addEventListener("click", saveSettings);
 document.getElementById("reset-defaults").addEventListener("click", resetDefaults);
 document.getElementById("clear-org-cache")?.addEventListener("click", async () => {

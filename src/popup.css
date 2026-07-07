@@ -6,6 +6,13 @@ body {
   background: #ffffff;
 }
 
+@media (prefers-color-scheme: dark) {
+  body {
+    color: #e8e6e3;
+    background: #2b2a27;
+  }
+}
+
 .popup {
   padding: 14px;
 }
@@ -17,6 +24,12 @@ h1 {
   color: #2b3648;
 }
 
+@media (prefers-color-scheme: dark) {
+  h1 {
+    color: #e8e6e3;
+  }
+}
+
 p {
   margin: 0;
 }
@@ -25,6 +38,12 @@ p {
   margin-top: 3px;
   font-size: 11px;
   color: #6b7684;
+}
+
+@media (prefers-color-scheme: dark) {
+  .org-tag {
+    color: #a09c98;
+  }
 }
 
 .main-row {
@@ -42,9 +61,21 @@ p {
   color: #1c2430;
 }
 
+@media (prefers-color-scheme: dark) {
+  .main-value {
+    color: #e8e6e3;
+  }
+}
+
 .main-label {
   font-size: 12px;
   color: #6b7684;
+}
+
+@media (prefers-color-scheme: dark) {
+  .main-label {
+    color: #a09c98;
+  }
 }
 
 .meter {
@@ -58,6 +89,12 @@ p {
   gap: 10px;
   font-size: 11px;
   color: #4a5568;
+}
+
+@media (prefers-color-scheme: dark) {
+  .meter-label {
+    color: #a09c98;
+  }
 }
 
 .meter-label span:first-child {
@@ -75,10 +112,22 @@ p {
   text-align: right;
 }
 
+@media (prefers-color-scheme: dark) {
+  .meter-label span:last-child {
+    color: #e8e6e3;
+  }
+}
+
 .budget-line {
   font-size: 11px;
   color: #6b7684;
   margin-top: 6px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .budget-line {
+    color: #a09c98;
+  }
 }
 
 .bar {
@@ -87,6 +136,12 @@ p {
   background: #eaeef3;
   overflow: hidden;
   margin-top: 8px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .bar {
+    background: #4a4945;
+  }
 }
 
 #bar-fill,
@@ -115,6 +170,12 @@ p {
   border-top: 1px solid #eaeef3;
 }
 
+@media (prefers-color-scheme: dark) {
+  .native {
+    border-top-color: #4a4945;
+  }
+}
+
 .native-row {
   margin-bottom: 7px;
 }
@@ -131,10 +192,22 @@ p {
   margin-bottom: 3px;
 }
 
+@media (prefers-color-scheme: dark) {
+  .native-label {
+    color: #a09c98;
+  }
+}
+
 .native-note {
   font-size: 11px;
   color: #6b7684;
   margin-top: 6px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .native-note {
+    color: #a09c98;
+  }
 }
 
 .bar--thin {
@@ -174,6 +247,20 @@ button {
   font-size: 13px;
 }
 
+@media (prefers-color-scheme: dark) {
+  button {
+    border-color: #4a4945;
+    background: #323036;
+    color: #e8e6e3;
+  }
+}
+
 button:hover {
   background: #f4f6f9;
+}
+
+@media (prefers-color-scheme: dark) {
+  button:hover {
+    background: #3f3d3a;
+  }
 }

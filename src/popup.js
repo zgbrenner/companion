@@ -78,6 +78,11 @@ function renderNative(nativeUsage, nativeUsageError, settings) {
     value.textContent = "—";
     bar.style.width = "0%";
     return;
+  } else if (nativeUsageError === "rate-limited") {
+    note.textContent = "Claude is rate-limiting usage lookups; retrying with backoff.";
+    value.textContent = "—";
+    bar.style.width = "0%";
+    return;
   } else if (nativeUsageError) {
     note.textContent = "Native limits unavailable right now.";
     value.textContent = "—";
@@ -97,22 +102,24 @@ function renderNative(nativeUsage, nativeUsageError, settings) {
     value.textContent = "—";
     bar.style.width = "0%";
     note.textContent = nativeUsage?.monthlySpendLimitRejected
-      ? `Claude returned ${CUC.formatUsd(nativeUsage.monthlySpendLimitRejected.foundLimitUsd)}, expected ${CUC.formatUsd(nativeUsage.monthlySpendLimitRejected.expectedLimitUsd)}.`
+      ? `Claude returned ${CUC.formatUsd(nativeUsage.monthlySpendLimitRejected.foundLimitUsd)}, expected ${CUC.formatUsd(nativeUsage.monthlySpendLimitRejected.expectedLimitUsd)} — looks like a units mismatch, not a real cap change.`
       : "Employee monthly spend limit unavailable right now.";
     return;
   }
   const pct = CUC.clamp(spendLimit.utilizationPct, 0, 100);
-  const resetText = CUCNative?.formatResetCountdown
-    ? CUCNative.formatResetCountdown(spendLimit.resetsAt)
-    : null;
-  value.textContent = resetText
-    ? `${CUC.formatUsd(spendLimit.usedUsd)} of ${CUC.formatUsd(spendLimit.limitUsd)} · resets in ${resetText}`
+  const resetLabel = CUCNative?.formatResetLabel ? CUCNative.formatResetLabel(spendLimit) : null;
+  value.textContent = resetLabel
+    ? `${CUC.formatUsd(spendLimit.usedUsd)} of ${CUC.formatUsd(spendLimit.limitUsd)} · ${resetLabel}`
     : `${CUC.formatUsd(spendLimit.usedUsd)} of ${CUC.formatUsd(spendLimit.limitUsd)}`;
   bar.style.width = `${pct}%`;
   bar.className = nativeBarLevel(pct);
-  note.textContent = spendLimit.outOfCredits
-    ? "Monthly usage-credit limit reached"
-    : "Monthly usage-credit spend from Claude.ai";
+  if (spendLimit.outOfCredits) {
+    note.textContent = "Monthly usage-credit limit reached";
+  } else if (spendLimit.capAdvisory) {
+    note.textContent = `Cap differs from expected ${CUC.formatUsd(spendLimit.capAdvisory.expectedLimitUsd)} — update Settings if this changed.`;
+  } else {
+    note.textContent = "Monthly usage-credit spend from Claude.ai";
+  }
 }
 
 async function boot() {

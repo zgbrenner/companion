@@ -124,6 +124,10 @@
       // script's fallback path re-submits the same event. Without dedup that
       // would double-count usage.
       appliedEventIds: [],
+      // Ring buffer of event ids already moved by migrateConversationEvents,
+      // so a retried/duplicate migration (background restart, message
+      // resend) doesn't shift the same tokens twice.
+      migratedEventIds: [],
       lastResetReason: "initial"
     };
   }
@@ -268,6 +272,63 @@
     return usage;
   }
 
+  function addBucketDelta(bucket, delta, sign) {
+    bucket.inputTokens = Math.max(0, (bucket.inputTokens || 0) + sign * delta.inputTokens);
+    bucket.rawInputTokens = Math.max(0, (bucket.rawInputTokens || 0) + sign * delta.rawInputTokens);
+    bucket.outputTokens = Math.max(0, (bucket.outputTokens || 0) + sign * delta.outputTokens);
+    bucket.estimatedUsd = Number(Math.max(0, (bucket.estimatedUsd || 0) + sign * delta.estimatedUsd).toFixed(6));
+    bucket.messages = Math.max(0, (bucket.messages || 0) + sign * delta.messages);
+    bucket.responses = Math.max(0, (bucket.responses || 0) + sign * delta.responses);
+    bucket.attachmentEvents = Math.max(0, (bucket.attachmentEvents || 0) + sign * delta.attachmentEvents);
+    return bucket;
+  }
+
+  const MAX_MIGRATED_EVENT_IDS = 300;
+
+  // Moves a specific set of previously-recorded events from one conversation
+  // bucket to another — used to fix up prompts/responses that were recorded
+  // under the "home-or-new-chat" bucket before claude.ai assigned the chat a
+  // real conversation id. Only touches usage.conversations: totals/days/
+  // months are not conversation-scoped, so they're already correct and must
+  // not be double-adjusted here. Idempotent per event id (via
+  // usage.migratedEventIds) so a retried/duplicate migration message is safe.
+  function migrateConversationEvents(usage, fromId, toId, events) {
+    if (!fromId || !toId || fromId === toId) return usage;
+    if (!Array.isArray(events) || events.length === 0) return usage;
+
+    if (!Array.isArray(usage.migratedEventIds)) usage.migratedEventIds = [];
+    const toMigrate = events.filter(e => e && (!e.id || !usage.migratedEventIds.includes(e.id)));
+    if (toMigrate.length === 0) return usage;
+
+    usage.conversations = usage.conversations || {};
+    const fromBucket = usage.conversations[fromId];
+    usage.conversations[toId] = usage.conversations[toId] || {};
+    const toBucket = usage.conversations[toId];
+
+    for (const event of toMigrate) {
+      const delta = {
+        inputTokens: event.inputTokens || 0,
+        rawInputTokens: event.rawInputTokens ?? event.inputTokens ?? 0,
+        outputTokens: event.outputTokens || 0,
+        estimatedUsd: event.estimatedUsd || 0,
+        messages: event.kind === "input" ? 1 : 0,
+        responses: event.kind === "output" ? 1 : 0,
+        attachmentEvents: event.attachmentCount || 0
+      };
+      if (fromBucket) addBucketDelta(fromBucket, delta, -1);
+      addBucketDelta(toBucket, delta, 1);
+      if (event.id) usage.migratedEventIds.push(event.id);
+    }
+    toBucket.lastUpdatedAt = Date.now();
+
+    if (usage.migratedEventIds.length > MAX_MIGRATED_EVENT_IDS) {
+      usage.migratedEventIds = usage.migratedEventIds.slice(-MAX_MIGRATED_EVENT_IDS);
+    }
+
+    pruneUsage(usage);
+    return usage;
+  }
+
   const MAX_APPLIED_EVENT_IDS = 300;
 
   function addUsageEvent(usage, event, settings) {
@@ -384,6 +445,7 @@
     makeStorageKey,
     currentConversationId,
     addUsageEvent,
+    migrateConversationEvents,
     pruneUsage,
     getTodayUsage,
     shouldResetSession,

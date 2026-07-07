@@ -15,10 +15,74 @@
   let nativeUsage = null;
   let nativeUsageError = null;
   let nativeUsageTimer = null;
+  let nativeUsageBackoffMs = null;
   let lastTokenEstimateMethod = "heuristic";
   let lastUsageSnapshotRefreshAt = 0;
-  let networkDetectedModelKey = null;
   const NATIVE_USAGE_REFRESH_MS = 60 * 1000;
+  const NATIVE_USAGE_MAX_BACKOFF_MS = 10 * 60 * 1000;
+
+  // +/-20% jitter so multiple tabs polling the same account don't all hit the
+  // usage endpoint in lockstep every 60s. Also used to jitter backoff delays
+  // (see scheduleNextNativeUsagePoll) so tabs that got 429'd together don't
+  // retry in lockstep at 120s/240s/480s either.
+  function jitterMs(baseMs) {
+    const jitterFactor = 1 + (Math.random() * 0.4 - 0.2);
+    return Math.round(baseMs * jitterFactor);
+  }
+
+  function jitteredNativeUsageInterval() {
+    return jitterMs(NATIVE_USAGE_REFRESH_MS);
+  }
+
+  // Per-conversation network-detected model, replacing a single sticky global.
+  // A single global meant that once any chat's request revealed a model
+  // (e.g. Opus), every OTHER conversation in the tab — including a brand-new
+  // chat that hasn't picked a model yet — inherited that same model forever.
+  // Map insertion order gives a cheap FIFO for the size cap below; entries are
+  // re-inserted on update so frequently-active conversations are pushed to
+  // the back and pruned last.
+  let networkModelByConversation = new Map();
+  const MAX_MODEL_MAP_ENTRIES = 20;
+
+  function setNetworkModelForConversation(conversationId, modelKey) {
+    if (!modelKey) return;
+    const key = conversationId || CUC.currentConversationId();
+    networkModelByConversation.delete(key);
+    networkModelByConversation.set(key, modelKey);
+    while (networkModelByConversation.size > MAX_MODEL_MAP_ENTRIES) {
+      const oldestKey = networkModelByConversation.keys().next().value;
+      networkModelByConversation.delete(oldestKey);
+    }
+  }
+
+  // Recent usage events recorded under the "home-or-new-chat" bucket by THIS
+  // tab, kept just long enough to migrate them once the real conversation id
+  // becomes known (see migrateHomeChatEvents below).
+  let homeChatEvents = [];
+  let lastKnownRealConversationId = null;
+  const HOME_CHAT_MIGRATION_WINDOW_MS = 2 * 60 * 1000;
+
+  // In-memory map of eventId -> the conversationId it was migrated to. The
+  // record-event fallback (see recordEvent below) re-reads storage and folds
+  // the ORIGINAL event again if the initial cuc:record-event message fails;
+  // without this, that re-fold uses the event's original (pre-migration)
+  // conversationId — "home-or-new-chat" — silently undoing the migration this
+  // tab already applied. Bounded like usage.migratedEventIds so it can't grow
+  // unbounded in a long-lived tab.
+  let migratedEventTargets = new Map();
+  const MAX_MIGRATED_EVENT_TARGETS = 300;
+
+  function rememberMigratedEventTargets(events, toId) {
+    for (const event of events) {
+      if (!event?.id) continue;
+      migratedEventTargets.delete(event.id);
+      migratedEventTargets.set(event.id, toId);
+    }
+    while (migratedEventTargets.size > MAX_MIGRATED_EVENT_TARGETS) {
+      const oldestKey = migratedEventTargets.keys().next().value;
+      migratedEventTargets.delete(oldestKey);
+    }
+  }
 
   function injectNetworkWatcher() {
     const script = document.createElement("script");
@@ -77,18 +141,41 @@
     usage = CUC.addUsageEvent(usage, event, settings);
     renderWidget();
 
+    // Track events landing in the "home-or-new-chat" bucket so that once the
+    // real conversation id shows up (a moment later, once claude.ai assigns
+    // one), migrateHomeChatEvents() can move them out of the wrong bucket
+    // instead of leaving them stranded there forever.
+    if (event.conversationId === "home-or-new-chat") {
+      homeChatEvents.push(event);
+      const cutoff = Date.now() - HOME_CHAT_MIGRATION_WINDOW_MS;
+      homeChatEvents = homeChatEvents.filter(e => (e.at || 0) >= cutoff);
+    }
+
     let settled = false;
     const fallback = async () => {
       if (settled) return;
       settled = true;
+      // If this event was already migrated out of "home-or-new-chat" (a
+      // moment ago, once the real conversation id showed up), fold it under
+      // the MIGRATED target id rather than its original event.conversationId.
+      // Otherwise this fallback — firing because the original cuc:record-event
+      // send rejected — would silently undo that migration by re-adding the
+      // event back into the stale "home-or-new-chat" bucket it was just moved
+      // out of. addUsageEvent's own idempotency (appliedEventIds) is keyed on
+      // event.id regardless of which conversationId it's folded under, so
+      // rewriting the id here doesn't risk a double-apply.
+      const migratedToId = event.id ? migratedEventTargets.get(event.id) : null;
+      const effectiveEvent = migratedToId && migratedToId !== event.conversationId
+        ? { ...event, conversationId: migratedToId }
+        : event;
       // Re-read the freshest stored state before applying, so this best-effort
       // local write doesn't clobber events another tab committed in the
       // meantime. addUsageEvent is idempotent on event.id.
       try {
         const stored = await chrome.storage.local.get([STORAGE_KEY]);
-        usage = CUC.addUsageEvent(CUC.normalizeUsage(stored[STORAGE_KEY]) || usage, event, settings);
+        usage = CUC.addUsageEvent(CUC.normalizeUsage(stored[STORAGE_KEY]) || usage, effectiveEvent, settings);
       } catch {
-        usage = CUC.addUsageEvent(usage, event, settings);
+        usage = CUC.addUsageEvent(usage, effectiveEvent, settings);
       }
       saveStateSoon();
     };
@@ -99,6 +186,67 @@
     } catch {
       fallback();
     }
+  }
+
+  // Prompts sent before claude.ai assigns a conversation id land under the
+  // "home-or-new-chat" bucket (see CUC.currentConversationId()). Once the
+  // real id is discovered — from a network event's conversationId, or the
+  // URL settling on /chat/<id> — move this tab's recent events out of that
+  // shared bucket and into the real conversation, so a new chat's usage
+  // isn't permanently mixed into every other new chat opened in the tab.
+  function migrateHomeChatEvents(realConversationId) {
+    const cutoff = Date.now() - HOME_CHAT_MIGRATION_WINDOW_MS;
+    const recent = homeChatEvents.filter(e => (e.at || 0) >= cutoff);
+    homeChatEvents = [];
+    if (!realConversationId || realConversationId === "home-or-new-chat" || recent.length === 0) return;
+
+    usage = CUC.migrateConversationEvents(usage, "home-or-new-chat", realConversationId, recent);
+    renderWidget();
+    // Remember the target for these event ids so the record-event fallback
+    // (see recordEvent above) can re-fold a since-rejected event under the
+    // migrated conversation id instead of stranding it back in
+    // "home-or-new-chat".
+    rememberMigratedEventTargets(recent, realConversationId);
+    sendMigrateConversationEventsMessage("home-or-new-chat", realConversationId, recent);
+  }
+
+  // Best-effort notification to the background of a local migration, retried
+  // once on failure/rejection since a lost message here means the background's
+  // authoritative state never gets the migration and multi-tab/service-worker
+  // restarts could otherwise leave it stranded. Not pure fire-and-forget: the
+  // in-memory migratedEventTargets map (populated by the caller) is what
+  // actually protects against re-stranding locally; this retry just improves
+  // the odds the background picks it up too.
+  function sendMigrateConversationEventsMessage(fromId, toId, events, attempt = 0) {
+    try {
+      chrome.runtime.sendMessage({
+        type: "cuc:migrate-conversation-events",
+        fromId,
+        toId,
+        events
+      }).then(response => {
+        if (!response?.ok && attempt === 0) {
+          sendMigrateConversationEventsMessage(fromId, toId, events, 1);
+        }
+      }).catch(() => {
+        if (attempt === 0) sendMigrateConversationEventsMessage(fromId, toId, events, 1);
+      });
+    } catch {
+      // Best-effort only: the optimistic local fold above already keeps this
+      // tab's widget accurate even if the background never sees the migration.
+      if (attempt === 0) sendMigrateConversationEventsMessage(fromId, toId, events, 1);
+    }
+  }
+
+  // Call whenever a real (non-"home-or-new-chat") conversation id surfaces,
+  // from either a network event's detail.conversationId or a URL change.
+  // Cheap to call repeatedly: migrateHomeChatEvents() is a no-op once
+  // homeChatEvents has been drained for this id.
+  function onRealConversationIdDiscovered(conversationId) {
+    if (!conversationId || conversationId === "home-or-new-chat") return;
+    if (conversationId === lastKnownRealConversationId) return;
+    lastKnownRealConversationId = conversationId;
+    migrateHomeChatEvents(conversationId);
   }
 
   async function saveState() {
@@ -121,7 +269,12 @@
   }
 
   function detectModelKey() {
-    if (networkDetectedModelKey) return networkDetectedModelKey;
+    // Prefer the model this specific conversation's own network requests
+    // revealed. Falling through to DOM/default (rather than some OTHER
+    // conversation's cached model) when this conversation has no entry yet
+    // is what keeps a freshly-opened chat from showing a stale model.
+    const networkModel = networkModelByConversation.get(CUC.currentConversationId());
+    if (networkModel) return networkModel;
     // Prefer a scoped model-picker control if we can find one — scanning the
     // whole page for words like "opus" or "haiku" produces false positives
     // when those words appear in chat history rather than an active selector.
@@ -243,7 +396,7 @@
     const now = Date.now();
     // Dedupe on prompt text + attachment count so an attachment-only send (empty
     // text) isn't collapsed with the next one.
-    const promptHash = hashString(`${clean} ${attachmentCount}`);
+    const promptHash = hashString(`${clean} ${attachmentCount}`);
     if (promptHash === lastPromptHash && now - lastPromptAt < 4000) return;
     lastPromptHash = promptHash;
     lastPromptAt = now;
@@ -339,24 +492,54 @@
     }, true);
   }
 
+  // Map a request-body modelId (from generation-start/model-detected/
+  // response-complete) through the same id/text normalization used
+  // everywhere else, so a raw API model id becomes one of our MODEL_PRICES keys.
+  function mapDetailModelKey(modelId) {
+    if (!modelId) return null;
+    return CUC.detectModelFromId(modelId) || CUC.detectModelFromText(modelId) || null;
+  }
+
   function observeNetworkEvents() {
     window.addEventListener("cuc:network-event", event => {
       const detail = event.detail || {};
-      if (detail.kind === "model-detected" && detail.modelId) {
-        const detected = CUC.detectModelFromId(detail.modelId) || CUC.detectModelFromText(detail.modelId);
+
+      if ((detail.kind === "model-detected" || detail.kind === "generation-start") && detail.modelId) {
+        const detected = mapDetailModelKey(detail.modelId);
         if (detected) {
-          networkDetectedModelKey = detected;
+          setNetworkModelForConversation(detail.conversationId, detected);
           renderWidget();
         }
       }
+
+      if (detail.kind === "generation-start" && detail.conversationId) {
+        onRealConversationIdDiscovered(detail.conversationId);
+      }
+
       if (detail.kind === "response-complete" && detail.text) {
-        // Capture attribution at the moment the stream arrives, before any
-        // SPA navigation can change the active conversation/model underneath us.
+        // Attribute this response using what the REQUEST told us (conversation
+        // id from the URL, model id from the request body) rather than
+        // whatever happens to be on screen — the user may have switched or
+        // even closed the chat before the stream finished. Only fall back to
+        // DOM/current-tab state when the request itself didn't carry it.
+        const eventConversationId = detail.conversationId || outputBufferConversationId || CUC.currentConversationId();
+        const eventModelKey = mapDetailModelKey(detail.modelId) || outputBufferModelKey || detectModelKey();
+
+        // If a differently-attributed response is already buffered, flush it
+        // under its own attribution first rather than silently relabeling it
+        // with this event's conversation/model.
+        if (outputBuffer && (outputBufferConversationId !== eventConversationId || outputBufferModelKey !== eventModelKey)) {
+          flushOutputBuffer("network-stream");
+        }
+
         if (!outputBuffer) {
-          outputBufferConversationId = CUC.currentConversationId();
-          outputBufferModelKey = detectModelKey();
+          outputBufferConversationId = eventConversationId;
+          outputBufferModelKey = eventModelKey;
         }
         outputBuffer += " " + detail.text;
+
+        if (detail.conversationId) onRealConversationIdDiscovered(detail.conversationId);
+
         clearTimeout(outputFlushTimer);
         outputFlushTimer = setTimeout(() => flushOutputBuffer("network-stream"), 600);
       }
@@ -448,6 +631,38 @@
     "form:has([contenteditable='true'])"
   ];
 
+  // Guard against docking to something enormous — a real composer wrapper is
+  // a small strip near the bottom of the viewport, not most of the page. Used
+  // by the fallback below to reject document.body/main scroll containers.
+  function isSaneAnchorCandidate(el) {
+    if (!el || el === document.body || el === document.documentElement) return false;
+    const rect = el.getBoundingClientRect?.();
+    if (!rect || rect.height <= 0) return false;
+    return rect.height <= window.innerHeight * 0.4;
+  }
+
+  // Last resort when none of the known testid/form selectors match (claude.ai
+  // markup changed underneath us). Find the live ProseMirror composer
+  // directly via [contenteditable="true"] and walk up looking for a stable
+  // wrapper: one that also contains a send-like button, or sits directly
+  // inside a fixed/sticky-positioned container (the usual composer dock).
+  function findComposerAnchorFallback() {
+    const editable = document.querySelector("[contenteditable='true']");
+    if (!editable) return null;
+
+    let node = editable;
+    for (let depth = 0; depth < 6 && node; depth += 1) {
+      const hasSendButton = Boolean(node.querySelector?.("button[aria-label*='send' i], button[type='submit']"));
+      const parentStyle = node.parentElement ? getComputedStyle(node.parentElement) : null;
+      const parentIsDockedContainer = parentStyle && (parentStyle.position === "fixed" || parentStyle.position === "sticky");
+      if ((hasSendButton || parentIsDockedContainer) && isSaneAnchorCandidate(node)) {
+        return node;
+      }
+      node = node.parentElement;
+    }
+    return isSaneAnchorCandidate(editable) ? editable : null;
+  }
+
   function findComposerAnchor() {
     for (const selector of COMPOSER_ANCHOR_SELECTORS) {
       try {
@@ -457,7 +672,7 @@
         // Ignore unsupported selector variants and try the next one.
       }
     }
-    return null;
+    return findComposerAnchorFallback();
   }
 
   function placeWidget() {
@@ -541,6 +756,10 @@
       note.textContent = "Sign in to claude.ai to see native limits.";
       value.textContent = "—";
       bar.style.width = "0%";
+    } else if (nativeUsageError === "rate-limited") {
+      note.textContent = "Claude is rate-limiting usage lookups; retrying with backoff.";
+      value.textContent = "—";
+      bar.style.width = "0%";
     } else if (nativeUsageError) {
       note.textContent = "Native limits unavailable right now.";
       value.textContent = "—";
@@ -553,24 +772,26 @@
       const spendLimit = nativeUsage.monthlySpendLimit;
       if (!spendLimit) {
         note.textContent = nativeUsage.monthlySpendLimitRejected
-          ? `Claude returned ${CUC.formatUsd(nativeUsage.monthlySpendLimitRejected.foundLimitUsd)}, expected ${CUC.formatUsd(nativeUsage.monthlySpendLimitRejected.expectedLimitUsd)}.`
+          ? `Claude returned ${CUC.formatUsd(nativeUsage.monthlySpendLimitRejected.foundLimitUsd)}, expected ${CUC.formatUsd(nativeUsage.monthlySpendLimitRejected.expectedLimitUsd)} — looks like a units mismatch, not a real cap change.`
           : "Employee monthly spend limit unavailable right now.";
         value.textContent = "—";
         bar.style.width = "0%";
         return;
       }
       const pct = CUC.clamp(spendLimit.utilizationPct, 0, 100);
-      const resetText = CUCNative?.formatResetCountdown
-        ? CUCNative.formatResetCountdown(spendLimit.resetsAt)
-        : null;
-      value.textContent = resetText
-        ? `${CUC.formatUsd(spendLimit.usedUsd)} of ${CUC.formatUsd(spendLimit.limitUsd)} · resets in ${resetText}`
+      const resetLabel = CUCNative?.formatResetLabel ? CUCNative.formatResetLabel(spendLimit) : null;
+      value.textContent = resetLabel
+        ? `${CUC.formatUsd(spendLimit.usedUsd)} of ${CUC.formatUsd(spendLimit.limitUsd)} · ${resetLabel}`
         : `${CUC.formatUsd(spendLimit.usedUsd)} of ${CUC.formatUsd(spendLimit.limitUsd)}`;
       bar.style.width = `${pct}%`;
       bar.className = `cuc-progress-bar ${nativeUsageBarLevel(pct)}`;
-      note.textContent = spendLimit.outOfCredits
-        ? "Monthly usage-credit limit reached"
-        : "Monthly usage-credit spend from Claude.ai";
+      if (spendLimit.outOfCredits) {
+        note.textContent = "Monthly usage-credit limit reached";
+      } else if (spendLimit.capAdvisory) {
+        note.textContent = `Cap differs from expected ${CUC.formatUsd(spendLimit.capAdvisory.expectedLimitUsd)} — update Settings if this changed.`;
+      } else {
+        note.textContent = "Monthly usage-credit spend from Claude.ai";
+      }
     }
   }
 
@@ -589,6 +810,10 @@
       // to the captured conversation id, so it lands on the right chat rather
       // than being silently discarded.
       flushOutputBuffer("navigation");
+      // The URL settling on /chat/<id> (e.g. right after sending the first
+      // message in a brand-new chat) is another way the real conversation id
+      // becomes known; migrate any stranded "home-or-new-chat" events for it.
+      onRealConversationIdDiscovered(CUC.currentConversationId());
       placeWidget();
       renderWidget();
     };
@@ -633,13 +858,27 @@
   }
 
   async function refreshNativeUsage() {
-    if (!settings.showNativeLimits || !CUCNative) return;
+    if (!settings.showNativeLimits || !CUCNative) {
+      scheduleNextNativeUsagePoll();
+      return;
+    }
     try {
       nativeUsage = await CUCNative.fetchNativeUsage();
       nativeUsageError = null;
+      // A successful fetch clears any backoff accumulated from prior 429s.
+      nativeUsageBackoffMs = null;
     } catch (error) {
       nativeUsage = null;
       nativeUsageError = String(error?.message || error);
+      if (nativeUsageError === "rate-limited") {
+        // Exponential backoff starting at 2x the base interval, capped at 10
+        // minutes, reset on the next successful fetch.
+        nativeUsageBackoffMs = nativeUsageBackoffMs
+          ? Math.min(nativeUsageBackoffMs * 2, NATIVE_USAGE_MAX_BACKOFF_MS)
+          : NATIVE_USAGE_REFRESH_MS * 2;
+      } else {
+        nativeUsageBackoffMs = null;
+      }
     }
     try {
       await chrome.storage.local.set({
@@ -650,18 +889,28 @@
       // best-effort; the in-page widget still has the in-memory value
     }
     renderWidget();
+    scheduleNextNativeUsagePoll();
+  }
+
+  function scheduleNextNativeUsagePoll() {
+    clearTimeout(nativeUsageTimer);
+    const delay = nativeUsageBackoffMs ? jitterMs(nativeUsageBackoffMs) : jitteredNativeUsageInterval();
+    nativeUsageTimer = setTimeout(() => {
+      // Don't poll the usage endpoint while the tab is backgrounded; the
+      // visibilitychange handler below refreshes immediately on return. If
+      // still hidden when this timer fires, just reschedule rather than
+      // spending a poll attempt.
+      if (!document.hidden) refreshNativeUsage();
+      else scheduleNextNativeUsagePoll();
+    }, delay);
   }
 
   function observeNativeUsageRefresh() {
     refreshNativeUsage();
-    clearInterval(nativeUsageTimer);
-    // Don't poll the usage endpoint while the tab is backgrounded; the
-    // visibilitychange handler below refreshes immediately on return.
-    nativeUsageTimer = setInterval(() => {
-      if (!document.hidden) refreshNativeUsage();
-    }, NATIVE_USAGE_REFRESH_MS);
     document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "visible") refreshNativeUsage();
+      // Skip the immediate refresh while backing off from a 429 — a tab
+      // switch shouldn't undo the backoff we just applied.
+      if (document.visibilityState === "visible" && !nativeUsageBackoffMs) refreshNativeUsage();
     });
   }
 

@@ -104,6 +104,27 @@ The extension uses a real tokenizer (`src/o200k_base.js`, from the `gpt-tokenize
 
 ## Changelog
 
+### 0.4.4
+
+**Stream parsing accuracy (multi-agent audit fixes):**
+- SSE frames split across network chunks are now buffered and reassembled instead of silently dropped, and stream events are parsed by type: only true deltas (`content_block_delta`, legacy `completion`) are counted, while full-message snapshots (`message_start`, `content_block_start`) are ignored. Unknown event shapes still fall back to conservative extraction.
+- Legitimately repeated text in delta streams is no longer removed by overlap dedup.
+
+**Attribution accuracy:**
+- Output is attributed to the conversation and model captured when the generation request starts (from the request URL/body), so navigating mid-stream no longer books a response to the wrong chat.
+- Detected models are tracked per conversation instead of one sticky global, so a Sonnet chat no longer inherits Opus pricing from another tab's chat.
+- Prompts sent in a brand-new chat (before a conversation id exists) are migrated into the real conversation bucket once it is known.
+
+**Enterprise limit:**
+- A cap that differs from the expected employee limit is now displayed with an advisory note instead of being hidden, unless it looks like a cents/dollars unit mismatch (~100x off), which is still rejected with a distinct message.
+- 429 responses trigger exponential poll backoff (up to 10 minutes) and poll intervals are jittered so multiple tabs do not fire in lockstep.
+- The bar shows an approximate monthly reset date ("resets ~Aug 1") when Claude's payload carries no reset timestamp.
+
+**UI:**
+- Dark mode support for the widget, popup, and settings page (follows claude.ai's dark class and the system color scheme).
+- Composer docking gains a fallback that anchors near the ProseMirror editor when claude.ai's test ids change, still never floating.
+- Settings validates the organization ID as a UUID (non-blocking warning).
+
 ### 0.4.3
 
 **Requested corrections:**

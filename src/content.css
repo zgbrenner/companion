@@ -1,8 +1,18 @@
 #cuc-widget {
-  z-index: 2147483647;
   width: 300px;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, ui-sans-serif, system-ui, sans-serif;
   color: #1c2430;
+}
+
+/* Dark mode support for claude.ai's dark theme */
+html.dark #cuc-widget {
+  color: #e8e6e3;
+}
+
+@media (prefers-color-scheme: dark) {
+  #cuc-widget {
+    color: #e8e6e3;
+  }
 }
 
 /* Docked: sits in normal page flow, right under the composer. */
@@ -17,6 +27,20 @@
   border-radius: 12px;
   box-shadow: 0 4px 16px rgba(20, 30, 45, 0.08);
   overflow: hidden;
+}
+
+html.dark .cuc-card {
+  background: #2b2a27;
+  border-color: #4a4945;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+@media (prefers-color-scheme: dark) {
+  .cuc-card {
+    background: #2b2a27;
+    border-color: #4a4945;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  }
 }
 
 .cuc-hidden {
@@ -34,11 +58,33 @@
   user-select: none;
 }
 
+html.dark .cuc-header {
+  background: #323036;
+  border-bottom-color: #4a4945;
+}
+
+@media (prefers-color-scheme: dark) {
+  .cuc-header {
+    background: #323036;
+    border-bottom-color: #4a4945;
+  }
+}
+
 .cuc-title {
   font-weight: 650;
   font-size: 12px;
   letter-spacing: 0.01em;
   color: #2b3648;
+}
+
+html.dark .cuc-title {
+  color: #e8e6e3;
+}
+
+@media (prefers-color-scheme: dark) {
+  .cuc-title {
+    color: #e8e6e3;
+  }
 }
 
 .cuc-controls {
@@ -58,9 +104,31 @@
   color: #5b6778;
 }
 
+html.dark .cuc-button {
+  color: #a09c98;
+}
+
+@media (prefers-color-scheme: dark) {
+  .cuc-button {
+    color: #a09c98;
+  }
+}
+
 .cuc-button:hover {
   background: rgba(43, 54, 72, 0.08);
   color: #1c2430;
+}
+
+html.dark .cuc-button:hover {
+  background: rgba(200, 196, 190, 0.1);
+  color: #e8e6e3;
+}
+
+@media (prefers-color-scheme: dark) {
+  .cuc-button:hover {
+    background: rgba(200, 196, 190, 0.1);
+    color: #e8e6e3;
+  }
 }
 
 .cuc-body {
@@ -81,9 +149,29 @@
   color: #1c2430;
 }
 
+html.dark .cuc-main-value {
+  color: #e8e6e3;
+}
+
+@media (prefers-color-scheme: dark) {
+  .cuc-main-value {
+    color: #e8e6e3;
+  }
+}
+
 .cuc-main-label {
   font-size: 12px;
   color: #6b7684;
+}
+
+html.dark .cuc-main-label {
+  color: #a09c98;
+}
+
+@media (prefers-color-scheme: dark) {
+  .cuc-main-label {
+    color: #a09c98;
+  }
 }
 
 .cuc-progress {
@@ -93,6 +181,16 @@
   border-radius: 999px;
   overflow: hidden;
   margin-top: 8px;
+}
+
+html.dark .cuc-progress {
+  background: #4a4945;
+}
+
+@media (prefers-color-scheme: dark) {
+  .cuc-progress {
+    background: #4a4945;
+  }
 }
 
 .cuc-meter {
@@ -112,6 +210,16 @@
   color: #4a5568;
 }
 
+html.dark .cuc-meter-label {
+  color: #a09c98;
+}
+
+@media (prefers-color-scheme: dark) {
+  .cuc-meter-label {
+    color: #a09c98;
+  }
+}
+
 .cuc-meter-label span:first-child {
   flex-shrink: 0;
   font-weight: 600;
@@ -125,6 +233,16 @@
   color: #1c2430;
   font-weight: 650;
   text-align: right;
+}
+
+html.dark .cuc-meter-label span:last-child {
+  color: #e8e6e3;
+}
+
+@media (prefers-color-scheme: dark) {
+  .cuc-meter-label span:last-child {
+    color: #e8e6e3;
+  }
 }
 
 .cuc-progress-bar {
@@ -154,10 +272,30 @@
   margin-top: 6px;
 }
 
+html.dark .cuc-budget-line {
+  color: #a09c98;
+}
+
+@media (prefers-color-scheme: dark) {
+  .cuc-budget-line {
+    color: #a09c98;
+  }
+}
+
 .cuc-native {
   margin-top: 12px;
   padding-top: 10px;
   border-top: 1px solid #eaeef3;
+}
+
+html.dark .cuc-native {
+  border-top-color: #4a4945;
+}
+
+@media (prefers-color-scheme: dark) {
+  .cuc-native {
+    border-top-color: #4a4945;
+  }
 }
 
 .cuc-native-row {
@@ -176,10 +314,30 @@
   margin-bottom: 3px;
 }
 
+html.dark .cuc-native-label {
+  color: #a09c98;
+}
+
+@media (prefers-color-scheme: dark) {
+  .cuc-native-label {
+    color: #a09c98;
+  }
+}
+
 .cuc-native-note {
   font-size: 11px;
   color: #6b7684;
   margin-top: 6px;
+}
+
+html.dark .cuc-native-note {
+  color: #a09c98;
+}
+
+@media (prefers-color-scheme: dark) {
+  .cuc-native-note {
+    color: #a09c98;
+  }
 }
 
 .cuc-footer {
@@ -192,6 +350,18 @@
   border-top: 1px solid #eaeef3;
   font-size: 10px;
   color: #8b95a3;
+}
+
+html.dark .cuc-footer {
+  border-top-color: #4a4945;
+  color: #8a8784;
+}
+
+@media (prefers-color-scheme: dark) {
+  .cuc-footer {
+    border-top-color: #4a4945;
+    color: #8a8784;
+  }
 }
 
 .cuc-footer span:first-child {
