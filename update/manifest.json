@@ -1,5 +1,5 @@
 {
-  "version": "0.8.0",
+  "version": "0.8.1",
   "files": [
     {
       "path": "icons/icon128.png",
@@ -19,7 +19,7 @@
     },
     {
       "path": "manifest.json",
-      "sha256": "f6a239497d3a6526e5b626ccf97ed1ef3c0227e0c3d4a47b7b6809c3eb2a1408"
+      "sha256": "fe9a06947a6d69d9ad5a214e83e76117f27fd51b604ee9a55b08a83b0e221eee"
     },
     {
       "path": "src/background.js",
@@ -31,7 +31,7 @@
     },
     {
       "path": "src/content.js",
-      "sha256": "58a3e20ff26e4e543dd76ae0c5e71fc0856bb0f2736c1663daab44469b24875c"
+      "sha256": "af0f8c15be9e95937d7dda61494ecae412210dfc8ef81a4cbaf6f0a8edf4d92c"
     },
     {
       "path": "src/injected.js",
@@ -39,7 +39,7 @@
     },
     {
       "path": "src/native-usage.js",
-      "sha256": "f87cf39158ab108cf356257182d08b40ea0c91d280db27e053be4f4f524ddaf4"
+      "sha256": "54546d8d144f5eab7a6f8835c20e6bd4ed5233805e67d9b7e87335826704a154"
     },
     {
       "path": "src/options.css",
@@ -47,11 +47,11 @@
     },
     {
       "path": "src/options.html",
-      "sha256": "cb41f450a1fe0bf7a04bf4668ae9fe679b59e66325de536bf330ad5392980126"
+      "sha256": "383e9cb2440d83c4642fa346a5ec08d4e564bb89c8e67766e1c13fd13c312b0b"
     },
     {
       "path": "src/options.js",
-      "sha256": "f56f6d11ec60741ff3a25c5558d3b57e53a5b59e9ac3987caab2ab9b09544091"
+      "sha256": "f86c5c6d6bb182236834126861d1c5f975eacf0745d285d477485fa4d9d18e0c"
     },
     {
       "path": "src/popup.css",
@@ -63,11 +63,11 @@
     },
     {
       "path": "src/popup.js",
-      "sha256": "adfaea5f45f9ca1daa1bbfe4cd82192315c0930739aa495184c273d644fd62e4"
+      "sha256": "baa2491b7fe8aa0abd979ac68b620a2e6bb44ddd7e3cd1cffaae9c33dbbb8b41"
     },
     {
       "path": "src/shared.js",
-      "sha256": "d70d6b59699bc82f29cf5769ac66354b483a67e61773fa32597d4660e256ef71"
+      "sha256": "ba353dfcaabd7784b410a476574f7d4429ebd612722d46b5aec7e303a5b088a4"
     },
     {
       "path": "src/updater.js",

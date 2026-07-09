@@ -663,9 +663,7 @@
     const spendLimit = nativeUsage.monthlySpendLimit;
     if (!spendLimit) {
       if (enterpriseRow) enterpriseRow.hidden = true;
-      setNote(nativeUsage.monthlySpendLimitRejected
-        ? `Claude returned ${CUC.formatUsd(nativeUsage.monthlySpendLimitRejected.foundLimitUsd)}, expected ${CUC.formatUsd(nativeUsage.monthlySpendLimitRejected.expectedLimitUsd)} — looks like a units mismatch, not a real cap change.`
-        : mostUrgentNativeWarning(nativeUsage));
+      setNote(mostUrgentNativeWarning(nativeUsage));
       return;
     }
     if (enterpriseRow) enterpriseRow.hidden = false;

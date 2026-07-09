@@ -194,9 +194,7 @@ function renderNative(nativeUsage, nativeUsageError, settings) {
   const spendLimit = nativeUsage?.monthlySpendLimit;
   if (!spendLimit) {
     if (enterpriseRow) enterpriseRow.hidden = true;
-    note.textContent = nativeUsage?.monthlySpendLimitRejected
-      ? `Claude returned ${CUC.formatUsd(nativeUsage.monthlySpendLimitRejected.foundLimitUsd)}, expected ${CUC.formatUsd(nativeUsage.monthlySpendLimitRejected.expectedLimitUsd)} — looks like a units mismatch, not a real cap change.`
-      : "Live limits from Claude.ai — not an estimate.";
+    note.textContent = "Live limits from Claude.ai — not an estimate.";
     return;
   }
   if (enterpriseRow) enterpriseRow.hidden = false;

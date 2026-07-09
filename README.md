@@ -22,13 +22,13 @@ Alongside the current-chat dollar/token estimate, the widget and popup show Clau
 
 How it works:
 - Discovers your organization ID from the `lastActiveOrg` cookie on claude.ai (the org you're actively using), falling back to `GET /api/organizations` (cached 24h in `chrome.storage.local`).
-- If `organizationId` is configured in Settings, uses that organization directly instead of auto-discovery. If Claude answers 403 for a configured/cached org (wrong org for this account), the extension re-discovers automatically instead of telling you to sign in.
+- Caches the automatically discovered organization ID in `chrome.storage.local` for 24 hours. The active `lastActiveOrg` cookie is checked first, so switching organizations updates the cache automatically.
 - Polls `GET /api/organizations/{orgId}/usage` and `GET /api/organizations/{orgId}/overage_spend_limit` every 60 seconds and on tab focus; open tabs share one poll via storage instead of each fetching independently, and a `message_limit` frame in Claude's own response stream triggers an immediate (throttled) refresh.
 - Your session cookie rides along automatically because the request originates from a content script running on a claude.ai page — the extension never reads, stores, or transmits the cookie itself.
 
 Caveats, stated plainly:
 - This endpoint is **undocumented** and could change shape or disappear without notice. If it breaks, the native limits section shows an error and the dollar/token estimate above keeps working normally — the two are independent.
-- On team/enterprise accounts with multiple organizations, org auto-detection picks the first one returned, which may not be the one you're actively using. Use "Clear cached organization" in Settings to force re-detection.
+- If the active-organization cookie is unavailable and the account belongs to multiple organizations, the `/api/organizations` fallback uses the first returned organization. “Clear detected account cache” forces a fresh lookup.
 - This is read-only. The extension makes no request that could modify your account, conversations, or organization settings.
 
 ## Target users
@@ -125,6 +125,13 @@ The defaults use public Anthropic API-equivalent model pricing in USD per millio
 - A replayable “what do these numbers mean?” first-run walkthrough.
 
 ## Changelog
+
+### 0.8.1
+
+- Removed the hardcoded Vistage organization UUID and `$100` expected employee cap.
+- The active organization is discovered from Claude.ai's `lastActiveOrg` cookie, with `/api/organizations` as the fallback, and cached locally for 24 hours.
+- The monthly cap is accepted only from Claude's live `/usage` or `/overage_spend_limit` response and cached locally for display; there is no configured cap comparison.
+- Settings now shows the detected organization and cached Claude-reported cap instead of editable organization/cap fields.
 
 ### 0.8.0
 
