@@ -77,9 +77,34 @@
     }
   }
 
-  async function discoverOrgId() {
-    const configured = await configuredOrgId();
-    if (configured) return configured;
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+  // claude.ai stores the organization the user is actively working in inside
+  // the `lastActiveOrg` cookie (readable here because this runs in a content
+  // script on a claude.ai page). This is the most reliable "which org am I
+  // actually using" signal available browser-side — the /api/organizations
+  // list order is not — and the same approach is used by other actively
+  // maintained open-source claude.ai extensions. The cookie value is used
+  // only to pick which usage endpoint to read; it is never stored or sent
+  // anywhere.
+  function orgIdFromCookie() {
+    try {
+      const match = document.cookie.match(/(?:^|;\s*)lastActiveOrg=([^;]+)/);
+      const value = match ? decodeURIComponent(match[1]).trim() : "";
+      return UUID_RE.test(value) ? value : null;
+    } catch {
+      return null;
+    }
+  }
+
+  async function discoverOrgId({ ignoreConfigured = false } = {}) {
+    if (!ignoreConfigured) {
+      const configured = await configuredOrgId();
+      if (configured) return configured;
+    }
+
+    const fromCookie = orgIdFromCookie();
+    if (fromCookie) return fromCookie;
 
     const cached = await getCachedOrgId();
     if (cached) return cached;
@@ -89,11 +114,14 @@
       credentials: "include"
     });
     // Mirror fetchJson's status mapping so a 429/401/403 here surfaces the
-    // same "rate-limited"/"not-logged-in" errors content.js already knows how
-    // to handle (backoff, sign-in prompt), instead of a generic message that
-    // content.js treats as an opaque "unavailable" failure.
-    if (response.status === 401 || response.status === 403) {
+    // same errors content.js already knows how to handle (backoff, sign-in
+    // prompt, wrong-org note), instead of a generic message that content.js
+    // treats as an opaque "unavailable" failure.
+    if (response.status === 401) {
       throw new Error("not-logged-in");
+    }
+    if (response.status === 403) {
+      throw new Error("forbidden");
     }
     if (response.status === 429) {
       throw new Error("rate-limited");
@@ -103,9 +131,9 @@
     }
     const orgs = await response.json();
     // If there are multiple orgs (team/enterprise accounts), we take the
-    // first one. That can be the wrong org for some accounts — there is no
-    // reliable browser-side signal for "currently active org" beyond this,
-    // so this is a best-effort default rather than a guarantee.
+    // first one. That can be the wrong org for some accounts — the
+    // lastActiveOrg cookie above is checked first precisely because this
+    // list order is a best-effort default rather than a guarantee.
     const orgId = Array.isArray(orgs) ? orgs[0]?.uuid : orgs?.[0]?.uuid;
     if (!orgId) throw new Error("no organization id found in response");
 
@@ -114,8 +142,23 @@
   }
 
   async function fetchNativeUsage() {
-    const orgId = await discoverOrgId();
-    const usagePayload = await fetchJson(`https://claude.ai/api/organizations/${orgId}/usage`);
+    let orgId = await discoverOrgId();
+    let usagePayload;
+    try {
+      usagePayload = await fetchJson(`https://claude.ai/api/organizations/${orgId}/usage`);
+    } catch (error) {
+      // A 403 usually means the configured/cached org id doesn't match the
+      // signed-in account (e.g. a contractor outside the Vistage org, or a
+      // stale cache after switching accounts) — NOT that the user is signed
+      // out. Retry once with live discovery (cookie/org list), bypassing the
+      // configured value, before giving up.
+      if (String(error?.message) !== "forbidden") throw error;
+      await clearCachedOrgId();
+      const rediscovered = await discoverOrgId({ ignoreConfigured: true });
+      if (!rediscovered || rediscovered === orgId) throw error;
+      usagePayload = await fetchJson(`https://claude.ai/api/organizations/${rediscovered}/usage`);
+      orgId = rediscovered;
+    }
     const normalized = normalizeUsagePayload(usagePayload);
     const expectedLimit = await configuredEnterpriseLimitUsd();
 
@@ -151,8 +194,14 @@
       method: "GET",
       credentials: "include"
     });
-    if (response.status === 401 || response.status === 403) {
+    if (response.status === 401) {
       throw new Error("not-logged-in");
+    }
+    // 403 is "signed in, but this org isn't yours" — telling the user to
+    // sign in (as the old combined mapping did) sends them in a re-login
+    // loop when the real fix is the Organization ID setting.
+    if (response.status === 403) {
+      throw new Error("forbidden");
     }
     if (response.status === 429) {
       throw new Error("rate-limited");
@@ -217,6 +266,10 @@
       return applyCapAdvisory(normalized, expectedLimitUsd);
     } catch (error) {
       const message = String(error?.message || error);
+      // "forbidden" is deliberately NOT rethrown here: this endpoint can be
+      // admin-restricted, and by the time we call it the main /usage fetch
+      // has already succeeded — a member-level 403 on this optional fallback
+      // must not discard the session/weekly data we already have.
       if (message === "not-logged-in" || message === "rate-limited") throw error;
       return { spendLimit: null, rejected: null };
     }

@@ -12,19 +12,19 @@ The extension can display usage as:
 
 ## What it tracks
 
-- Estimated input tokens from user prompts.
+- Estimated input tokens from user prompts (including retries and edit-and-resend, observed from generation requests).
 - Estimated output tokens from Claude responses.
-- Estimated usage in the current chat.
-- **Enterprise usage limits, read directly from Claude.ai's own usage endpoint** — not an estimate. See "Native limits" below.
+- Estimated usage in the current chat, plus today's and this month's estimated spend (popup).
+- **Claude's real limits, read directly from Claude.ai's own usage endpoint** — not an estimate: the 5-hour session limit, the weekly limit, the weekly Opus limit (when applicable), and the monthly usage-credit allowance, each with a reset countdown. See "Native limits" below.
 
 ## Native limits (ground truth, not an estimate)
 
-Alongside the current-chat dollar/token estimate, the widget shows Claude's monthly usage-credit spend limit, pulled from internal Claude.ai endpoints the same way Claude's own settings page does. This is exact, not approximated — it's the same data Anthropic shows you, just without leaving your chat.
+Alongside the current-chat dollar/token estimate, the widget and popup show Claude's own rolling limits — the 5-hour session limit that actually locks people out mid-workday, the weekly limit, the weekly Opus limit, and the monthly usage-credit spend limit — pulled from internal Claude.ai endpoints the same way Claude's own settings page does. This is exact, not approximated — it's the same data Anthropic shows you, just without leaving your chat. A plain-English warning appears at 80%+ utilization, and the toolbar icon shows a badge so you get warned even with the widget hidden.
 
 How it works:
-- Discovers your organization ID via `GET /api/organizations` (cached 24h in `chrome.storage.local`).
-- If `organizationId` is configured in Settings, uses that organization directly instead of auto-discovery.
-- Polls `GET /api/organizations/{orgId}/usage` and `GET /api/organizations/{orgId}/overage_spend_limit` every 60 seconds and on tab focus.
+- Discovers your organization ID from the `lastActiveOrg` cookie on claude.ai (the org you're actively using), falling back to `GET /api/organizations` (cached 24h in `chrome.storage.local`).
+- If `organizationId` is configured in Settings, uses that organization directly instead of auto-discovery. If Claude answers 403 for a configured/cached org (wrong org for this account), the extension re-discovers automatically instead of telling you to sign in.
+- Polls `GET /api/organizations/{orgId}/usage` and `GET /api/organizations/{orgId}/overage_spend_limit` every 60 seconds and on tab focus; open tabs share one poll via storage instead of each fetching independently, and a `message_limit` frame in Claude's own response stream triggers an immediate (throttled) refresh.
 - Your session cookie rides along automatically because the request originates from a content script running on a claude.ai page — the extension never reads, stores, or transmits the cookie itself.
 
 Caveats, stated plainly:
@@ -96,13 +96,56 @@ The extension uses a real tokenizer (`src/o200k_base.js`, from the `gpt-tokenize
 
 ## Recommended next improvements
 
-- Add import/export of local usage history as CSV.
 - Add organization policy presets, for example: “warn after $3/day” or “default to Sonnet for ordinary work.”
 - Add a small on-device classifier to label sessions as HR, marketing, legal, research, coding, or general admin without storing text.
 - Add a “why did this cost so much?” drilldown that explains context, attachments, output length, and model choice.
 - Read the actual conversation message tree (like Claude's own API returns) instead of scraping composer text, for more reliable per-conversation token totals.
+- Render the widget in a Shadow DOM so claude.ai's global styles can never bleed into it.
+- Simple pace projection (“at this rate you'll hit the session limit around 3 PM”), from consecutive utilization samples.
 
 ## Changelog
+
+### 0.5.0
+
+The headline: the extension already fetched Claude's real 5-hour/weekly limit data on every poll but never displayed it — the numbers that actually lock someone out mid-workday. This release shows them. Informed by an audit of this codebase plus a review of open-source Claude usage trackers (she-llac/claude-counter, sshnox/Claude-Usage-Tracker, lugia19/Claude-Usage-Extension, ryoppippi/ccusage).
+
+**Claude's real limits, now visible (widget + popup):**
+- Session limit (5-hour), Weekly limit, and Weekly Opus limit bars with live reset countdowns (“resets in 1h 20m”), color-coded at 70%/90%. The Opus row hides itself at 0% to keep the widget calm for non-Opus users.
+- Plain-English warning at ≥80% on any limit (“Session limit almost used up — it resets in 42m.”).
+- Toolbar icon badge (amber ≥80%, red ≥90%) so a warning reaches people even when the widget is hidden.
+- “Enterprise limit” renamed to “Monthly allowance.”
+
+**Daily/monthly spend finally visible:**
+- Popup shows “Today (estimate)” and “This month (estimate)” from the daily buckets that were always tracked but never rendered.
+- Settings gains “Download CSV” — one row per day (counts and dollar estimates only, never chat text).
+
+**Accuracy:**
+- Retries, edit-and-resend, and other non-composer sends are now counted as input: the network watcher reports the generation request's prompt length (characters only — the text never crosses the page event bus).
+- Request bodies are captured before fetch consumes them, so model detection works for `Request`-object calls too.
+- The network watcher installs immediately at `document_start` instead of after settings load, so the earliest generation on a fresh page isn't missed.
+- Enter during IME composition (Japanese/Chinese/Korean input) no longer records phantom sends.
+- The footer model label resolves intro→standard pricing the same way the math does, so it can't claim intro pricing after the cutoff.
+- Manual “Reset usage estimates” now also clears per-chat estimates (visible effect); the automatic 5-hour rollover still preserves them. Resets carry the idempotency ring buffers through, closing a double-count window.
+- A future storage schema bump now salvages days/months/conversations history instead of silently wiping it.
+
+**Wrong-org handling:**
+- Org auto-discovery prefers claude.ai's `lastActiveOrg` cookie (the org you're actually using) before falling back to the organizations list.
+- 403 is no longer reported as “sign in to claude.ai”: a wrong configured/cached org triggers automatic re-discovery, and if that fails the message says to check the Organization ID setting. A member-level 403 on the optional `overage_spend_limit` endpoint no longer discards the session/weekly data already fetched.
+
+**Efficiency:**
+- Multiple open claude.ai tabs now share one usage poll through storage (fresh-within-45s reuse) instead of each polling independently — less traffic, less org-wide 429 exposure.
+- The 2-second widget re-dock poll is replaced with a throttled MutationObserver: zero work on a quiet page.
+- A `message_limit` frame observed in Claude's own response stream triggers an immediate throttled refresh, so the bars update right after each send.
+
+**Security/robustness:**
+- Page-world network events now carry a per-load handshake token; the content script drops events without it, so page scripts can't forge usage events.
+- Widget insertion into React-managed DOM is guarded against mid-reconciliation failures.
+
+**Accessibility & polish:**
+- Progress bars expose `role="progressbar"` with live values; icon buttons have real labels; key values announce via `aria-live`.
+- The display-mode button shows the current mode ($ / # / $#) instead of always “$”.
+- The popup no longer mislabels the shared new-chat bucket as “this chat” when no claude.ai tab is available.
+- “Check for updates” shows a link instead of auto-opening GitHub; the org-ID warning is dark-mode aware; removed dead settings (`monthlyBudgetUsd`, `sessionBudgetUsd`, `planName`, `priceBasisLabel`) and ~100 lines of orphaned CSS.
 
 ### 0.4.4
 

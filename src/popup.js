@@ -32,8 +32,26 @@ async function loadState() {
 
 const MAX_CONTEXT_WINDOW_TOKENS = 200_000;
 
-function render(usage, settings, conversationId = null) {
-  const conversation = CUC.getConversationUsage(usage, conversationId || undefined);
+// The last conversation id a claude.ai tab told us about. The popup page's
+// own URL is chrome-extension://…, so parsing it (the old behavior) labeled
+// the shared "home-or-new-chat" bucket as "this chat" — wrong and confusing.
+let knownConversationId = null;
+
+function render(usage, settings) {
+  renderSummary(usage);
+
+  const chatValueEl = document.getElementById("chat-value");
+  const chatDetailEl = document.getElementById("chat-detail");
+  const chatBarEl = document.getElementById("chat-bar");
+
+  if (!knownConversationId) {
+    chatValueEl.textContent = "—";
+    chatDetailEl.textContent = "Open a claude.ai tab to see this chat.";
+    setBar(chatBarEl, 0);
+    return;
+  }
+
+  const conversation = CUC.getConversationUsage(usage, knownConversationId);
   const chatTokens = (conversation.inputTokens || 0) + (conversation.outputTokens || 0);
   const chatPct = CUC.clamp((chatTokens / MAX_CONTEXT_WINDOW_TOKENS) * 100, 0, 100);
   const spend = conversation.estimatedUsd || 0;
@@ -50,16 +68,42 @@ function render(usage, settings, conversationId = null) {
     chatDetail = "Ballpark estimate for this chat";
   }
 
-  document.getElementById("chat-value").textContent = chatValue;
-  document.getElementById("chat-detail").textContent = chatDetail;
-  document.getElementById("chat-bar").style.width = `${chatPct}%`;
-  document.getElementById("chat-bar").className = nativeBarLevel(chatPct);
+  chatValueEl.textContent = chatValue;
+  chatDetailEl.textContent = chatDetail;
+  setBar(chatBarEl, chatPct);
+}
+
+function renderSummary(usage) {
+  const today = CUC.getTodayUsage(usage);
+  const month = CUC.getMonthUsage(usage);
+  document.getElementById("today-value").textContent = CUC.formatUsd(today.estimatedUsd || 0);
+  document.getElementById("month-value").textContent = CUC.formatUsd(month.estimatedUsd || 0);
 }
 
 function nativeBarLevel(pct) {
   if (pct >= 90) return "high";
   if (pct >= 70) return "medium";
   return "low";
+}
+
+function setBar(bar, pct) {
+  if (!bar) return;
+  const clamped = CUC.clamp(pct, 0, 100);
+  bar.style.width = `${clamped}%`;
+  bar.className = nativeBarLevel(clamped);
+  bar.parentElement?.setAttribute?.("aria-valuenow", String(Math.round(clamped)));
+}
+
+const NATIVE_BUCKETS = [
+  { id: "five-hour", prop: "fiveHour" },
+  { id: "seven-day", prop: "sevenDay" },
+  { id: "opus", prop: "sevenDayOpus" }
+];
+
+function bucketValueText(bucket) {
+  const pct = Math.round(CUC.clamp(bucket.utilizationPct, 0, 100));
+  const countdown = CUCNative?.formatResetCountdown ? CUCNative.formatResetCountdown(bucket.resetsAt) : null;
+  return countdown ? `${pct}% · resets in ${countdown}` : `${pct}%`;
 }
 
 function renderNative(nativeUsage, nativeUsageError, settings) {
@@ -71,54 +115,76 @@ function renderNative(nativeUsage, nativeUsageError, settings) {
   section.style.display = "block";
 
   const note = document.getElementById("native-note");
-  const value = document.getElementById("enterprise-value");
-  const bar = document.getElementById("enterprise-bar");
+  const hideAllRows = () => {
+    for (const { id } of NATIVE_BUCKETS) {
+      const row = document.getElementById(`row-${id}`);
+      if (row) row.hidden = true;
+    }
+    const enterpriseRow = document.getElementById("row-enterprise");
+    if (enterpriseRow) enterpriseRow.hidden = true;
+  };
+
   if (nativeUsageError === "not-logged-in") {
-    note.textContent = "Sign in to claude.ai to see native limits.";
-    value.textContent = "—";
-    bar.style.width = "0%";
+    hideAllRows();
+    note.textContent = "Sign in to claude.ai to see your real limits.";
     return;
-  } else if (nativeUsageError === "rate-limited") {
+  }
+  if (nativeUsageError === "forbidden") {
+    hideAllRows();
+    note.textContent = "The configured Organization ID doesn't match this account — check Settings, or clear it to auto-detect.";
+    return;
+  }
+  if (nativeUsageError === "rate-limited") {
+    hideAllRows();
     note.textContent = "Claude is rate-limiting usage lookups; retrying with backoff.";
-    value.textContent = "—";
-    bar.style.width = "0%";
     return;
-  } else if (nativeUsageError) {
-    note.textContent = "Native limits unavailable right now.";
-    value.textContent = "—";
-    bar.style.width = "0%";
+  }
+  if (nativeUsageError) {
+    hideAllRows();
+    note.textContent = "Claude's limit data is unavailable right now.";
     return;
-  } else if (!nativeUsage) {
-    note.textContent = "Open a claude.ai tab to load native limits.";
-    value.textContent = "—";
-    bar.style.width = "0%";
+  }
+  if (!nativeUsage) {
+    hideAllRows();
+    note.textContent = "Open a claude.ai tab to load your real limits.";
     return;
-  } else {
-    note.textContent = "";
   }
 
+  for (const { id, prop } of NATIVE_BUCKETS) {
+    const row = document.getElementById(`row-${id}`);
+    if (!row) continue;
+    const bucket = nativeUsage[prop];
+    if (!bucket || typeof bucket.utilizationPct !== "number" || (id === "opus" && bucket.utilizationPct <= 0)) {
+      row.hidden = true;
+      continue;
+    }
+    row.hidden = false;
+    document.getElementById(`${id}-value`).textContent = bucketValueText(bucket);
+    setBar(document.getElementById(`${id}-bar`), bucket.utilizationPct);
+  }
+
+  const enterpriseRow = document.getElementById("row-enterprise");
   const spendLimit = nativeUsage?.monthlySpendLimit;
   if (!spendLimit) {
-    value.textContent = "—";
-    bar.style.width = "0%";
+    if (enterpriseRow) enterpriseRow.hidden = true;
     note.textContent = nativeUsage?.monthlySpendLimitRejected
       ? `Claude returned ${CUC.formatUsd(nativeUsage.monthlySpendLimitRejected.foundLimitUsd)}, expected ${CUC.formatUsd(nativeUsage.monthlySpendLimitRejected.expectedLimitUsd)} — looks like a units mismatch, not a real cap change.`
-      : "Employee monthly spend limit unavailable right now.";
+      : "Live limits from Claude.ai — not an estimate.";
     return;
   }
+  if (enterpriseRow) enterpriseRow.hidden = false;
   const pct = CUC.clamp(spendLimit.utilizationPct, 0, 100);
   const resetLabel = CUCNative?.formatResetLabel ? CUCNative.formatResetLabel(spendLimit) : null;
-  value.textContent = resetLabel
+  document.getElementById("enterprise-value").textContent = resetLabel
     ? `${CUC.formatUsd(spendLimit.usedUsd)} of ${CUC.formatUsd(spendLimit.limitUsd)} · ${resetLabel}`
     : `${CUC.formatUsd(spendLimit.usedUsd)} of ${CUC.formatUsd(spendLimit.limitUsd)}`;
-  bar.style.width = `${pct}%`;
-  bar.className = nativeBarLevel(pct);
+  setBar(document.getElementById("enterprise-bar"), pct);
   if (spendLimit.outOfCredits) {
     note.textContent = "Monthly usage-credit limit reached";
   } else if (spendLimit.capAdvisory) {
     note.textContent = `Cap differs from expected ${CUC.formatUsd(spendLimit.capAdvisory.expectedLimitUsd)} — update Settings if this changed.`;
   } else {
-    note.textContent = "Monthly usage-credit spend from Claude.ai";
+    note.textContent = "Live limits from Claude.ai — not an estimate.";
   }
 }
 
@@ -138,7 +204,8 @@ async function boot() {
         if (response?.usage && response?.settings) {
           state.usage = response.usage;
           state.settings = response.settings;
-          render(state.usage, state.settings, response.conversationId);
+          knownConversationId = response.conversationId || null;
+          render(state.usage, state.settings);
           renderNative(response.nativeUsage, response.nativeUsageError, state.settings);
         }
       })
@@ -167,7 +234,9 @@ async function boot() {
     } catch {
       // Background unreachable — fall back to a direct write.
       const current = await loadState();
-      await chrome.storage.local.set({ [STORAGE_KEY]: CUC.resetSession(current.usage, "manual-popup") });
+      await chrome.storage.local.set({
+        [STORAGE_KEY]: CUC.resetSession(current.usage, "manual-popup", { clearConversations: true })
+      });
     }
     const current = await loadState();
     render(current.usage, current.settings);

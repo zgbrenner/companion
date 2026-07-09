@@ -87,8 +87,15 @@ async function checkForUpdates() {
     const latest = await latestGithubVersion();
     const comparison = compareVersions(current, latest.version);
     if (comparison < 0) {
-      status.textContent = `Update available: ${latest.version} on ${latest.source}. Opening GitHub…`;
-      await openUrl(latest.url);
+      // Show a link rather than yanking the user to GitHub unannounced —
+      // startling for someone who has never seen GitHub.
+      status.textContent = `Update available: ${latest.version} on ${latest.source}. `;
+      const link = document.createElement("a");
+      link.href = latest.url;
+      link.target = "_blank";
+      link.rel = "noreferrer noopener";
+      link.textContent = "View on GitHub";
+      status.appendChild(link);
       return;
     }
     if (comparison > 0) {
@@ -98,6 +105,30 @@ async function checkForUpdates() {
     status.textContent = `Current version ${current} matches ${latest.source}.`;
   } catch (error) {
     status.textContent = `Could not check GitHub updates: ${error?.message || error}`;
+  }
+}
+
+async function exportCsv() {
+  const status = document.getElementById("export-status");
+  try {
+    const stored = await chrome.storage.local.get([CUC.makeStorageKey()]);
+    const usage = CUC.normalizeUsage(stored[CUC.makeStorageKey()]);
+    const csv = CUC.usageHistoryCsv(usage);
+    const rowCount = Math.max(0, csv.split("\n").length - 1);
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `claude-usage-${CUC.todayKey()}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    status.textContent = rowCount === 0
+      ? "No usage recorded yet — the file has headers only."
+      : `Exported ${rowCount} day${rowCount === 1 ? "" : "s"} of usage.`;
+  } catch (error) {
+    status.textContent = `Export failed: ${error?.message || error}`;
   }
 }
 
@@ -177,6 +208,7 @@ document.getElementById("clear-org-cache")?.addEventListener("click", async () =
   status.textContent = "Cleared. Refresh a claude.ai tab to re-detect.";
   setTimeout(() => { status.textContent = ""; }, 2400);
 });
+document.getElementById("export-csv")?.addEventListener("click", exportCsv);
 document.getElementById("check-updates")?.addEventListener("click", checkForUpdates);
 document.getElementById("open-github")?.addEventListener("click", () => openUrl(REPO_URL));
 loadSettings();

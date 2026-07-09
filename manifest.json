@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Vistage Claude Usage Companion",
-  "version": "0.4.4",
+  "version": "0.5.0",
   "description": "Internal Vistage Worldwide, Inc. tool. Shows Claude.ai usage in dollars, tokens, or both, pinned under the chat box while you work.",
   "permissions": [
     "storage",

@@ -72,7 +72,27 @@ async function migrateConversationEvents(fromId, toId, events) {
 
 async function resetSession(reason) {
   const { usage } = await loadUsageAndSettings();
-  await writeUsage(CUC.resetSession(usage, reason || "manual"));
+  // A user-initiated reset (popup button) also clears per-chat estimates —
+  // that's the number on screen, so the button must visibly do something.
+  // Automatic five-hour rollovers keep them.
+  const clearConversations = String(reason || "").startsWith("manual");
+  await writeUsage(CUC.resetSession(usage, reason || "manual", { clearConversations }));
+}
+
+// Toolbar badge: a red/amber percentage when any of Claude's real limits is
+// running hot, so people get warned even when the in-page widget is hidden.
+function updateBadge(maxUtilizationPct) {
+  try {
+    if (typeof maxUtilizationPct === "number" && maxUtilizationPct >= 80) {
+      const pct = Math.min(100, Math.round(maxUtilizationPct));
+      chrome.action.setBadgeText({ text: `${pct}%` });
+      chrome.action.setBadgeBackgroundColor({ color: pct >= 90 ? "#b23b3b" : "#b4791f" });
+    } else {
+      chrome.action.setBadgeText({ text: "" });
+    }
+  } catch {
+    // Badge failures must never affect usage tracking.
+  }
 }
 
 chrome.runtime.onInstalled.addListener(async () => {
@@ -85,6 +105,10 @@ chrome.runtime.onInstalled.addListener(async () => {
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === "cuc:open-options") {
     chrome.runtime.openOptionsPage();
+    return false;
+  }
+  if (message?.type === "cuc:update-badge") {
+    updateBadge(message.maxUtilizationPct);
     return false;
   }
   if (message?.type === "cuc:record-event" && message.event) {
