@@ -27,6 +27,9 @@
   // ephemeral store; feeds the "at this pace…" projection.
   let paceSamples = [];
   let lastUsageSnapshotRefreshAt = 0;
+  // Newest version published on GitHub, recorded by the background's update
+  // checker; drives the "Update ready" banner at the top of the widget.
+  let updateAvailableVersion = null;
   const NATIVE_USAGE_REFRESH_MS = 60 * 1000;
   const NATIVE_USAGE_MAX_BACKOFF_MS = 10 * 60 * 1000;
 
@@ -93,17 +96,23 @@
     }
   }
 
-  // Random handshake token passed to the injected page-world script via its
-  // own <script> tag. Events arriving on the page-global bus without this
-  // token are ignored, so an arbitrary page script can't forge usage events.
+  // Random handshake token offered to the MAIN-world network watcher
+  // (src/injected.js, a manifest-declared world:"MAIN" content script) via a
+  // DOM event. Events arriving on the page-global bus without this token are
+  // ignored, so an arbitrary page script can't forge usage events. Both
+  // content scripts run at document_start — before ANY page script — so the
+  // first offer the watcher sees is guaranteed to be ours; the offer is
+  // repeated on "cuc:main-ready" because Chrome doesn't guarantee which
+  // world's content script runs first.
   const NETWORK_EVENT_TOKEN = (crypto?.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`);
 
-  function injectNetworkWatcher() {
-    const script = document.createElement("script");
-    script.src = chrome.runtime.getURL("src/injected.js");
-    script.dataset.cucToken = NETWORK_EVENT_TOKEN;
-    script.onload = () => script.remove();
-    (document.documentElement || document.head || document.body).appendChild(script);
+  function offerNetworkToken() {
+    window.dispatchEvent(new CustomEvent("cuc:token-offer", { detail: { token: NETWORK_EVENT_TOKEN } }));
+  }
+
+  function startNetworkTokenHandshake() {
+    window.addEventListener("cuc:main-ready", offerNetworkToken);
+    offerNetworkToken();
   }
 
   function hashString(value) {
@@ -116,8 +125,9 @@
   }
 
   async function loadState() {
-    const stored = await chrome.storage.local.get([STORAGE_KEY, "cuc:settings"]);
+    const stored = await chrome.storage.local.get([STORAGE_KEY, "cuc:settings", "cuc:update-available"]);
     settings = { ...CUC.DEFAULT_SETTINGS, ...(stored["cuc:settings"] || {}) };
+    updateAvailableVersion = stored["cuc:update-available"]?.latestVersion || null;
     usage = CUC.normalizeUsage(stored[STORAGE_KEY]);
     // Let the background (single writer) perform any stale-session reset, so two
     // tabs loading at once don't both reset. The fresh state returns via
@@ -607,6 +617,31 @@
 
     window.addEventListener("cuc:usage-snapshot", event => {
       if (event.detail?.token !== NETWORK_EVENT_TOKEN) return;
+
+      // Generation streams push live message_limit frames with the same
+      // utilization data the /usage endpoint reports — fresher than our poll.
+      // Merge the sanitized buckets straight into the current reading for an
+      // instant display update (display-only; the polled endpoint remains the
+      // authoritative cross-tab source).
+      const buckets = event.detail?.buckets;
+      if (buckets && nativeUsage) {
+        let merged = false;
+        for (const prop of ["fiveHour", "sevenDay", "sevenDayOpus"]) {
+          const fresh = buckets[prop];
+          if (!fresh || typeof fresh.utilizationPct !== "number") continue;
+          nativeUsage[prop] = {
+            ...(nativeUsage[prop] || {}),
+            utilizationPct: fresh.utilizationPct,
+            resetsAt: fresh.resetsAt || nativeUsage[prop]?.resetsAt || null
+          };
+          merged = true;
+        }
+        if (merged) {
+          renderWidget();
+          updateToolbarBadge();
+        }
+      }
+
       // claude.ai just fetched its own usage data (or a generation stream
       // carried a live message_limit frame), so ours may be stale — refresh
       // opportunistically (throttled). We never persist the raw payload
@@ -706,6 +741,7 @@
             <button class="cuc-button" data-cuc-action="hide" title="Hide" aria-label="Hide usage widget">✕</button>
           </div>
         </div>
+        <button class="cuc-update" data-cuc="update-banner" data-cuc-action="update" hidden></button>
         <div class="cuc-body" data-cuc="body">
           <div class="cuc-meter">
             <div class="cuc-meter-label">
@@ -762,7 +798,9 @@
         await chrome.storage.local.set({ "cuc:settings": settings });
         renderWidget();
       }
-      if (action === "options") {
+      if (action === "options" || action === "update") {
+        // The update banner routes to the options page too — that's where the
+        // one-click installer lives.
         chrome.runtime.sendMessage({ type: "cuc:open-options" });
       }
       if (action === "cycle") {
@@ -933,6 +971,17 @@
 
     const cycleButton = widgetRoot.querySelector("[data-cuc-action='cycle']");
     if (cycleButton) cycleButton.textContent = DISPLAY_MODE_GLYPHS[settings.displayMode] || "$";
+
+    // Update banner: shown while GitHub has a newer version than the one
+    // running. The inequality check auto-hides it once the update applies,
+    // even before the background clears the stored flag.
+    const updateBanner = widgetRoot.querySelector("[data-cuc='update-banner']");
+    if (updateBanner) {
+      const runningVersion = chrome.runtime.getManifest().version;
+      const showBanner = Boolean(updateAvailableVersion) && updateAvailableVersion !== runningVersion;
+      updateBanner.hidden = !showBanner;
+      if (showBanner) updateBanner.textContent = `Update v${updateAvailableVersion} is ready — click to install`;
+    }
 
     // The standing "ballpark estimate" caption is gone (it lives in the row's
     // hover tooltip instead); the detail line only appears once the chat is
@@ -1377,6 +1426,10 @@
       usage = CUC.normalizeUsage(changes[STORAGE_KEY].newValue);
       renderWidget();
     }
+    if ("cuc:update-available" in changes) {
+      updateAvailableVersion = changes["cuc:update-available"].newValue?.latestVersion || null;
+      renderWidget();
+    }
   });
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
@@ -1396,10 +1449,12 @@
     return false;
   });
 
-  // Patch window.fetch as early as possible — before the async settings load —
-  // so a generation kicked off immediately on page load (e.g. a queued draft
-  // sent the moment the composer mounts) isn't missed while storage resolves.
-  injectNetworkWatcher();
+  // Hand the MAIN-world network watcher its auth token immediately — before
+  // the async settings load — so a generation kicked off on page load (e.g. a
+  // queued draft sent the moment the composer mounts) isn't missed while
+  // storage resolves. The watcher itself is a manifest-declared MAIN-world
+  // content script, so its fetch/XHR patches are installed before any page code.
+  startNetworkTokenHandshake();
   observeNetworkEvents();
 
   loadState().then(() => {

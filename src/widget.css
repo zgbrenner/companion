@@ -93,6 +93,39 @@
   color: #e8e6e3;
 }
 
+.cuc-update {
+  display: block;
+  width: 100%;
+  border: none;
+  border-bottom: 1px solid #d3e3f5;
+  cursor: pointer;
+  padding: 6px 10px;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  text-align: left;
+  background: #e8f1fb;
+  color: #1d4f8f;
+}
+
+.cuc-update:hover {
+  background: #dceafa;
+}
+
+.cuc-update[hidden] {
+  display: none;
+}
+
+:host(.cuc-dark) .cuc-update {
+  background: #20303f;
+  border-bottom-color: #2c4257;
+  color: #9ec5ee;
+}
+
+:host(.cuc-dark) .cuc-update:hover {
+  background: #263a4d;
+}
+
 .cuc-body {
   padding: 9px 12px 10px;
 }

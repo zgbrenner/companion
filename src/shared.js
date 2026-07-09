@@ -78,7 +78,11 @@
     organizationId: "1e16048b-a724-40fd-b78b-bcf3c7f9af9a",
     enterpriseMonthlyLimitUsd: 100,
     showNativeLimits: true,
-    desktopNotifications: true
+    desktopNotifications: true,
+    // Optional custom base URL for self-updates (e.g. a Cloudflare Pages
+    // deployment of this repo). Blank = raw.githubusercontent.com with a
+    // jsDelivr CDN fallback. See src/updater.js.
+    updateBaseUrl: ""
   };
 
   // Key daily/monthly buckets by the user's LOCAL date, not UTC. Using

@@ -72,10 +72,13 @@
 
     <section class="card">
       <h2>Updates</h2>
-      <p class="hint">Checks GitHub for the newest release. If no release exists, checks the version on main. Browser extensions cannot replace their own installed files directly, so an update link is shown when one is available.</p>
+      <p class="hint">Updates install straight from GitHub — no uninstall or reinstall, and your settings are kept. One-time setup: click "Connect extension folder" and pick the folder this extension was loaded from (the one chosen at chrome://extensions → Load unpacked). After that, updating is a single click.</p>
+      <p class="hint" id="update-status">Checking for updates…</p>
+      <button id="apply-update" type="button" style="display:none;">Install update</button>
       <button id="check-updates" type="button" class="secondary">Check for updates</button>
+      <button id="setup-folder" type="button" class="secondary">Connect extension folder</button>
       <button id="open-github" type="button" class="secondary">Open GitHub</button>
-      <p class="hint" id="update-status">Current version: checking not run yet.</p>
+      <p class="hint" id="update-detail"></p>
     </section>
 
     <section class="card note">
@@ -91,6 +94,7 @@
   </main>
   <script src="shared.js"></script>
   <script src="native-usage.js"></script>
+  <script src="updater.js"></script>
   <script src="options.js"></script>
 </body>
 </html>

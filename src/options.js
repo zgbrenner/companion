@@ -1,8 +1,7 @@
 const CUC = globalThis.ClaudeUsageCompanion;
 const CUCNative = globalThis.ClaudeUsageCompanionNative;
+const CUCUpdater = globalThis.ClaudeUsageCompanionUpdater;
 const REPO_URL = "https://github.com/zgbrenner/claudecompanion";
-const LATEST_RELEASE_API = "https://api.github.com/repos/zgbrenner/claudecompanion/releases/latest";
-const MAIN_MANIFEST_URL = "https://raw.githubusercontent.com/zgbrenner/claudecompanion/main/manifest.json";
 
 // Settings simplified to the two visible bars: chat usage and enterprise limit.
 const fields = [
@@ -27,85 +26,80 @@ function populateModels() {
   });
 }
 
-function currentVersion() {
-  return chrome.runtime.getManifest().version;
-}
-
-function compareVersions(a, b) {
-  const left = String(a || "0").split(".").map(part => Number.parseInt(part, 10) || 0);
-  const right = String(b || "0").split(".").map(part => Number.parseInt(part, 10) || 0);
-  const length = Math.max(left.length, right.length);
-  for (let i = 0; i < length; i += 1) {
-    const diff = (left[i] || 0) - (right[i] || 0);
-    if (diff !== 0) return diff > 0 ? 1 : -1;
-  }
-  return 0;
-}
-
-function cleanVersionTag(value) {
-  return String(value || "").trim().replace(/^v/i, "");
-}
-
-async function fetchJson(url) {
-  const response = await fetch(url, { headers: { Accept: "application/json" } });
-  if (!response.ok) throw new Error(`request failed: ${response.status}`);
-  return response.json();
-}
-
-async function latestGithubVersion() {
-  try {
-    const release = await fetchJson(LATEST_RELEASE_API);
-    const version = cleanVersionTag(release.tag_name || release.name);
-    if (version) {
-      return {
-        source: "latest release",
-        version,
-        url: release.html_url || `${REPO_URL}/releases`
-      };
-    }
-  } catch {
-    // Repos without releases return 404; fall through to main.
-  }
-
-  const manifest = await fetchJson(MAIN_MANIFEST_URL);
-  return {
-    source: "main branch",
-    version: cleanVersionTag(manifest.version),
-    url: REPO_URL
-  };
-}
-
 async function openUrl(url) {
   await chrome.tabs.create({ url });
 }
 
-async function checkForUpdates() {
-  const status = document.getElementById("update-status");
-  const current = currentVersion();
-  status.textContent = `Current version: ${current}. Checking GitHub…`;
+// ---- Self-update UI (see updater.js for the mechanism) ---------------------
 
+function updateStatusEl() { return document.getElementById("update-status"); }
+function updateDetailEl() { return document.getElementById("update-detail"); }
+function applyUpdateButton() { return document.getElementById("apply-update"); }
+
+async function renderUpdateSection(check) {
+  const status = updateStatusEl();
+  const applyButton = applyUpdateButton();
+  const current = CUCUpdater.currentVersion();
+  const folder = await CUCUpdater.folderStatus().catch(() => "unset");
+  const folderNote = folder === "unset"
+    ? " One-click install needs the extension folder connected below."
+    : (folder === "needs-permission" ? " Chrome will ask to confirm folder access when you install." : "");
+
+  if (!check) {
+    status.textContent = `Current version: ${current}.`;
+    applyButton.style.display = "none";
+    return;
+  }
+  if (check.updateAvailable) {
+    status.textContent = `Update available: v${check.latestVersion} (you have v${current}).${folderNote}`;
+    applyButton.style.display = "inline-block";
+    applyButton.textContent = `Install v${check.latestVersion}`;
+  } else {
+    status.textContent = `You're up to date (v${current}).`;
+    applyButton.style.display = "none";
+  }
+}
+
+async function checkForUpdates() {
+  const status = updateStatusEl();
+  status.textContent = `Current version: ${CUCUpdater.currentVersion()}. Checking GitHub…`;
   try {
-    const latest = await latestGithubVersion();
-    const comparison = compareVersions(current, latest.version);
-    if (comparison < 0) {
-      // Show a link rather than yanking the user to GitHub unannounced —
-      // startling for someone who has never seen GitHub.
-      status.textContent = `Update available: ${latest.version} on ${latest.source}. `;
-      const link = document.createElement("a");
-      link.href = latest.url;
-      link.target = "_blank";
-      link.rel = "noreferrer noopener";
-      link.textContent = "View on GitHub";
-      status.appendChild(link);
-      return;
-    }
-    if (comparison > 0) {
-      status.textContent = `Current version ${current} is newer than ${latest.source} (${latest.version}).`;
-      return;
-    }
-    status.textContent = `Current version ${current} matches ${latest.source}.`;
+    const check = await CUCUpdater.checkForUpdate();
+    await renderUpdateSection(check);
   } catch (error) {
-    status.textContent = `Could not check GitHub updates: ${error?.message || error}`;
+    status.textContent = `Could not check for updates: ${error?.message || error}`;
+    applyUpdateButton().style.display = "none";
+  }
+}
+
+async function setupUpdateFolder() {
+  const detail = updateDetailEl();
+  try {
+    await CUCUpdater.chooseExtensionFolder();
+    detail.textContent = "Extension folder connected — updates are now one click.";
+    await renderUpdateSection(await CUCUpdater.checkForUpdate().catch(() => null));
+  } catch (error) {
+    if (error?.name === "AbortError") return; // user closed the picker
+    detail.textContent = `Couldn't connect that folder: ${error?.message || error}`;
+  }
+}
+
+async function applyUpdateNow() {
+  const detail = updateDetailEl();
+  const applyButton = applyUpdateButton();
+  applyButton.disabled = true;
+  try {
+    const result = await CUCUpdater.applyUpdate(message => { detail.textContent = message; });
+    detail.textContent = `Updated to v${result.version} — reloading the extension…`;
+    // Give the message a beat to render; reload() tears this page down.
+    setTimeout(() => chrome.runtime.reload(), 1200);
+  } catch (error) {
+    applyButton.disabled = false;
+    if (error?.code === "no-folder") {
+      detail.textContent = "First connect the extension folder (button below), then install.";
+      return;
+    }
+    detail.textContent = `Update failed: ${error?.message || error}`;
   }
 }
 
@@ -211,5 +205,8 @@ document.getElementById("clear-org-cache")?.addEventListener("click", async () =
 });
 document.getElementById("export-csv")?.addEventListener("click", exportCsv);
 document.getElementById("check-updates")?.addEventListener("click", checkForUpdates);
+document.getElementById("setup-folder")?.addEventListener("click", setupUpdateFolder);
+document.getElementById("apply-update")?.addEventListener("click", applyUpdateNow);
 document.getElementById("open-github")?.addEventListener("click", () => openUrl(REPO_URL));
 loadSettings();
+checkForUpdates();
