@@ -278,7 +278,7 @@ function normalizeNativeUsageMessage(message) {
   for (const bucket of message.buckets) {
     if (!isPlainRecord(bucket)) return null;
     if (!hasOnlyKeys(bucket, new Set(["key", "label", "pct", "resetsAt"]))) return null;
-    if (!(bucket.key in BUCKET_LABELS) || seenKeys.has(bucket.key)) return null;
+    if (!Object.hasOwn(BUCKET_LABELS, bucket.key) || seenKeys.has(bucket.key)) return null;
     if (!Number.isFinite(bucket.pct) || bucket.pct < 0 || bucket.pct > MAX_UTILIZATION_PCT) return null;
     const resetsAt = normalizeResetTimestamp(bucket.resetsAt);
     if (resetsAt === undefined) return null;
