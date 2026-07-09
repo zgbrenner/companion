@@ -1,0 +1,234 @@
+name: Apply auto-detected account configuration
+
+on:
+  push:
+    branches:
+      - remove-hardcoded-org-cap
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.event.head_commit.message != 'Remove hardcoded organization and cap defaults'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: remove-hardcoded-org-cap
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Apply source changes
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          def replace_once(text, old, new, label):
+              if old not in text:
+                  raise SystemExit(f"Expected text not found: {label}")
+              return text.replace(old, new, 1)
+
+          # Remove organization/cap defaults entirely. Runtime account details now
+          # come only from Claude.ai and the local detected-account cache.
+          path = Path('src/shared.js')
+          text = path.read_text()
+          text, count = re.subn(r'^\s*organizationId:\s*"[^"]*",\n', '', text, count=1, flags=re.M)
+          if count != 1:
+              raise SystemExit('Could not remove hardcoded organizationId default')
+          text, count = re.subn(r'^\s*enterpriseMonthlyLimitUsd:\s*[^,]+,\n', '', text, count=1, flags=re.M)
+          if count != 1:
+              raise SystemExit('Could not remove hardcoded enterpriseMonthlyLimitUsd default')
+          path.write_text(text)
+
+          # Make native usage fully auto-discovered and persist only detected,
+          # Claude-returned account metadata in chrome.storage.local.
+          path = Path('src/native-usage.js')
+          text = path.read_text()
+          text = replace_once(
+              text,
+              '  const CACHE_KEY = "cuc:native-org-cache";\n  const ORG_CACHE_TTL_MS = 24 * 60 * 60 * 1000;\n',
+              '  const CACHE_KEY = "cuc:native-org-cache";\n  const ACCOUNT_CACHE_KEY = "cuc:detected-account-cache";\n  const ORG_CACHE_TTL_MS = 24 * 60 * 60 * 1000;\n',
+              'account cache constant'
+          )
+
+          text, count = re.subn(
+              r'\n  async function configuredOrgId\(\) \{.*?\n  async function getCachedOrgId\(\) \{',
+              '\n  async function getCachedOrgId() {',
+              text,
+              count=1,
+              flags=re.S
+          )
+          if count != 1:
+              raise SystemExit('Could not remove configured organization/cap helpers')
+
+          text = replace_once(
+              text,
+              '      await chrome.storage.local.remove([CACHE_KEY]);',
+              '      await chrome.storage.local.remove([CACHE_KEY, ACCOUNT_CACHE_KEY]);',
+              'clear both detected caches'
+          )
+
+          marker = '''  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;\n'''
+          cache_helpers = '''  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;\n\n  async function cacheDetectedAccount(orgId, spendLimit) {\n    if (!UUID_RE.test(String(orgId || ""))) return;\n    const limitUsd = Number(spendLimit?.limitUsd);\n    if (!(limitUsd > 0)) return;\n    try {\n      await chrome.storage.local.set({\n        [ACCOUNT_CACHE_KEY]: {\n          orgId,\n          limitUsd,\n          currency: typeof spendLimit.currency === "string" ? spendLimit.currency : "USD",\n          cachedAt: Date.now()\n        }\n      });\n    } catch {\n      // The live Claude response remains the source of truth; caching is best-effort.\n    }\n  }\n\n  async function getCachedAccountConfig() {\n    try {\n      const stored = await chrome.storage.local.get([CACHE_KEY, ACCOUNT_CACHE_KEY]);\n      const org = stored[CACHE_KEY] || null;\n      const account = stored[ACCOUNT_CACHE_KEY] || null;\n      return {\n        orgId: account?.orgId || org?.orgId || null,\n        limitUsd: Number.isFinite(Number(account?.limitUsd)) ? Number(account.limitUsd) : null,\n        currency: account?.currency || "USD",\n        cachedAt: account?.cachedAt || org?.cachedAt || null\n      };\n    } catch {\n      return { orgId: null, limitUsd: null, currency: "USD", cachedAt: null };\n    }\n  }\n'''
+          text = replace_once(text, marker, cache_helpers, 'detected account cache helpers')
+
+          text, count = re.subn(
+              r'  async function discoverOrgId\(\{ ignoreConfigured = false \} = \{\}\) \{\n    if \(!ignoreConfigured\) \{.*?\n    \}\n\n',
+              '  async function discoverOrgId() {\n',
+              text,
+              count=1,
+              flags=re.S
+          )
+          if count != 1:
+              raise SystemExit('Could not remove configured-org branch')
+
+          text = replace_once(
+              text,
+              '    const fromCookie = orgIdFromCookie();\n    if (fromCookie) return fromCookie;\n',
+              '    const fromCookie = orgIdFromCookie();\n    if (fromCookie) {\n      await setCachedOrgId(fromCookie);\n      return fromCookie;\n    }\n',
+              'cache cookie-discovered organization'
+          )
+          text = text.replace('discoverOrgId({ ignoreConfigured: true })', 'discoverOrgId()')
+
+          old_fetch_block = '''    const normalized = normalizeUsagePayload(usagePayload);\n    const expectedLimit = await configuredEnterpriseLimitUsd();\n\n    const capResult = applyCapAdvisory(normalized.monthlySpendLimit, expectedLimit);\n    normalized.monthlySpendLimit = capResult.spendLimit;\n    normalized.monthlySpendLimitRejected = capResult.rejected;\n\n    // Prefer /usage.extra_usage, which reflects the member-visible usage-credit\n    // card. /overage_spend_limit can be the organization-wide cap (for example\n    // $5000) and must not replace a per-employee cap like $100.\n    if (!normalized.monthlySpendLimit) {\n      const fallback = await fetchMonthlySpendLimit(orgId, expectedLimit);\n      if (fallback.spendLimit) {\n        normalized.monthlySpendLimit = fallback.spendLimit;\n        normalized.monthlySpendLimitRejected = null;\n      } else if (fallback.rejected) {\n        normalized.monthlySpendLimitRejected = fallback.rejected;\n      }\n    }\n'''
+          new_fetch_block = '''    const normalized = normalizeUsagePayload(usagePayload);\n\n    // Prefer /usage.extra_usage, which reflects the member-visible usage-credit\n    // card. Fall back to /overage_spend_limit only when the usage response does\n    // not include a cap. No organization or cap value is configured locally.\n    if (!normalized.monthlySpendLimit) {\n      normalized.monthlySpendLimit = await fetchMonthlySpendLimit(orgId);\n    }\n    if (normalized.monthlySpendLimit) {\n      await cacheDetectedAccount(orgId, normalized.monthlySpendLimit);\n    }\n'''
+          text = replace_once(text, old_fetch_block, new_fetch_block, 'native cap resolution')
+
+          text, count = re.subn(
+              r'\n  // Compares a normalized spend-limit reading.*?\n  async function fetchMonthlySpendLimit\(orgId, expectedLimitUsd\) \{.*?\n  \}\n\n  // Normalize into a stable internal shape',
+              '''\n  async function fetchMonthlySpendLimit(orgId) {\n    try {\n      const payload = await fetchJson(`https://claude.ai/api/organizations/${orgId}/overage_spend_limit`);\n      return normalizeMonthlySpendLimit(payload);\n    } catch (error) {\n      const message = String(error?.message || error);\n      // This endpoint is optional and can be admin-restricted. Preserve the\n      // rolling-limit data already fetched from /usage when it is unavailable.\n      if (message === "not-logged-in" || message === "rate-limited") throw error;\n      return null;\n    }\n  }\n\n  // Normalize into a stable internal shape''',
+              text,
+              count=1,
+              flags=re.S
+          )
+          if count != 1:
+              raise SystemExit('Could not simplify fallback cap fetch')
+
+          text = replace_once(
+              text,
+              '    clearCachedOrgId,\n    rememberSpendEndpoint,',
+              '    clearCachedOrgId,\n    getCachedAccountConfig,\n    rememberSpendEndpoint,',
+              'export detected account cache'
+          )
+          text = text.replace(
+              '    _internal: { isLikelyUnitDrift, applyCapAdvisory, nextMonthFirstDayUtcIso, normalizeSpendBreakdownRows, isCandidateSpendPath }',
+              '    _internal: { nextMonthFirstDayUtcIso, normalizeSpendBreakdownRows, isCandidateSpendPath }'
+          )
+          path.write_text(text)
+
+          # Replace manual organization/cap fields with read-only detected values.
+          path = Path('src/options.html')
+          text = path.read_text()
+          pattern = r'''    <section class="card">\n      <h2>Enterprise limit \(from Claude\.ai\)</h2>.*?    </section>\n\n    <section class="card">\n      <h2>Warnings</h2>'''
+          replacement = '''    <section class="card">\n      <h2>Enterprise limit (from Claude.ai)</h2>\n      <p class="hint">The extension automatically discovers the active Claude organization from the <code>lastActiveOrg</code> cookie, then falls back to <code>/api/organizations</code>. The monthly cap comes directly from Claude's usage response or <code>overage_spend_limit</code>; neither value is hardcoded.</p>\n      <label class="checkbox">\n        <input id="showNativeLimits" type="checkbox" />\n        Show enterprise usage limit\n      </label>\n      <p><strong>Detected organization:</strong> <span id="detected-organization">Not detected yet</span></p>\n      <p><strong>Cached monthly cap:</strong> <span id="detected-cap">Not detected yet</span></p>\n      <button id="clear-org-cache" type="button" class="secondary">Clear detected account cache</button>\n      <p class="hint">Detected values are cached in <code>chrome.storage.local</code> for convenience. Claude's live response remains the source of truth.</p>\n    </section>\n\n    <section class="card">\n      <h2>Warnings</h2>'''
+          text, count = re.subn(pattern, replacement, text, count=1, flags=re.S)
+          if count != 1:
+              raise SystemExit('Could not replace enterprise settings section')
+          path.write_text(text)
+
+          path = Path('src/options.js')
+          text = path.read_text()
+          text = text.replace('  "organizationId",\n  "enterpriseMonthlyLimitUsd",\n', '')
+          insert_after = '''function populateModels() {\n  const select = document.getElementById("defaultModel");\n  select.innerHTML = "";\n  Object.entries(CUC.MODEL_PRICES).forEach(([key, model]) => {\n    const option = document.createElement("option");\n    option.value = key;\n    const expired = key === "claude-sonnet-5-intro" && CUC.resolveModelKey(key) !== key;\n    const suffix = expired ? " (expired — using standard pricing)" : "";\n    option.textContent = `${model.label} — $${model.inputPerMTok}/$${model.outputPerMTok} per MTok${suffix}`;\n    select.appendChild(option);\n  });\n}\n'''
+          detected_fn = insert_after + '''\nasync function renderDetectedAccount() {\n  const orgEl = document.getElementById("detected-organization");\n  const capEl = document.getElementById("detected-cap");\n  if (!orgEl || !capEl) return;\n  const detected = await CUCNative?.getCachedAccountConfig?.();\n  orgEl.textContent = detected?.orgId || "Not detected yet";\n  capEl.textContent = detected?.limitUsd > 0\n    ? `${CUC.formatUsd(detected.limitUsd)} (${detected.currency || "USD"})`\n    : "Not detected yet";\n}\n'''
+          text = replace_once(text, insert_after, detected_fn, 'detected account renderer')
+          text = replace_once(
+              text,
+              '  for (const field of fields) {\n    const el = document.getElementById(field);\n    if (!el) continue;\n    if (el.type === "checkbox") el.checked = Boolean(settings[field]);\n    else el.value = settings[field];\n  }\n}',
+              '  for (const field of fields) {\n    const el = document.getElementById(field);\n    if (!el) continue;\n    if (el.type === "checkbox") el.checked = Boolean(settings[field]);\n    else el.value = settings[field];\n  }\n  await renderDetectedAccount();\n}',
+              'render detected account on settings load'
+          )
+          text, count = re.subn(
+              r'\nconst UUID_PATTERN = .*?\nasync function saveSettings\(\) \{',
+              '\nasync function saveSettings() {',
+              text,
+              count=1,
+              flags=re.S
+          )
+          if count != 1:
+              raise SystemExit('Could not remove manual organization validation')
+          text = text.replace('  renderOrganizationIdWarning(settings.organizationId);\n', '')
+          text, count = re.subn(
+              r'\ndocument\.getElementById\("organizationId"\)\?\.addEventListener\("input", \(event\) => \{.*?\n\}\);',
+              '',
+              text,
+              count=1,
+              flags=re.S
+          )
+          if count != 1:
+              raise SystemExit('Could not remove organization input listener')
+          text = replace_once(
+              text,
+              '  status.textContent = "Cleared. Refresh a claude.ai tab to re-detect.";',
+              '  await renderDetectedAccount();\n  status.textContent = "Cleared. Refresh a claude.ai tab to re-detect.";',
+              'refresh detected account status after clear'
+          )
+          path.write_text(text)
+
+          # Remove dead expected-cap mismatch UI paths.
+          path = Path('src/content.js')
+          text = path.read_text()
+          old = '''      setNote(nativeUsage.monthlySpendLimitRejected\n        ? `Claude returned ${CUC.formatUsd(nativeUsage.monthlySpendLimitRejected.foundLimitUsd)}, expected ${CUC.formatUsd(nativeUsage.monthlySpendLimitRejected.expectedLimitUsd)} — looks like a units mismatch, not a real cap change.`\n        : mostUrgentNativeWarning(nativeUsage));'''
+          text = replace_once(text, old, '      setNote(mostUrgentNativeWarning(nativeUsage));', 'content cap mismatch note')
+          path.write_text(text)
+
+          path = Path('src/popup.js')
+          text = path.read_text()
+          old = '''    note.textContent = nativeUsage?.monthlySpendLimitRejected\n      ? `Claude returned ${CUC.formatUsd(nativeUsage.monthlySpendLimitRejected.foundLimitUsd)}, expected ${CUC.formatUsd(nativeUsage.monthlySpendLimitRejected.expectedLimitUsd)} — looks like a units mismatch, not a real cap change.`\n      : "Live limits from Claude.ai — not an estimate.";'''
+          text = replace_once(text, old, '    note.textContent = "Live limits from Claude.ai — not an estimate.";', 'popup cap mismatch note')
+          path.write_text(text)
+
+          # Document the new source-of-truth and cache behavior.
+          path = Path('README.md')
+          text = path.read_text()
+          text = text.replace(
+              '- If `organizationId` is configured in Settings, uses that organization directly instead of auto-discovery. If Claude answers 403 for a configured/cached org (wrong org for this account), the extension re-discovers automatically instead of telling you to sign in.\n',
+              '- Caches the automatically discovered organization ID in `chrome.storage.local` for 24 hours. The active `lastActiveOrg` cookie is checked first, so switching organizations updates the cache automatically.\n'
+          )
+          text = text.replace(
+              '- On team/enterprise accounts with multiple organizations, org auto-detection picks the first one returned, which may not be the one you\'re actively using. Use "Clear cached organization" in Settings to force re-detection.\n',
+              '- If the active-organization cookie is unavailable and the account belongs to multiple organizations, the `/api/organizations` fallback uses the first returned organization. “Clear detected account cache” forces a fresh lookup.\n'
+          )
+          changelog_marker = '## Changelog\n\n'
+          changelog = '''## Changelog\n\n### 0.8.1\n\n- Removed the hardcoded Vistage organization UUID and `$100` expected employee cap.\n- The active organization is discovered from Claude.ai's `lastActiveOrg` cookie, with `/api/organizations` as the fallback, and cached locally for 24 hours.\n- The monthly cap is accepted only from Claude's live `/usage` or `/overage_spend_limit` response and cached locally for display; there is no configured cap comparison.\n- Settings now shows the detected organization and cached Claude-reported cap instead of editable organization/cap fields.\n\n'''
+          text = replace_once(text, changelog_marker, changelog, '0.8.1 changelog')
+          path.write_text(text)
+
+          path = Path('manifest.json')
+          text = path.read_text()
+          text = replace_once(text, '"version": "0.8.0"', '"version": "0.8.1"', 'manifest version')
+          path.write_text(text)
+
+          # Ensure the sensitive hardcoded values and obsolete setting are gone.
+          combined = '\n'.join(Path(p).read_text() for p in ['src/shared.js', 'src/native-usage.js', 'src/options.js', 'src/options.html'])
+          if '1e16048b-a724-40fd-b78b-bcf3c7f9af9a' in combined:
+              raise SystemExit('Hardcoded organization UUID still present')
+          if 'enterpriseMonthlyLimitUsd' in combined:
+              raise SystemExit('Hardcoded/legacy cap setting still present')
+          PY
+
+      - name: Validate JavaScript
+        run: |
+          node --check src/shared.js
+          node --check src/native-usage.js
+          node --check src/options.js
+          node --check src/content.js
+          node --check src/popup.js
+
+      - name: Refresh update manifest
+        run: node tools/build-update-manifest.mjs
+
+      - name: Commit changes
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add manifest.json src README.md update/manifest.json
+          git commit -m "Remove hardcoded organization and cap defaults"
+          git push origin HEAD:remove-hardcoded-org-cap
