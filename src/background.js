@@ -3,6 +3,15 @@ import "./shared.js";
 const CUC = globalThis.ClaudeUsageCompanion;
 const STORAGE_KEY = CUC.makeStorageKey();
 
+// Let content scripts use chrome.storage.session for the ephemeral cross-tab
+// cache (native usage, pace samples). Runs at every service-worker start;
+// content scripts fall back to storage.local until this has taken effect.
+try {
+  chrome.storage.session?.setAccessLevel?.({ accessLevel: "TRUSTED_AND_UNTRUSTED_CONTEXTS" });
+} catch {
+  // Older Chrome without session access levels — the fallback covers it.
+}
+
 // The background service worker is the SINGLE writer of the usage aggregate.
 // Content scripts (one per claude.ai tab) send delta events; we apply them here
 // one at a time against the freshest stored state. Serializing through a single
@@ -95,6 +104,87 @@ function updateBadge(maxUtilizationPct) {
   }
 }
 
+// Desktop notifications when a limit crosses 85% / 95% — once per threshold
+// per reset window, so this nudges rather than nags (the "gentle reminder"
+// pattern from mindful-browsing-style extensions). State lives in storage so
+// multiple tabs reporting the same reading can't duplicate a notification;
+// calls are routed through the same serialized writer as usage events.
+const NOTIFY_THRESHOLDS = [85, 95];
+const NOTIFY_STATE_KEY = "cuc:notify-state";
+const NOTIFY_MIN_REPEAT_MS = 6 * 60 * 60 * 1000;
+
+function shortCountdown(resetsAt) {
+  const resetMs = Date.parse(resetsAt || "");
+  if (Number.isNaN(resetMs)) return null;
+  const totalMinutes = Math.round((resetMs - Date.now()) / 60000);
+  if (totalMinutes <= 0) return null;
+  if (totalMinutes < 60) return `${totalMinutes}m`;
+  const hours = Math.floor(totalMinutes / 60);
+  if (hours < 24) return `${hours}h ${totalMinutes % 60}m`;
+  return `${Math.floor(hours / 24)}d ${hours % 24}h`;
+}
+
+async function maybeNotifyThresholds(buckets) {
+  const stored = await chrome.storage.local.get([NOTIFY_STATE_KEY, "cuc:settings"]);
+  const settings = { ...CUC.DEFAULT_SETTINGS, ...(stored["cuc:settings"] || {}) };
+  if (!settings.desktopNotifications) return;
+
+  const state = stored[NOTIFY_STATE_KEY] || {};
+  let changed = false;
+
+  for (const bucket of Array.isArray(buckets) ? buckets : []) {
+    if (!bucket?.key || typeof bucket.pct !== "number") continue;
+    const crossed = NOTIFY_THRESHOLDS.filter(t => bucket.pct >= t);
+    const top = crossed.length ? Math.max(...crossed) : 0;
+
+    // A new reset window (different resetsAt) starts the notification slate
+    // fresh; falling back below every threshold does too (covers buckets
+    // whose payload carries no reset timestamp).
+    const entry = state[bucket.key];
+    if (!entry || entry.resetsAt !== (bucket.resetsAt || null)) {
+      state[bucket.key] = { resetsAt: bucket.resetsAt || null, notified: 0, at: 0 };
+      changed = true;
+    }
+    const record = state[bucket.key];
+    if (top === 0) {
+      if (record.notified !== 0) {
+        record.notified = 0;
+        changed = true;
+      }
+      continue;
+    }
+    if (top <= record.notified && Date.now() - (record.at || 0) < NOTIFY_MIN_REPEAT_MS) continue;
+    if (top <= record.notified) continue;
+
+    const countdown = shortCountdown(bucket.resetsAt);
+    const message = countdown
+      ? `${bucket.label} is at ${Math.round(bucket.pct)}%. It resets in ${countdown}.`
+      : `${bucket.label} is at ${Math.round(bucket.pct)}%.`;
+    try {
+      chrome.notifications.create(`cuc-${bucket.key}-${top}`, {
+        type: "basic",
+        iconUrl: chrome.runtime.getURL("icons/icon128.png"),
+        title: "Claude usage heads-up",
+        message,
+        priority: top >= 95 ? 2 : 1
+      });
+    } catch {
+      // Notifications are best-effort.
+    }
+    record.notified = top;
+    record.at = Date.now();
+    changed = true;
+  }
+
+  if (changed) {
+    try {
+      await chrome.storage.local.set({ [NOTIFY_STATE_KEY]: state });
+    } catch {
+      // Losing dedupe state means at worst one repeat notification.
+    }
+  }
+}
+
 chrome.runtime.onInstalled.addListener(async () => {
   const existing = await chrome.storage.local.get(["cuc:settings"]);
   if (!existing["cuc:settings"] && CUC?.DEFAULT_SETTINGS) {
@@ -107,8 +197,9 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     chrome.runtime.openOptionsPage();
     return false;
   }
-  if (message?.type === "cuc:update-badge") {
+  if (message?.type === "cuc:native-usage-updated") {
     updateBadge(message.maxUtilizationPct);
+    serialize(() => maybeNotifyThresholds(message.buckets)).catch(() => {});
     return false;
   }
   if (message?.type === "cuc:record-event" && message.event) {

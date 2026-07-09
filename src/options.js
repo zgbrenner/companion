@@ -10,7 +10,8 @@ const fields = [
   "defaultModel",
   "organizationId",
   "enterpriseMonthlyLimitUsd",
-  "showNativeLimits"
+  "showNativeLimits",
+  "desktopNotifications"
 ];
 
 function populateModels() {
