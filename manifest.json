@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Vistage Claude Usage Companion",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "minimum_chrome_version": "111",
   "description": "Internal Vistage Worldwide, Inc. tool. Shows Claude.ai usage in dollars, tokens, or both, pinned under the chat box while you work.",
   "permissions": [
@@ -46,16 +46,6 @@
       ],
       "run_at": "document_start",
       "world": "MAIN"
-    },
-    {
-      "matches": [
-        "https://claude.ai/*",
-        "https://*.claude.ai/*"
-      ],
-      "js": [
-        "src/o200k_base.js"
-      ],
-      "run_at": "document_idle"
     }
   ],
   "web_accessible_resources": [

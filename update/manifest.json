@@ -1,5 +1,5 @@
 {
-  "version": "0.7.0",
+  "version": "0.8.0",
   "files": [
     {
       "path": "icons/icon128.png",
@@ -19,11 +19,11 @@
     },
     {
       "path": "manifest.json",
-      "sha256": "5549b0d66a7f4d2f4f6e2ab66f3d7ea5f233d41212ca6077933c842e9c643d0a"
+      "sha256": "f6a239497d3a6526e5b626ccf97ed1ef3c0227e0c3d4a47b7b6809c3eb2a1408"
     },
     {
       "path": "src/background.js",
-      "sha256": "68bfd8e5fa25a2ecc19feb1abf0019f1cf4852e9da839a36333382d77b8bebc6"
+      "sha256": "42e59f62867540fac37a768cc2dd09c228e6bf501ff08c03c65342d6522ae429"
     },
     {
       "path": "src/content.css",
@@ -31,19 +31,15 @@
     },
     {
       "path": "src/content.js",
-      "sha256": "44cb9b649cdbac6f9248f2668952003f2a1fb71cab05e2d15ef49cebf6469221"
+      "sha256": "58a3e20ff26e4e543dd76ae0c5e71fc0856bb0f2736c1663daab44469b24875c"
     },
     {
       "path": "src/injected.js",
-      "sha256": "9235cbee796b68aaa4081fa0fc82ac3e27109401dc6b706def1b6afe1da8535d"
+      "sha256": "d27e6b76bd09c1a9aae7150e916d7ca8288d769d3c6e0c71b7bc3adb31e39dd1"
     },
     {
       "path": "src/native-usage.js",
-      "sha256": "8c18e1b6850684b800024aa48dcfaf6771f8263610108e0e16dab2096e3d650f"
-    },
-    {
-      "path": "src/o200k_base.js",
-      "sha256": "fbc7419f14fb3a1460b56b156b94adb3480ec375a1dd404b0d0bd807fbff97e1"
+      "sha256": "f87cf39158ab108cf356257182d08b40ea0c91d280db27e053be4f4f524ddaf4"
     },
     {
       "path": "src/options.css",
@@ -51,11 +47,11 @@
     },
     {
       "path": "src/options.html",
-      "sha256": "7de16f14b2bdf47346785c8026df1ed9d0518a08ea1218e457fd020c10b3c007"
+      "sha256": "cb41f450a1fe0bf7a04bf4668ae9fe679b59e66325de536bf330ad5392980126"
     },
     {
       "path": "src/options.js",
-      "sha256": "3e03b597040ca5875bf270e36ed6847d4c313c0f0609a6a226f941916ca0e159"
+      "sha256": "f56f6d11ec60741ff3a25c5558d3b57e53a5b59e9ac3987caab2ab9b09544091"
     },
     {
       "path": "src/popup.css",
@@ -63,15 +59,15 @@
     },
     {
       "path": "src/popup.html",
-      "sha256": "f645fdada9aa756486dca42c17008d96896662e025fb3ff434cceb11978d1062"
+      "sha256": "9cbcda538a3ef84f8af4ab42b4d5dd3f57b7141908616420bf5f32186a82a097"
     },
     {
       "path": "src/popup.js",
-      "sha256": "1e8e3a4b64606a35f12a7ad75f1faea1fa030c9e2b377cda99ce69dd9dd6024b"
+      "sha256": "adfaea5f45f9ca1daa1bbfe4cd82192315c0930739aa495184c273d644fd62e4"
     },
     {
       "path": "src/shared.js",
-      "sha256": "8d12cea56ca5bbd139b4963c7703f6147b27cae78debd317c891bb33f9c8bc92"
+      "sha256": "d70d6b59699bc82f29cf5769ac66354b483a67e61773fa32597d4660e256ef71"
     },
     {
       "path": "src/updater.js",

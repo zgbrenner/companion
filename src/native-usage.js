@@ -390,12 +390,131 @@
     return countdown ? `resets in ${countdown}` : null;
   }
 
+  // ---- Per-model daily spend breakdown (learned endpoint) ------------------
+  //
+  // Claude.ai's Settings → Usage page shows an individual per-day, per-model
+  // spend breakdown, but its backing endpoint is undocumented and — as of
+  // this writing — not publicly reverse-engineered (the feature only rolls
+  // out broadly on 2026-07-11). So instead of hardcoding a guess, the
+  // MAIN-world watcher reports the PATH of any usage/spend-looking API call
+  // claude.ai itself makes (e.g. when the user opens Settings → Usage), we
+  // remember it, and re-read it ourselves with a credentialed same-origin
+  // GET. The payload is normalized defensively and accepted only when it
+  // both parses into per-model dollar rows AND passes a sanity check against
+  // the real monthly counter.
+
+  const SPEND_ENDPOINT_KEY = "cuc:spend-endpoint";
+
+  function isCandidateSpendPath(path) {
+    if (typeof path !== "string" || !path.startsWith("/api/") || path.length > 300) return false;
+    if (/overage_spend_limit/i.test(path)) return false;
+    // The plain /usage endpoint is already polled directly.
+    if (/\/usage$/i.test(path)) return false;
+    return /usage|spend|billing|credit|cost|analytic|consumption|breakdown/i.test(path);
+  }
+
+  async function rememberSpendEndpoint(path) {
+    if (!isCandidateSpendPath(path)) return false;
+    try {
+      const stored = await chrome.storage.local.get([SPEND_ENDPOINT_KEY]);
+      if (stored[SPEND_ENDPOINT_KEY]?.path === path) return false;
+      await chrome.storage.local.set({ [SPEND_ENDPOINT_KEY]: { path, learnedAt: Date.now() } });
+      console.debug("[Claude Companion] learned candidate spend endpoint:", path);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  function firstNumericField(item, names) {
+    for (const name of names) {
+      const value = item?.[name];
+      if (typeof value === "number" && Number.isFinite(value) && value >= 0) return { name, value };
+      if (typeof value === "string" && value && Number.isFinite(Number(value))) {
+        return { name, value: Number(value) };
+      }
+    }
+    return null;
+  }
+
+  function normalizeSpendRow(item) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return null;
+    const CUC = globalThis.ClaudeUsageCompanion;
+    const modelRaw = [item.model, item.model_id, item.model_name, item.model_family, item.name]
+      .find(v => typeof v === "string" && v);
+    const amount = firstNumericField(item, [
+      "spend_usd", "usd", "cost_usd", "spend", "cost", "amount",
+      "credits_used", "used_credits", "credits", "total_cost"
+    ]);
+    if (!modelRaw || !amount) return null;
+    const modelKey = CUC.detectModelFromId(modelRaw) || CUC.detectModelFromText(modelRaw);
+    if (!modelKey) return null;
+    // Unit heuristic: credit-named fields (and large integers) are cents —
+    // the known claude.ai billing endpoints all report cents. The caller's
+    // monthly-counter sanity check backstops a wrong guess.
+    const isCents = /credit/i.test(amount.name) || (Number.isInteger(amount.value) && amount.value >= 1000);
+    const spendUsd = isCents ? amount.value / 100 : amount.value;
+    const dateRaw = [item.date, item.day, item.date_key, item.period, item.timestamp]
+      .find(v => typeof v === "string" && /^\d{4}-\d{2}-\d{2}/.test(v));
+    return {
+      modelKey,
+      spendUsd: Number(spendUsd.toFixed(4)),
+      dateKey: dateRaw ? dateRaw.slice(0, 10) : null
+    };
+  }
+
+  function normalizeSpendBreakdownRows(payload) {
+    const arrays = [];
+    const collect = (node, depth) => {
+      if (!node || depth > 4) return;
+      if (Array.isArray(node)) {
+        arrays.push(node);
+        return;
+      }
+      if (typeof node === "object") {
+        for (const value of Object.values(node)) collect(value, depth + 1);
+      }
+    };
+    collect(payload, 0);
+
+    for (const array of arrays) {
+      const rows = array.map(normalizeSpendRow).filter(Boolean);
+      // Confidence gate: most of the array must normalize, not just a stray
+      // element that happens to have model-ish fields.
+      if (rows.length && rows.length >= array.length / 2) return rows;
+    }
+    return null;
+  }
+
+  async function fetchSpendBreakdown(currentNative) {
+    const stored = await chrome.storage.local.get([SPEND_ENDPOINT_KEY]);
+    const endpoint = stored[SPEND_ENDPOINT_KEY];
+    if (!endpoint?.path || !isCandidateSpendPath(endpoint.path)) return null;
+
+    const payload = await fetchJson(`https://claude.ai${endpoint.path}`);
+    const rows = normalizeSpendBreakdownRows(payload);
+    if (!rows || !rows.length) return null;
+
+    // Sanity check: the breakdown's total can't meaningfully exceed the real
+    // monthly counter. If it does, the unit heuristic (or the endpoint guess)
+    // is wrong — reject rather than display nonsense.
+    const monthUsed = currentNative?.monthlySpendLimit?.usedUsd;
+    const total = rows.reduce((sum, row) => sum + row.spendUsd, 0);
+    if (typeof monthUsed === "number" && total > Math.max(monthUsed * 1.25, monthUsed + 5)) {
+      console.debug("[Claude Companion] spend breakdown rejected: total", total, "vs monthly counter", monthUsed);
+      return null;
+    }
+    return { fetchedAt: Date.now(), path: endpoint.path, rows };
+  }
+
   globalThis.ClaudeUsageCompanionNative = {
     fetchNativeUsage,
     clearCachedOrgId,
+    rememberSpendEndpoint,
+    fetchSpendBreakdown,
     formatResetCountdown,
     formatResetLabel,
     // Exposed for unit testing pure helpers; not used elsewhere in the extension.
-    _internal: { isLikelyUnitDrift, applyCapAdvisory, nextMonthFirstDayUtcIso }
+    _internal: { isLikelyUnitDrift, applyCapAdvisory, nextMonthFirstDayUtcIso, normalizeSpendBreakdownRows, isCandidateSpendPath }
   };
 })();

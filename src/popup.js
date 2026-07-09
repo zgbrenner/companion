@@ -1,6 +1,5 @@
 const CUC = globalThis.ClaudeUsageCompanion;
 const CUCNative = globalThis.ClaudeUsageCompanionNative;
-const STORAGE_KEY = CUC.makeStorageKey();
 
 async function getActiveClaudeTab() {
   const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -16,85 +15,75 @@ async function getActiveClaudeTab() {
 }
 
 async function loadState() {
-  const stored = await chrome.storage.local.get([STORAGE_KEY, "cuc:settings"]);
-  // The native-usage cache and pace samples are ephemeral cross-tab state —
-  // they live in storage.session (with a local fallback), not storage.local.
-  const ephemeral = await CUC.ephemeralGet(["cuc:native-usage", "cuc:native-usage-error", "cuc:pace-samples"]);
+  const stored = await chrome.storage.local.get(["cuc:settings", "cuc:spend-days"]);
+  // Native usage, pace samples, and the session spend baseline are ephemeral
+  // cross-tab state — they live in storage.session (with a local fallback).
+  const ephemeral = await CUC.ephemeralGet([
+    "cuc:native-usage",
+    "cuc:native-usage-error",
+    "cuc:pace-samples",
+    "cuc:spend-session"
+  ]);
   return {
-    usage: CUC.normalizeUsage(stored[STORAGE_KEY]),
     settings: { ...CUC.DEFAULT_SETTINGS, ...(stored["cuc:settings"] || {}) },
+    spendDays: stored["cuc:spend-days"] || null,
+    spendSession: ephemeral["cuc:spend-session"] || null,
     nativeUsage: ephemeral["cuc:native-usage"] || null,
     nativeUsageError: ephemeral["cuc:native-usage-error"] || null,
     paceSamples: Array.isArray(ephemeral["cuc:pace-samples"]) ? ephemeral["cuc:pace-samples"] : []
   };
 }
 
-const MAX_CONTEXT_WINDOW_TOKENS = 200_000;
-
-// The last conversation id a claude.ai tab told us about. The popup page's
-// own URL is chrome-extension://…, so parsing it (the old behavior) labeled
-// the shared "home-or-new-chat" bucket as "this chat" — wrong and confusing.
-let knownConversationId = null;
-
-function render(usage, settings) {
-  renderSummary(usage);
-
-  const chatValueEl = document.getElementById("chat-value");
-  const chatDetailEl = document.getElementById("chat-detail");
-  const chatBarEl = document.getElementById("chat-bar");
-
-  if (!knownConversationId) {
-    chatValueEl.textContent = "—";
-    // First-run empty state: a fresh install with zero history gets a
-    // friendly pointer instead of a wall of dashes and $0.00.
-    const nothingTrackedYet = Object.keys(usage.days || {}).length === 0;
-    chatDetailEl.textContent = nothingTrackedYet
-      ? "No usage tracked yet — send Claude a message to start."
-      : "Open a claude.ai tab to see this chat.";
-    setBar(chatBarEl, 0);
-    return;
-  }
-
-  const conversation = CUC.getConversationUsage(usage, knownConversationId);
-  const chatTokens = (conversation.inputTokens || 0) + (conversation.outputTokens || 0);
-  const chatPct = CUC.clamp((chatTokens / MAX_CONTEXT_WINDOW_TOKENS) * 100, 0, 100);
-  const spend = conversation.estimatedUsd || 0;
-
-  const costText = CUC.formatUsd(spend);
-  const tokensText = `${CUC.formatTokens(chatTokens)} tokens`;
-  let chatValue = costText;
-  let chatDetail = `${tokensText} · ballpark estimate`;
-  if (settings.displayMode === "tokens") {
-    chatValue = tokensText;
-    chatDetail = `${costText} · ballpark estimate`;
-  } else if (settings.displayMode === "both") {
-    chatValue = `${costText} · ${tokensText}`;
-    chatDetail = "Ballpark estimate for this chat";
-  }
-
-  chatValueEl.textContent = chatValue;
-  chatDetailEl.textContent = chatDetail;
-  setBar(chatBarEl, chatPct);
+function spendText(spendUsd, settings) {
+  const usdText = CUC.formatUsd(spendUsd);
+  const rangeText = CUC.formatTokenRange(CUC.estimateTokenRangeFromSpend(spendUsd, settings.defaultModel));
+  if (settings.displayMode === "tokens") return rangeText;
+  if (settings.displayMode === "both") return `${usdText} · ${rangeText}`;
+  return usdText;
 }
 
-function renderSummary(usage) {
-  const today = CUC.getTodayUsage(usage);
-  const month = CUC.getMonthUsage(usage);
-  document.getElementById("today-value").textContent = CUC.formatUsd(today.estimatedUsd || 0);
-  document.getElementById("month-value").textContent = CUC.formatUsd(month.estimatedUsd || 0);
-  renderTrend(usage);
+function render(state) {
+  const { settings, spendSession, spendDays, nativeUsage } = state;
+
+  // Session spend — Claude's own counter since the browser session started.
+  const sessionValueEl = document.getElementById("session-value");
+  const sessionDetailEl = document.getElementById("session-detail");
+  const sessionBarEl = document.getElementById("session-bar");
+  const deltaUsd = CUC.sessionSpendDelta(spendSession);
+
+  if (deltaUsd == null) {
+    sessionValueEl.textContent = "—";
+    sessionDetailEl.textContent = "Open a claude.ai tab to load your usage.";
+    setBar(sessionBarEl, 0);
+  } else {
+    sessionValueEl.textContent = spendText(deltaUsd, settings);
+    const limitUsd = nativeUsage?.monthlySpendLimit?.limitUsd;
+    setBar(sessionBarEl, limitUsd > 0 ? (deltaUsd / limitUsd) * 100 : 0);
+    const startedAt = spendSession?.startedAt;
+    sessionDetailEl.textContent = startedAt
+      ? `All your Claude activity since ${new Date(startedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} — real spend, not an estimate.`
+      : "All your Claude activity this browser session — real spend, not an estimate.";
+  }
+
+  // Today / This month — both real numbers.
+  const todayUsd = CUC.daySpendUsd(spendDays);
+  document.getElementById("today-value").textContent = todayUsd == null ? "—" : CUC.formatUsd(todayUsd);
+  const monthUsd = nativeUsage?.monthlySpendLimit?.usedUsd;
+  document.getElementById("month-value").textContent = typeof monthUsd === "number" ? CUC.formatUsd(monthUsd) : "—";
+
+  renderTrend(spendDays);
 }
 
-// 14 flexbox bars, no chart library — each day's estimated spend scaled to
-// the busiest day in the window. Hidden entirely until there are at least
-// two active days, so a fresh install isn't greeted by an empty chart.
-function renderTrend(usage) {
+// 14 flexbox bars, no chart library — each day's real spend scaled to the
+// busiest day in the window. Hidden entirely until there are at least two
+// active days, so a fresh install isn't greeted by an empty chart.
+function renderTrend(spendDays) {
   const trend = document.getElementById("trend");
   const caption = document.getElementById("trend-caption");
   if (!trend) return;
-  const series = CUC.recentDaysSeries(usage, 14);
-  const max = Math.max(...series.map(d => d.estimatedUsd));
-  const activeDays = series.filter(d => d.estimatedUsd > 0).length;
+  const series = CUC.spendDaysSeries(spendDays, 14);
+  const max = Math.max(...series.map(d => d.spendUsd));
+  const activeDays = series.filter(d => d.spendUsd > 0).length;
   if (!(max > 0) || activeDays < 2) {
     trend.hidden = true;
     if (caption) caption.hidden = true;
@@ -107,14 +96,14 @@ function renderTrend(usage) {
   for (const day of series) {
     const bar = document.createElement("div");
     bar.className = day.date === todayKey ? "trend-bar today" : "trend-bar";
-    const pct = Math.max(day.estimatedUsd > 0 ? 7 : 0, Math.round((day.estimatedUsd / max) * 100));
+    const pct = Math.max(day.spendUsd > 0 ? 7 : 0, Math.round((day.spendUsd / max) * 100));
     bar.style.height = `${pct}%`;
-    bar.title = `${day.date}: ${CUC.formatUsd(day.estimatedUsd)}`;
+    bar.title = `${day.date}: ${CUC.formatUsd(day.spendUsd)}`;
     trend.appendChild(bar);
   }
   trend.setAttribute(
     "aria-label",
-    `Daily usage, last 14 days. Busiest day ${CUC.formatUsd(max)}. Today ${CUC.formatUsd(series[series.length - 1].estimatedUsd)}.`
+    `Daily spend, last 14 days. Busiest day ${CUC.formatUsd(max)}. Today ${CUC.formatUsd(series[series.length - 1].spendUsd)}.`
   );
 }
 
@@ -240,34 +229,20 @@ function renderPace(paceSamples, nativeUsage, settings) {
 }
 
 async function boot() {
-  const state = await loadState();
-  render(state.usage, state.settings);
+  let state = await loadState();
+  render(state);
   renderNative(state.nativeUsage, state.nativeUsageError, state.settings);
   renderPace(state.paceSamples, state.nativeUsage, state.settings);
 
-  // Ask the content script (if a claude.ai tab is open) to refresh native
-  // usage and provide the active chat id/state now. The popup page itself has
-  // no claude.ai URL, so storage-only rendering cannot know which conversation
-  // "this chat" means.
+  // Ask the content script (if a claude.ai tab is open) to force-refresh the
+  // usage counter so the popup opens on live numbers, not the last poll.
   const tab = await getActiveClaudeTab();
   if (tab?.id) {
-    chrome.tabs.sendMessage(tab.id, { type: "cuc:get-state" })
-      .then(response => {
-        if (response?.usage && response?.settings) {
-          state.usage = response.usage;
-          state.settings = response.settings;
-          knownConversationId = response.conversationId || null;
-          render(state.usage, state.settings);
-          renderNative(response.nativeUsage, response.nativeUsageError, state.settings);
-        }
-      })
-      .catch(() => {
-        // No content script listening yet; storage fallback above remains visible.
-      });
-
     chrome.tabs.sendMessage(tab.id, { type: "cuc:refresh-native-usage" })
-      .then(response => {
+      .then(async response => {
         if (response?.nativeUsage || response?.nativeUsageError) {
+          state = await loadState();
+          render(state);
           renderNative(response.nativeUsage, response.nativeUsageError, state.settings);
         }
       })
@@ -279,19 +254,15 @@ async function boot() {
   document.getElementById("settings").addEventListener("click", () => chrome.runtime.openOptionsPage());
 
   document.getElementById("reset").addEventListener("click", async () => {
-    // Route the reset through the background single-writer. Awaiting the
-    // response guarantees the write finished before we re-read storage.
+    // Route through the background single-writer; awaiting the response
+    // guarantees the re-baseline finished before we re-read storage.
     try {
-      await chrome.runtime.sendMessage({ type: "cuc:reset-session", reason: "manual-popup" });
+      await chrome.runtime.sendMessage({ type: "cuc:reset-spend-session" });
     } catch {
-      // Background unreachable — fall back to a direct write.
-      const current = await loadState();
-      await chrome.storage.local.set({
-        [STORAGE_KEY]: CUC.resetSession(current.usage, "manual-popup", { clearConversations: true })
-      });
+      // Background unreachable — leave the baseline as is.
     }
-    const current = await loadState();
-    render(current.usage, current.settings);
+    state = await loadState();
+    render(state);
   });
 
   document.getElementById("show-widget").addEventListener("click", async () => {

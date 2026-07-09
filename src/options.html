@@ -25,9 +25,10 @@
         </select>
       </label>
       <label>
-        Model estimate
+        Model for token conversion
         <select id="defaultModel"></select>
       </label>
+      <p class="hint">Only used to translate real dollar spend into an approximate token range when the active model can't be detected. Dollar figures never depend on this.</p>
     </section>
 
     <section class="card">
@@ -65,7 +66,7 @@
 
     <section class="card">
       <h2>Usage history</h2>
-      <p class="hint">Download your local usage history (one row per day: counts and dollar estimates only — never any chat text). Handy for expense notes or a quick month-over-month look.</p>
+      <p class="hint">Download your daily spend history (one row per day: real dollars from Claude's usage counter, plus an approximate token range — never any chat text). Handy for expense notes or a quick month-over-month look.</p>
       <button id="export-csv" type="button" class="secondary">Download CSV</button>
       <p class="hint" id="export-status"></p>
     </section>
@@ -83,7 +84,7 @@
 
     <section class="card note">
       <h2>About these numbers</h2>
-      <p>The chat dollar/token figures are API-equivalent ballpark estimates using public Anthropic pricing, not guaranteed invoice amounts. The enterprise limit bar reads Claude's own usage data directly and is not an estimate.</p>
+      <p>Every dollar figure is read from Claude's own usage-credit counter — real account data, accurate to the cent, never an estimate. Session and daily spend cover all of your Claude activity in that window (any tab or device), not one specific chat. Token figures are the only derived numbers: a range computed from real dollars using current Anthropic pricing and a documented input/output/caching mix.</p>
     </section>
 
     <footer>

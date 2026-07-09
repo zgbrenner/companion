@@ -1,9 +1,7 @@
 (() => {
   const CUC = globalThis.ClaudeUsageCompanion;
   const CUCNative = globalThis.ClaudeUsageCompanionNative;
-  const STORAGE_KEY = CUC.makeStorageKey();
   let settings = { ...CUC.DEFAULT_SETTINGS };
-  let usage = CUC.emptyUsage();
   let widget = null;      // shadow HOST element (docked in page flow)
   let widgetRoot = null;  // shadow root; null until the widget is fully built
   // The widget renders inside a shadow root so claude.ai's global styles
@@ -12,13 +10,6 @@
   const widgetCssText = fetch(chrome.runtime.getURL("src/widget.css"))
     .then(response => response.text())
     .catch(() => "");
-  let lastPromptHash = "";
-  let lastPromptAt = 0;
-  let outputBuffer = "";
-  let outputBufferConversationId = null;
-  let outputBufferModelKey = null;
-  let outputFlushTimer = null;
-  let saveTimer = null;
   let nativeUsage = null;
   let nativeUsageError = null;
   let nativeUsageTimer = null;
@@ -30,6 +21,19 @@
   // Newest version published on GitHub, recorded by the background's update
   // checker; drives the "Update ready" banner at the top of the widget.
   let updateAvailableVersion = null;
+  // Real-spend state, written by the background single-writer from the
+  // samples this (and every other) tab reports:
+  //   spendSession — {baselineUsd, lastUsd, monthKey, startedAt} in
+  //                  storage.session; "spent this session" = lastUsd − baseline.
+  //   spendDays    — {days: {date: {startUsd, endUsd}}} in storage.local;
+  //                  powers the "Today" line, popup trend, and CSV export.
+  let spendSession = null;
+  let spendDays = null;
+  // Per-model daily breakdown learned from claude.ai's own Settings → Usage
+  // page (see fetchSpendBreakdown in native-usage.js). Null until claude.ai
+  // reveals the endpoint and it validates.
+  let spendBreakdown = null;
+  let generationRefreshTimer = null;
   const NATIVE_USAGE_REFRESH_MS = 60 * 1000;
   const NATIVE_USAGE_MAX_BACKOFF_MS = 10 * 60 * 1000;
 
@@ -46,13 +50,10 @@
     return jitterMs(NATIVE_USAGE_REFRESH_MS);
   }
 
-  // Per-conversation network-detected model, replacing a single sticky global.
-  // A single global meant that once any chat's request revealed a model
-  // (e.g. Opus), every OTHER conversation in the tab — including a brand-new
-  // chat that hasn't picked a model yet — inherited that same model forever.
-  // Map insertion order gives a cheap FIFO for the size cap below; entries are
-  // re-inserted on update so frequently-active conversations are pushed to
-  // the back and pruned last.
+  // Per-conversation network-detected model. A single global would mean that
+  // once any chat's request revealed a model (e.g. Opus), every OTHER
+  // conversation in the tab inherited that same model forever. Map insertion
+  // order gives a cheap FIFO for the size cap below.
   let networkModelByConversation = new Map();
   const MAX_MODEL_MAP_ENTRIES = 20;
 
@@ -67,43 +68,14 @@
     }
   }
 
-  // Recent usage events recorded under the "home-or-new-chat" bucket by THIS
-  // tab, kept just long enough to migrate them once the real conversation id
-  // becomes known (see migrateHomeChatEvents below).
-  let homeChatEvents = [];
-  let lastKnownRealConversationId = null;
-  const HOME_CHAT_MIGRATION_WINDOW_MS = 2 * 60 * 1000;
-
-  // In-memory map of eventId -> the conversationId it was migrated to. The
-  // record-event fallback (see recordEvent below) re-reads storage and folds
-  // the ORIGINAL event again if the initial cuc:record-event message fails;
-  // without this, that re-fold uses the event's original (pre-migration)
-  // conversationId — "home-or-new-chat" — silently undoing the migration this
-  // tab already applied. Bounded like usage.migratedEventIds so it can't grow
-  // unbounded in a long-lived tab.
-  let migratedEventTargets = new Map();
-  const MAX_MIGRATED_EVENT_TARGETS = 300;
-
-  function rememberMigratedEventTargets(events, toId) {
-    for (const event of events) {
-      if (!event?.id) continue;
-      migratedEventTargets.delete(event.id);
-      migratedEventTargets.set(event.id, toId);
-    }
-    while (migratedEventTargets.size > MAX_MIGRATED_EVENT_TARGETS) {
-      const oldestKey = migratedEventTargets.keys().next().value;
-      migratedEventTargets.delete(oldestKey);
-    }
-  }
-
   // Random handshake token offered to the MAIN-world network watcher
   // (src/injected.js, a manifest-declared world:"MAIN" content script) via a
   // DOM event. Events arriving on the page-global bus without this token are
-  // ignored, so an arbitrary page script can't forge usage events. Both
-  // content scripts run at document_start — before ANY page script — so the
-  // first offer the watcher sees is guaranteed to be ours; the offer is
-  // repeated on "cuc:main-ready" because Chrome doesn't guarantee which
-  // world's content script runs first.
+  // ignored, so an arbitrary page script can't forge events. Both content
+  // scripts run at document_start — before ANY page script — so the first
+  // offer the watcher sees is guaranteed to be ours; the offer is repeated on
+  // "cuc:main-ready" because Chrome doesn't guarantee which world's content
+  // script runs first.
   const NETWORK_EVENT_TOKEN = (crypto?.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`);
 
   function offerNetworkToken() {
@@ -115,182 +87,14 @@
     offerNetworkToken();
   }
 
-  function hashString(value) {
-    let hash = 0;
-    const s = String(value || "");
-    for (let i = 0; i < s.length; i += 1) {
-      hash = ((hash << 5) - hash + s.charCodeAt(i)) | 0;
-    }
-    return String(hash);
-  }
-
   async function loadState() {
-    const stored = await chrome.storage.local.get([STORAGE_KEY, "cuc:settings", "cuc:update-available"]);
+    const stored = await chrome.storage.local.get(["cuc:settings", "cuc:update-available", "cuc:spend-days"]);
     settings = { ...CUC.DEFAULT_SETTINGS, ...(stored["cuc:settings"] || {}) };
     updateAvailableVersion = stored["cuc:update-available"]?.latestVersion || null;
-    usage = CUC.normalizeUsage(stored[STORAGE_KEY]);
-    // Let the background (single writer) perform any stale-session reset, so two
-    // tabs loading at once don't both reset. The fresh state returns via
-    // storage.onChanged; we don't write from here.
-    if (CUC.shouldResetSession(usage, settings)) {
-      chrome.runtime.sendMessage({ type: "cuc:maybe-reset-session" }).catch(() => {});
-    }
-  }
-
-  function saveStateSoon() {
-    clearTimeout(saveTimer);
-    saveTimer = setTimeout(saveState, 250);
-  }
-
-  // Send a usage delta to the background service worker, which is the single
-  // serialized writer of the usage aggregate — this is what makes concurrent
-  // usage from multiple claude.ai tabs safe (no lost updates). We do NOT mutate
-  // local `usage` here; the authoritative new state comes back via
-  // storage.onChanged and re-renders every tab. If the worker is somehow
-  // unreachable, fall back to a local write so a single-tab user never loses an
-  // event (multi-tab safety is best-effort only in that rare window).
-  function recordEvent(event) {
-    // Stable unique id so the event is idempotent: if the fallback fires after
-    // the background already applied it (lost acknowledgement), addUsageEvent
-    // dedupes on this id instead of double-counting.
-    event.id = event.id || `${event.at || Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-
-    // Optimistically fold the event into local state right away. Two reasons:
-    // (1) instant widget feedback instead of waiting for the background write +
-    // storage.onChanged round-trip; (2) a rapid follow-up send computes its
-    // carry-forward context (getContextTokensForConversation reads local
-    // `usage`) against this event instead of a stale copy. This is display/
-    // compute-only — content never writes the usage blob on the normal path;
-    // the authoritative state still arrives via onChanged, and addUsageEvent is
-    // idempotent on event.id, so the optimistic apply is never double-counted.
-    usage = CUC.addUsageEvent(usage, event, settings);
-    renderWidget();
-
-    // Track events landing in the "home-or-new-chat" bucket so that once the
-    // real conversation id shows up (a moment later, once claude.ai assigns
-    // one), migrateHomeChatEvents() can move them out of the wrong bucket
-    // instead of leaving them stranded there forever.
-    if (event.conversationId === "home-or-new-chat") {
-      homeChatEvents.push(event);
-      const cutoff = Date.now() - HOME_CHAT_MIGRATION_WINDOW_MS;
-      homeChatEvents = homeChatEvents.filter(e => (e.at || 0) >= cutoff);
-    }
-
-    let settled = false;
-    const fallback = async () => {
-      if (settled) return;
-      settled = true;
-      // If this event was already migrated out of "home-or-new-chat" (a
-      // moment ago, once the real conversation id showed up), fold it under
-      // the MIGRATED target id rather than its original event.conversationId.
-      // Otherwise this fallback — firing because the original cuc:record-event
-      // send rejected — would silently undo that migration by re-adding the
-      // event back into the stale "home-or-new-chat" bucket it was just moved
-      // out of. addUsageEvent's own idempotency (appliedEventIds) is keyed on
-      // event.id regardless of which conversationId it's folded under, so
-      // rewriting the id here doesn't risk a double-apply.
-      const migratedToId = event.id ? migratedEventTargets.get(event.id) : null;
-      const effectiveEvent = migratedToId && migratedToId !== event.conversationId
-        ? { ...event, conversationId: migratedToId }
-        : event;
-      // Re-read the freshest stored state before applying, so this best-effort
-      // local write doesn't clobber events another tab committed in the
-      // meantime. addUsageEvent is idempotent on event.id.
-      try {
-        const stored = await chrome.storage.local.get([STORAGE_KEY]);
-        usage = CUC.addUsageEvent(CUC.normalizeUsage(stored[STORAGE_KEY]) || usage, effectiveEvent, settings);
-      } catch {
-        usage = CUC.addUsageEvent(usage, effectiveEvent, settings);
-      }
-      saveStateSoon();
-    };
-    try {
-      chrome.runtime.sendMessage({ type: "cuc:record-event", event })
-        .then(response => { if (!response?.ok) fallback(); })
-        .catch(fallback);
-    } catch {
-      fallback();
-    }
-  }
-
-  // Prompts sent before claude.ai assigns a conversation id land under the
-  // "home-or-new-chat" bucket (see CUC.currentConversationId()). Once the
-  // real id is discovered — from a network event's conversationId, or the
-  // URL settling on /chat/<id> — move this tab's recent events out of that
-  // shared bucket and into the real conversation, so a new chat's usage
-  // isn't permanently mixed into every other new chat opened in the tab.
-  function migrateHomeChatEvents(realConversationId) {
-    const cutoff = Date.now() - HOME_CHAT_MIGRATION_WINDOW_MS;
-    const recent = homeChatEvents.filter(e => (e.at || 0) >= cutoff);
-    homeChatEvents = [];
-    if (!realConversationId || realConversationId === "home-or-new-chat" || recent.length === 0) return;
-
-    usage = CUC.migrateConversationEvents(usage, "home-or-new-chat", realConversationId, recent);
-    renderWidget();
-    // Remember the target for these event ids so the record-event fallback
-    // (see recordEvent above) can re-fold a since-rejected event under the
-    // migrated conversation id instead of stranding it back in
-    // "home-or-new-chat".
-    rememberMigratedEventTargets(recent, realConversationId);
-    sendMigrateConversationEventsMessage("home-or-new-chat", realConversationId, recent);
-  }
-
-  // Best-effort notification to the background of a local migration, retried
-  // once on failure/rejection since a lost message here means the background's
-  // authoritative state never gets the migration and multi-tab/service-worker
-  // restarts could otherwise leave it stranded. Not pure fire-and-forget: the
-  // in-memory migratedEventTargets map (populated by the caller) is what
-  // actually protects against re-stranding locally; this retry just improves
-  // the odds the background picks it up too.
-  function sendMigrateConversationEventsMessage(fromId, toId, events, attempt = 0) {
-    try {
-      chrome.runtime.sendMessage({
-        type: "cuc:migrate-conversation-events",
-        fromId,
-        toId,
-        events
-      }).then(response => {
-        if (!response?.ok && attempt === 0) {
-          sendMigrateConversationEventsMessage(fromId, toId, events, 1);
-        }
-      }).catch(() => {
-        if (attempt === 0) sendMigrateConversationEventsMessage(fromId, toId, events, 1);
-      });
-    } catch {
-      // Best-effort only: the optimistic local fold above already keeps this
-      // tab's widget accurate even if the background never sees the migration.
-      if (attempt === 0) sendMigrateConversationEventsMessage(fromId, toId, events, 1);
-    }
-  }
-
-  // Call whenever a real (non-"home-or-new-chat") conversation id surfaces,
-  // from either a network event's detail.conversationId or a URL change.
-  // Cheap to call repeatedly: migrateHomeChatEvents() is a no-op once
-  // homeChatEvents has been drained for this id.
-  function onRealConversationIdDiscovered(conversationId) {
-    if (!conversationId || conversationId === "home-or-new-chat") return;
-    if (conversationId === lastKnownRealConversationId) return;
-    lastKnownRealConversationId = conversationId;
-    migrateHomeChatEvents(conversationId);
-  }
-
-  async function saveState() {
-    usage.lastUpdatedAt = Date.now();
-    try {
-      await chrome.storage.local.set({ [STORAGE_KEY]: usage });
-    } catch (error) {
-      // Most likely QUOTA_BYTES. pruneUsage() bounds growth so this should be
-      // rare, but if it happens, drop the coldest history and retry once so new
-      // usage keeps persisting rather than silently failing forever.
-      CUC.pruneUsage(usage);
-      usage.recentEvents = (usage.recentEvents || []).slice(0, 10);
-      try {
-        await chrome.storage.local.set({ [STORAGE_KEY]: usage });
-      } catch {
-        // Give up on this write; in-memory state still drives the widget.
-      }
-    }
-    renderWidget();
+    spendDays = stored["cuc:spend-days"] || null;
+    const ephemeral = await CUC.ephemeralGet(["cuc:spend-session", "cuc:spend-breakdown"]);
+    spendSession = ephemeral["cuc:spend-session"] || null;
+    spendBreakdown = ephemeral["cuc:spend-breakdown"] || null;
   }
 
   function detectModelKey() {
@@ -303,9 +107,6 @@
     // Prefer a scoped model-picker control if we can find one — scanning the
     // whole page for words like "opus" or "haiku" produces false positives
     // when those words appear in chat history rather than an active selector.
-    // '[data-testid="model-selector-dropdown"]' is a verified selector
-    // (confirmed against a live, actively-maintained extension targeting
-    // claude.ai); the others are unverified fallbacks in case it changes.
     const pickerSelectors = [
       "[data-testid='model-selector-dropdown']",
       "[data-testid*='model-selector']",
@@ -345,314 +146,6 @@
       if (text.includes("low")) return "Low";
     }
     return null;
-  }
-
-  function countAttachmentChips() {
-    // Scope to the composer area only. Broad selectors like [class*='file' i]
-    // match unrelated UI (any class containing "file" as a substring) and
-    // wildly overcount — each false positive adds ~3500 phantom tokens.
-    // '[data-testid="chat-input-grid-container"]' is a verified composer
-    // container selector; the rest are unverified fallbacks.
-    const composerScopes = Array.from(document.querySelectorAll(
-      "[data-testid='chat-input-grid-container'], [data-testid*='composer'], form, [role='form'], [contenteditable='true']"
-    )).map(el => el.closest("[data-testid='chat-input-grid-container'], form, [data-testid*='composer']") || el);
-    const scopeRoots = new Set(composerScopes.filter(Boolean));
-    if (scopeRoots.size === 0) scopeRoots.add(document.body);
-
-    const attachmentSelector = "[data-testid*='attachment-chip'], [data-testid*='file-chip'], [aria-label*='attached file' i], [aria-label*='remove attachment' i]";
-    const seen = new Set();
-    for (const root of scopeRoots) {
-      if (!root) continue;
-      const candidates = Array.from(root.querySelectorAll(attachmentSelector));
-      candidates.forEach(el => {
-        const label = (el.innerText || el.getAttribute("aria-label") || "").trim();
-        if (label) seen.add(label);
-      });
-    }
-    return Math.min(seen.size, 20);
-  }
-
-  function getComposerText() {
-    const selectors = [
-      "textarea",
-      "div[contenteditable='true']",
-      "[role='textbox']",
-      "[data-testid='chat-input-grid-container'] [contenteditable='true']",
-      "[data-testid*='composer'] [contenteditable='true']"
-    ];
-
-    for (const selector of selectors) {
-      const nodes = Array.from(document.querySelectorAll(selector));
-      const active = nodes.find(node => node === document.activeElement || node.contains(document.activeElement));
-      const node = active || nodes.reverse().find(n => (n.innerText || n.value || "").trim().length > 0);
-      const text = node?.value || node?.innerText || "";
-      if (text.trim()) return text.trim();
-    }
-    return "";
-  }
-
-  // Anthropic's models currently support up to ~200K tokens of context.
-  // Carry-forward estimates must never exceed this, or long conversations
-  // will show impossible, ever-climbing "context" numbers.
-  const MAX_CONTEXT_WINDOW_TOKENS = 200_000;
-
-  function getContextTokensForConversation(modelKey) {
-    if (!settings.countHiddenContext) return 0;
-    const conversation = usage.conversations?.[CUC.currentConversationId()] || {};
-    // Use raw prompt+response size actually sent/received so far, not a
-    // value that already includes previous carry-forward estimates —
-    // multiplying an already-inflated running total by a ratio on every
-    // message compounds it superlinearly instead of tracking real context.
-    const rawPrevious = (conversation.rawInputTokens || 0) + (conversation.outputTokens || 0);
-    const estimate = Math.ceil(rawPrevious * Number(settings.contextCarryForwardRatio || 0));
-    return Math.min(estimate, MAX_CONTEXT_WINDOW_TOKENS);
-  }
-
-  function recordInput(text, reason = "send", attachmentCountArg = null) {
-    const clean = String(text || "").trim();
-    // Count attachments from the argument if the caller snapshotted them at
-    // send time (the composer chips are often torn out of the DOM within a few
-    // ms of sending, so counting them here — after the delay — would read 0).
-    const attachmentCount = attachmentCountArg != null ? attachmentCountArg : countAttachmentChips();
-    // Allow attachment-only sends (a file with no typed prompt). Only bail when
-    // there is genuinely nothing to record.
-    if (!clean && attachmentCount === 0) return;
-
-    const now = Date.now();
-    // Dedupe on prompt text + attachment count so an attachment-only send (empty
-    // text) isn't collapsed with the next one.
-    const promptHash = hashString(`${clean} ${attachmentCount}`);
-    if (promptHash === lastPromptHash && now - lastPromptAt < 4000) return;
-    lastPromptHash = promptHash;
-    lastPromptAt = now;
-
-    const modelKey = detectModelKey();
-    const promptEstimate = CUC.estimateTokensPrecise(clean, modelKey);
-    const promptTokens = promptEstimate.tokens;
-    const contextTokens = getContextTokensForConversation(modelKey);
-    const attachmentTokens = attachmentCount * 3500;
-    const rawInputTokens = Math.ceil(promptTokens + attachmentTokens);
-    const inputTokens = rawInputTokens + contextTokens;
-    const estimatedUsd = CUC.estimateCostUsd(inputTokens, 0, modelKey, settings);
-
-    recordEvent({
-      at: now,
-      kind: "input",
-      inputTokens,
-      rawInputTokens,
-      outputTokens: 0,
-      estimatedUsd,
-      modelKey,
-      attachmentCount,
-      conversationId: CUC.currentConversationId(),
-      reason
-    });
-  }
-
-  function flushOutputBuffer(reason = "stream") {
-    const text = outputBuffer.trim();
-    // Attribute output to the model/conversation active when the stream was
-    // captured, not whatever is on screen at flush time — the user may have
-    // switched chats during the debounce window.
-    const modelKey = outputBufferModelKey || detectModelKey();
-    const conversationId = outputBufferConversationId || CUC.currentConversationId();
-    outputBuffer = "";
-    outputBufferConversationId = null;
-    outputBufferModelKey = null;
-    clearTimeout(outputFlushTimer);
-    if (!text) return;
-
-    const outputEstimate = CUC.estimateTokensPrecise(text, modelKey);
-    const outputTokens = outputEstimate.tokens;
-    const estimatedUsd = CUC.estimateCostUsd(0, outputTokens, modelKey, settings);
-    recordEvent({
-      at: Date.now(),
-      kind: "output",
-      inputTokens: 0,
-      outputTokens,
-      estimatedUsd,
-      modelKey,
-      conversationId,
-      reason
-    });
-  }
-
-  function isInsideComposer(el) {
-    if (!el) return false;
-    return Boolean(el.closest?.(
-      "[data-testid*='composer'], textarea, div[contenteditable='true'], [role='textbox']"
-    ));
-  }
-
-  function observeSends() {
-    document.addEventListener("keydown", event => {
-      // Enter that confirms an IME composition (Japanese/Chinese/Korean input)
-      // is not a send — without this check every conversion confirm recorded a
-      // phantom usage event.
-      if (event.isComposing || event.keyCode === 229) return;
-      const isEnterSend = event.key === "Enter" && !event.shiftKey && !event.metaKey && !event.ctrlKey && !event.altKey;
-      if (!isEnterSend) return;
-      // Only treat this as a "send" if Enter was pressed while focus was
-      // actually inside the composer — otherwise any Enter press anywhere
-      // on the page (search boxes, settings fields) gets misread as a send.
-      if (!isInsideComposer(document.activeElement)) return;
-      // Snapshot text AND attachment count now, before the composer clears.
-      const text = getComposerText();
-      const attachmentCount = countAttachmentChips();
-      setTimeout(() => recordInput(text, "keyboard-send", attachmentCount), 20);
-    }, true);
-
-    document.addEventListener("click", event => {
-      const target = event.target;
-      const button = target?.closest?.("button, [role='button']");
-      if (!button) return;
-      // Require the button to be near the composer AND carry a send-like
-      // label. Matching "arrow" anywhere on the page (pagination, carousels)
-      // was producing false-positive usage events.
-      const label = `${button.getAttribute("aria-label") || ""} ${button.innerText || ""}`.toLowerCase();
-      const looksLikeSend = /send message|send prompt|^send$/.test(label.trim()) || /submit/.test(label);
-      const nearComposer = Boolean(button.closest("[data-testid*='composer'], form"));
-      if (!looksLikeSend && !(nearComposer && /send/.test(label))) return;
-      const text = getComposerText();
-      const attachmentCount = countAttachmentChips();
-      setTimeout(() => recordInput(text, "button-send", attachmentCount), 20);
-    }, true);
-  }
-
-  // Map a request-body modelId (from generation-start/model-detected/
-  // response-complete) through the same id/text normalization used
-  // everywhere else, so a raw API model id becomes one of our MODEL_PRICES keys.
-  function mapDetailModelKey(modelId) {
-    if (!modelId) return null;
-    return CUC.detectModelFromId(modelId) || CUC.detectModelFromText(modelId) || null;
-  }
-
-  // A generation request that starts without a matching DOM-observed send is
-  // a Retry / edit-and-resend / other non-composer send. Those still consume
-  // input tokens, so record a synthetic input event from the request's prompt
-  // length (characters only — the text itself never crosses the event bus).
-  function recordNetworkInputIfUnseen(detail) {
-    const now = Date.now();
-    // A composer send was just recorded by the DOM listeners; this request is
-    // almost certainly that same send, so don't double-count it. The window is
-    // generous because generation-start fires only once response HEADERS
-    // arrive, which can lag several seconds behind the keystroke under load —
-    // and a missed retry (undercount) is a better failure than double-counting
-    // an ordinary send.
-    if (now - lastPromptAt < 10000) return;
-    const promptChars = Number(detail.promptChars || 0);
-    if (!(promptChars > 0)) return;
-
-    const conversationId = detail.conversationId || CUC.currentConversationId();
-    const modelKey = mapDetailModelKey(detail.modelId) || detectModelKey();
-    const model = CUC.MODEL_PRICES[CUC.resolveModelKey(modelKey)] || {};
-    // Char-based estimate (same ratio as the heuristic path) — we only have a
-    // length, not the text, so the tokenizer can't run here.
-    const rawInputTokens = Math.ceil((promptChars / 3.8) * (model.tokenizerMultiplier || 1));
-    const inputTokens = rawInputTokens + getContextTokensForConversation(modelKey);
-    lastPromptAt = now;
-
-    recordEvent({
-      at: now,
-      kind: "input",
-      inputTokens,
-      rawInputTokens,
-      outputTokens: 0,
-      estimatedUsd: CUC.estimateCostUsd(inputTokens, 0, modelKey, settings),
-      modelKey,
-      attachmentCount: 0,
-      conversationId,
-      reason: "network-send"
-    });
-  }
-
-  function observeNetworkEvents() {
-    window.addEventListener("cuc:network-event", event => {
-      const detail = event.detail || {};
-      // Drop events that don't carry the handshake token minted at injection
-      // time — anything else is a forgery from some other page-world script.
-      if (detail.token !== NETWORK_EVENT_TOKEN) return;
-
-      if ((detail.kind === "model-detected" || detail.kind === "generation-start") && detail.modelId) {
-        const detected = mapDetailModelKey(detail.modelId);
-        if (detected) {
-          setNetworkModelForConversation(detail.conversationId, detected);
-          renderWidget();
-        }
-      }
-
-      if (detail.kind === "generation-start") {
-        if (detail.conversationId) onRealConversationIdDiscovered(detail.conversationId);
-        recordNetworkInputIfUnseen(detail);
-      }
-
-      if (detail.kind === "response-complete" && detail.text) {
-        // Attribute this response using what the REQUEST told us (conversation
-        // id from the URL, model id from the request body) rather than
-        // whatever happens to be on screen — the user may have switched or
-        // even closed the chat before the stream finished. Only fall back to
-        // DOM/current-tab state when the request itself didn't carry it.
-        const eventConversationId = detail.conversationId || outputBufferConversationId || CUC.currentConversationId();
-        const eventModelKey = mapDetailModelKey(detail.modelId) || outputBufferModelKey || detectModelKey();
-
-        // If a differently-attributed response is already buffered, flush it
-        // under its own attribution first rather than silently relabeling it
-        // with this event's conversation/model.
-        if (outputBuffer && (outputBufferConversationId !== eventConversationId || outputBufferModelKey !== eventModelKey)) {
-          flushOutputBuffer("network-stream");
-        }
-
-        if (!outputBuffer) {
-          outputBufferConversationId = eventConversationId;
-          outputBufferModelKey = eventModelKey;
-        }
-        outputBuffer += " " + detail.text;
-
-        if (detail.conversationId) onRealConversationIdDiscovered(detail.conversationId);
-
-        clearTimeout(outputFlushTimer);
-        outputFlushTimer = setTimeout(() => flushOutputBuffer("network-stream"), 600);
-      }
-    });
-
-    window.addEventListener("cuc:usage-snapshot", event => {
-      if (event.detail?.token !== NETWORK_EVENT_TOKEN) return;
-
-      // Generation streams push live message_limit frames with the same
-      // utilization data the /usage endpoint reports — fresher than our poll.
-      // Merge the sanitized buckets straight into the current reading for an
-      // instant display update (display-only; the polled endpoint remains the
-      // authoritative cross-tab source).
-      const buckets = event.detail?.buckets;
-      if (buckets && nativeUsage) {
-        let merged = false;
-        for (const prop of ["fiveHour", "sevenDay", "sevenDayOpus"]) {
-          const fresh = buckets[prop];
-          if (!fresh || typeof fresh.utilizationPct !== "number") continue;
-          nativeUsage[prop] = {
-            ...(nativeUsage[prop] || {}),
-            utilizationPct: fresh.utilizationPct,
-            resetsAt: fresh.resetsAt || nativeUsage[prop]?.resetsAt || null
-          };
-          merged = true;
-        }
-        if (merged) {
-          renderWidget();
-          updateToolbarBadge();
-        }
-      }
-
-      // claude.ai just fetched its own usage data (or a generation stream
-      // carried a live message_limit frame), so ours may be stale — refresh
-      // opportunistically (throttled). We never persist the raw payload
-      // (it's not even forwarded across the world boundary anymore), and we do
-      // not write the usage aggregate from here: the background is the single
-      // writer, so a content-side write would reintroduce the multi-tab race.
-      const now = Date.now();
-      if (now - lastUsageSnapshotRefreshAt < 15000) return;
-      lastUsageSnapshotRefreshAt = now;
-      refreshNativeUsage();
-    });
   }
 
   // The widget follows claude.ai's OWN theme (what the user picked in Claude's
@@ -745,13 +238,13 @@
         <div class="cuc-body" data-cuc="body">
           <div class="cuc-meter">
             <div class="cuc-meter-label">
-              <span title="A local ballpark estimate of tokens and API-equivalent dollars used in this conversation. Not a bill.">Usage in this chat</span>
-              <span data-cuc="chat-value" aria-live="polite">$0.00</span>
+              <span title="Your real usage-credit spend since you opened your browser — read straight from Claude's own monthly counter, accurate to the cent. Covers ALL your Claude activity in that time (every tab and device on your account), not just this chat. Token figures are a range derived from this real spend using current Anthropic pricing.">Spent this session</span>
+              <span data-cuc="session-value" aria-live="polite">—</span>
             </div>
-            <div class="cuc-progress" role="progressbar" aria-label="Context window used in this chat" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
-              <div class="cuc-progress-bar" data-cuc="chat-bar"></div>
+            <div class="cuc-progress" role="progressbar" aria-label="Session spend as a share of the monthly allowance" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+              <div class="cuc-progress-bar" data-cuc="session-bar"></div>
             </div>
-            <div class="cuc-budget-line" data-cuc="chat-detail" hidden></div>
+            <div class="cuc-budget-line" data-cuc="session-detail" hidden></div>
           </div>
 
           <div class="cuc-native" data-cuc="native-section">
@@ -773,7 +266,7 @@
           <div class="cuc-tip" data-cuc="tip" hidden></div>
 
           <div class="cuc-footer">
-            <span data-cuc="model">Model estimate</span>
+            <span data-cuc="model" title="The model detected in this chat — used to convert real dollars into the approximate token range.">Model</span>
           </div>
         </div>
       </div>
@@ -944,30 +437,47 @@
 
   const DISPLAY_MODE_GLYPHS = { dollars: "$", tokens: "#", both: "$#" };
 
+  // Today's spend: prefer the per-model breakdown learned from claude.ai's
+  // own usage page (fresh within 6h), else the day-chain of counter samples.
+  function todaySpendInfo() {
+    const todayKey = CUC.todayKey();
+    if (spendBreakdown?.fetchedAt && Date.now() - spendBreakdown.fetchedAt < 6 * 60 * 60 * 1000) {
+      const rows = (spendBreakdown.rows || []).filter(r => !r.dateKey || r.dateKey === todayKey);
+      if (rows.length) {
+        const spendUsd = rows.reduce((sum, r) => sum + (Number(r.spendUsd) || 0), 0);
+        return { spendUsd, rows, source: "breakdown" };
+      }
+    }
+    const chained = CUC.daySpendUsd(spendDays, todayKey);
+    return chained == null ? null : { spendUsd: chained, rows: null, source: "chain" };
+  }
+
+  function spendValueText(spendUsd, modelKey, rows = null) {
+    const usdText = CUC.formatUsd(spendUsd);
+    let rangeText;
+    if (rows && rows.length) {
+      // Per-model conversion when the breakdown says which models the money
+      // went to; the low/high spread still comes from the mix bounds.
+      const low = rows.reduce((s, r) => s + CUC.estimateTokensFromSpend(r.spendUsd, r.modelKey || modelKey, { inputOutputRatio: 3, cacheReadFraction: 0 }), 0);
+      const high = rows.reduce((s, r) => s + CUC.estimateTokensFromSpend(r.spendUsd, r.modelKey || modelKey, { inputOutputRatio: 12, cacheReadFraction: 0.5 }), 0);
+      rangeText = CUC.formatTokenRange({ low, high });
+    } else {
+      rangeText = CUC.formatTokenRange(CUC.estimateTokenRangeFromSpend(spendUsd, modelKey));
+    }
+    if (settings.displayMode === "tokens") return rangeText;
+    if (settings.displayMode === "both") return `${usdText} · ${rangeText}`;
+    return usdText;
+  }
+
   function renderWidget() {
     // widgetRoot stays null until the shadow content (and its stylesheet)
     // is in place — early renders just skip; state changes re-render later.
     if (!widget || !widgetRoot) return;
     widget.classList.toggle("cuc-hidden", !settings.showWidget);
 
-    const conversation = CUC.getConversationUsage(usage);
-    const chatTokens = (conversation.inputTokens || 0) + (conversation.outputTokens || 0);
     const modelKey = detectModelKey();
-    // Resolve intro→standard pricing before the label lookup, so the footer
-    // doesn't keep saying "intro pricing" after the cutoff has passed while
-    // the math has already moved on to standard pricing.
     const model = CUC.MODEL_PRICES[CUC.resolveModelKey(modelKey)] || CUC.MODEL_PRICES[CUC.resolveModelKey(settings.defaultModel)];
     const effort = detectEffortLevel();
-    const chatSpend = conversation.estimatedUsd || 0;
-
-    const chatCostText = CUC.formatUsd(chatSpend);
-    const chatTokensText = `${CUC.formatTokens(chatTokens)} tokens`;
-    let chatValue = chatCostText;
-    if (settings.displayMode === "tokens") {
-      chatValue = chatTokensText;
-    } else if (settings.displayMode === "both") {
-      chatValue = `${chatCostText} · ${chatTokensText}`;
-    }
 
     const cycleButton = widgetRoot.querySelector("[data-cuc-action='cycle']");
     if (cycleButton) cycleButton.textContent = DISPLAY_MODE_GLYPHS[settings.displayMode] || "$";
@@ -983,26 +493,38 @@
       if (showBanner) updateBanner.textContent = `Update v${updateAvailableVersion} is ready — click to install`;
     }
 
-    // The standing "ballpark estimate" caption is gone (it lives in the row's
-    // hover tooltip instead); the detail line only appears once the chat is
-    // heavy enough that the context-share note is actionable.
-    const chatPct = CUC.clamp((chatTokens / MAX_CONTEXT_WINDOW_TOKENS) * 100, 0, 100);
-    const chatDetailEl = widgetRoot.querySelector("[data-cuc='chat-detail']");
-    if (chatPct >= 40) {
-      chatDetailEl.textContent = `Chat is ~${Math.round(chatPct)}% of the context window`;
-      chatDetailEl.hidden = false;
+    // "Spent this session" — Claude's own counter, sampled at session start
+    // and on every poll/response since.
+    const deltaUsd = CUC.sessionSpendDelta(spendSession);
+    const sessionValueEl = widgetRoot.querySelector("[data-cuc='session-value']");
+    const sessionDetailEl = widgetRoot.querySelector("[data-cuc='session-detail']");
+    const sessionBar = widgetRoot.querySelector("[data-cuc='session-bar']");
+
+    if (deltaUsd == null) {
+      sessionValueEl.textContent = "—";
+      sessionDetailEl.hidden = true;
+      setBar(sessionBar, 0);
     } else {
-      chatDetailEl.hidden = true;
+      sessionValueEl.textContent = spendValueText(deltaUsd, modelKey);
+      // Bar: how much of the monthly allowance this session consumed.
+      const limitUsd = nativeUsage?.monthlySpendLimit?.limitUsd;
+      setBar(sessionBar, limitUsd > 0 ? (deltaUsd / limitUsd) * 100 : 0);
+
+      const today = todaySpendInfo();
+      if (today && today.spendUsd >= 0.005 && Math.abs(today.spendUsd - deltaUsd) >= 0.005) {
+        sessionDetailEl.textContent = `Today: ${spendValueText(today.spendUsd, modelKey, today.rows)}`;
+        sessionDetailEl.hidden = false;
+      } else {
+        sessionDetailEl.hidden = true;
+      }
     }
-    widgetRoot.querySelector("[data-cuc='chat-value']").textContent = chatValue;
-    setBar(widgetRoot.querySelector("[data-cuc='chat-bar']"), chatPct);
 
     widgetRoot.querySelector("[data-cuc='model']").textContent = effort
-      ? `${model?.label || "Model estimate"} · ${effort} effort`
-      : (model?.label || "Model estimate");
+      ? `${model?.label || "Model"} · ${effort} effort`
+      : (model?.label || "Model");
 
     renderNativeLimits();
-    renderTip(chatPct);
+    renderTip();
   }
 
   function nativeUsageBarLevel(pct) {
@@ -1165,55 +687,129 @@
 
   // One plain-English coaching line, shown only when it's actionable.
   // Priority: pace projection (forward-looking, most decision-relevant) >
-  // suppress if the native note already carries a warning > long-chat tip.
-  function renderTip(chatPct) {
+  // suppress if the native note already carries a warning.
+  function renderTip() {
     const tip = widgetRoot.querySelector("[data-cuc='tip']");
     if (!tip) return;
-    if (!settings.showPlainEnglishTips) {
+    if (!settings.showPlainEnglishTips || !settings.showNativeLimits) {
       tip.hidden = true;
       return;
     }
-    if (settings.showNativeLimits) {
-      const projection = CUC.projectDepletion(paceSamples, Date.now(), nativeUsage?.fiveHour?.resetsAt || null);
-      const paceText = CUC.paceWarningText(projection);
-      if (paceText) {
-        tip.textContent = paceText;
-        tip.hidden = false;
-        return;
-      }
-      if (mostUrgentNativeWarning(nativeUsage)) {
-        // Already surfaced in the native note — don't say it twice.
-        tip.hidden = true;
-        return;
-      }
-    }
-    if (chatPct >= 60) {
-      tip.textContent = "This chat is getting long. Long chats use your limits faster — consider starting a fresh chat for new topics.";
+    const projection = CUC.projectDepletion(paceSamples, Date.now(), nativeUsage?.fiveHour?.resetsAt || null);
+    const paceText = CUC.paceWarningText(projection);
+    if (paceText && !mostUrgentNativeWarning(nativeUsage)) {
+      tip.textContent = paceText;
       tip.hidden = false;
       return;
     }
     tip.hidden = true;
   }
 
+  function observeNetworkEvents() {
+    window.addEventListener("cuc:network-event", event => {
+      const detail = event.detail || {};
+      // Drop events that don't carry the handshake token minted at startup —
+      // anything else is a forgery from some other page-world script.
+      if (detail.token !== NETWORK_EVENT_TOKEN) return;
+
+      if (detail.kind === "model-detected" && detail.modelId) {
+        const detected = CUC.detectModelFromId(detail.modelId) || CUC.detectModelFromText(detail.modelId);
+        if (detected) {
+          setNetworkModelForConversation(detail.conversationId, detected);
+          renderWidget();
+        }
+      }
+
+      if (detail.kind === "generation-complete") {
+        // A response just finished — Claude's counter updates shortly after.
+        // Force a live re-read (bypassing the shared cross-tab cache) so the
+        // session number moves right after each exchange, which is the whole
+        // point of the delta design.
+        clearTimeout(generationRefreshTimer);
+        generationRefreshTimer = setTimeout(() => {
+          refreshNativeUsage({ force: true });
+        }, 2500);
+      }
+    });
+
+    window.addEventListener("cuc:usage-snapshot", event => {
+      const detail = event.detail || {};
+      if (detail.token !== NETWORK_EVENT_TOKEN) return;
+
+      // claude.ai's own Settings → Usage page just called a spend-report
+      // endpoint we don't know about — remember the path so the breakdown
+      // fetcher can learn it (no payload crosses the bus, only the path).
+      if (detail.kind === "spend-report-endpoint" && typeof detail.path === "string") {
+        CUCNative?.rememberSpendEndpoint?.(detail.path).then(learned => {
+          if (learned) refreshSpendBreakdown(true);
+        }).catch(() => {});
+      }
+
+      // Generation streams push live message_limit frames with the same
+      // utilization data the /usage endpoint reports — fresher than our poll.
+      // Merge the sanitized buckets straight into the current reading for an
+      // instant display update (display-only; the polled endpoint remains the
+      // authoritative cross-tab source).
+      const buckets = detail.buckets;
+      if (buckets && nativeUsage) {
+        let merged = false;
+        for (const prop of ["fiveHour", "sevenDay", "sevenDayOpus"]) {
+          const fresh = buckets[prop];
+          if (!fresh || typeof fresh.utilizationPct !== "number") continue;
+          nativeUsage[prop] = {
+            ...(nativeUsage[prop] || {}),
+            utilizationPct: fresh.utilizationPct,
+            resetsAt: fresh.resetsAt || nativeUsage[prop]?.resetsAt || null
+          };
+          merged = true;
+        }
+        if (merged) {
+          renderWidget();
+          updateToolbarBadge();
+        }
+      }
+
+      // claude.ai just fetched its own usage data, so ours may be stale —
+      // refresh opportunistically (throttled). We never read the raw payload;
+      // the content script re-reads via its own credentialed fetch.
+      const now = Date.now();
+      if (now - lastUsageSnapshotRefreshAt < 15000) return;
+      lastUsageSnapshotRefreshAt = now;
+      refreshNativeUsage();
+    });
+  }
+
+  // Per-model daily breakdown (claude.ai's Settings → Usage data), fetched
+  // via the endpoint learned above. Throttled; results shared cross-tab.
+  let lastBreakdownAttemptAt = 0;
+  async function refreshSpendBreakdown(force = false) {
+    if (!CUCNative?.fetchSpendBreakdown) return;
+    const now = Date.now();
+    if (!force && now - lastBreakdownAttemptAt < 30 * 60 * 1000) return;
+    lastBreakdownAttemptAt = now;
+    try {
+      const result = await CUCNative.fetchSpendBreakdown(nativeUsage);
+      if (result) {
+        spendBreakdown = result;
+        await CUC.ephemeralSet({ "cuc:spend-breakdown": result });
+        renderWidget();
+      }
+    } catch {
+      // No learned endpoint yet, or it didn't validate — the day-chain
+      // fallback keeps the Today line working.
+    }
+  }
+
   function observeSpaNavigation() {
     // Claude.ai is a client-rendered SPA — switching conversations doesn't
     // reload the page, so location.pathname changes without any of the
     // browser's native navigation events firing reliably. Patch history
-    // methods and poll as a fallback so currentConversationId() and the
-    // widget's model/effort readout stay in sync with the active chat.
+    // methods and poll as a fallback so the widget's model readout and
+    // placement stay in sync with the active chat.
     let lastPath = location.pathname;
     const onPathChange = () => {
       if (location.pathname === lastPath) return;
       lastPath = location.pathname;
-      lastPromptHash = "";
-      // Flush any buffered output for the chat we're leaving — it's attributed
-      // to the captured conversation id, so it lands on the right chat rather
-      // than being silently discarded.
-      flushOutputBuffer("navigation");
-      // The URL settling on /chat/<id> (e.g. right after sending the first
-      // message in a brand-new chat) is another way the real conversation id
-      // becomes known; migrate any stranded "home-or-new-chat" events for it.
-      onRealConversationIdDiscovered(CUC.currentConversationId());
       placeWidget();
       renderWidget();
     };
@@ -1232,8 +828,6 @@
     };
     window.addEventListener("popstate", onPathChange);
     // Fallback poll for history mutations the patched push/replaceState miss.
-    // pushState/replaceState/popstate already cover the common cases, so this
-    // can be slow, and it skips work entirely while the tab is backgrounded.
     setInterval(() => { if (!document.hidden) onPathChange(); }, 2000);
 
     // React re-renders can replace the composer DOM node even without a
@@ -1298,8 +892,10 @@
   }
 
   // Flatten the current native reading into per-bucket rows the background
-  // can use for the toolbar badge and threshold notifications. Percentages
-  // and reset timestamps only — no account payload crosses this message.
+  // can use for the toolbar badge and threshold notifications, plus the
+  // monthly counter reading that drives the session/daily spend baselines.
+  // Percentages, reset timestamps, and two dollar figures — no account
+  // payload crosses this message.
   function nativeUsageBucketsForBackground() {
     if (!nativeUsage) return [];
     const rows = [];
@@ -1317,17 +913,22 @@
 
   function updateToolbarBadge() {
     try {
+      const spendLimit = nativeUsage?.monthlySpendLimit;
       chrome.runtime.sendMessage({
         type: "cuc:native-usage-updated",
         maxUtilizationPct: maxNativeUtilizationPct(nativeUsage),
-        buckets: nativeUsageBucketsForBackground()
+        buckets: nativeUsageBucketsForBackground(),
+        monthlySpend: spendLimit && typeof spendLimit.usedUsd === "number"
+          ? { usedUsd: spendLimit.usedUsd, limitUsd: spendLimit.limitUsd }
+          : null
       }).catch(() => {});
     } catch {
-      // Badge/notifications are nice-to-haves; never let them break refresh.
+      // Badge/notifications/spend samples are routed best-effort; never let
+      // them break the refresh loop.
     }
   }
 
-  async function refreshNativeUsage() {
+  async function refreshNativeUsage({ force = false } = {}) {
     if (!settings.showNativeLimits || !CUCNative) {
       scheduleNextNativeUsagePoll();
       return;
@@ -1335,21 +936,25 @@
 
     // Multi-tab dedupe: another tab may have polled seconds ago and stored
     // the result. Freshness rides on fetchedAt, which fetchNativeUsage stamps.
-    try {
-      const stored = await CUC.ephemeralGet(["cuc:native-usage", "cuc:pace-samples"]);
-      const shared = stored["cuc:native-usage"];
-      if (shared?.fetchedAt && Date.now() - shared.fetchedAt < NATIVE_USAGE_SHARED_FRESH_MS) {
-        nativeUsage = shared;
-        nativeUsageError = null;
-        // Another tab is the sampler; just read its samples for display.
-        if (Array.isArray(stored["cuc:pace-samples"])) paceSamples = stored["cuc:pace-samples"];
-        renderWidget();
-        updateToolbarBadge();
-        scheduleNextNativeUsagePoll();
-        return;
+    // A forced refresh (right after a generation finished) skips the shared
+    // cache — its whole purpose is to catch the counter moving JUST now.
+    if (!force) {
+      try {
+        const stored = await CUC.ephemeralGet(["cuc:native-usage", "cuc:pace-samples"]);
+        const shared = stored["cuc:native-usage"];
+        if (shared?.fetchedAt && Date.now() - shared.fetchedAt < NATIVE_USAGE_SHARED_FRESH_MS) {
+          nativeUsage = shared;
+          nativeUsageError = null;
+          // Another tab is the sampler; just read its samples for display.
+          if (Array.isArray(stored["cuc:pace-samples"])) paceSamples = stored["cuc:pace-samples"];
+          renderWidget();
+          updateToolbarBadge();
+          scheduleNextNativeUsagePoll();
+          return;
+        }
+      } catch {
+        // Storage hiccup — fall through to a live fetch.
       }
-    } catch {
-      // Storage hiccup — fall through to a live fetch.
     }
 
     try {
@@ -1390,6 +995,7 @@
     });
     renderWidget();
     updateToolbarBadge();
+    refreshSpendBreakdown();
     scheduleNextNativeUsagePoll();
   }
 
@@ -1416,14 +1022,31 @@
   }
 
   chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === "session") {
+      if (changes["cuc:spend-session"]) {
+        spendSession = changes["cuc:spend-session"].newValue || null;
+        renderWidget();
+      }
+      if (changes["cuc:spend-breakdown"]) {
+        spendBreakdown = changes["cuc:spend-breakdown"].newValue || null;
+        renderWidget();
+      }
+      return;
+    }
     if (area !== "local") return;
     if (changes["cuc:settings"]?.newValue) {
       settings = { ...CUC.DEFAULT_SETTINGS, ...changes["cuc:settings"].newValue };
       placeWidget();
       renderWidget();
     }
-    if (changes[STORAGE_KEY]?.newValue) {
-      usage = CUC.normalizeUsage(changes[STORAGE_KEY].newValue);
+    if (changes["cuc:spend-days"]) {
+      spendDays = changes["cuc:spend-days"].newValue || null;
+      renderWidget();
+    }
+    // Session-storage fallback writes land in "local" when storage.session
+    // isn't reachable yet — cover them here too.
+    if (changes["cuc:spend-session"]) {
+      spendSession = changes["cuc:spend-session"].newValue || null;
       renderWidget();
     }
     if ("cuc:update-available" in changes) {
@@ -1433,32 +1056,25 @@
   });
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-    if (message?.type === "cuc:get-state") {
-      sendResponse({ settings, usage, nativeUsage, nativeUsageError, conversationId: CUC.currentConversationId() });
-      return true;
-    }
     if (message?.type === "cuc:show-widget") {
       settings.showWidget = true;
       chrome.storage.local.set({ "cuc:settings": settings }).then(() => sendResponse({ ok: true }));
       return true;
     }
     if (message?.type === "cuc:refresh-native-usage") {
-      refreshNativeUsage().then(() => sendResponse({ ok: true, nativeUsage, nativeUsageError }));
+      refreshNativeUsage({ force: true }).then(() => sendResponse({ ok: true, nativeUsage, nativeUsageError }));
       return true;
     }
     return false;
   });
 
   // Hand the MAIN-world network watcher its auth token immediately — before
-  // the async settings load — so a generation kicked off on page load (e.g. a
-  // queued draft sent the moment the composer mounts) isn't missed while
-  // storage resolves. The watcher itself is a manifest-declared MAIN-world
-  // content script, so its fetch/XHR patches are installed before any page code.
+  // the async settings load — so a generation kicked off on page load isn't
+  // missed while storage resolves.
   startNetworkTokenHandshake();
   observeNetworkEvents();
 
   loadState().then(() => {
-    observeSends();
     observeSpaNavigation();
     observeNativeUsageRefresh();
     bootWhenReady();

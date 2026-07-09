@@ -106,9 +106,9 @@ async function applyUpdateNow() {
 async function exportCsv() {
   const status = document.getElementById("export-status");
   try {
-    const stored = await chrome.storage.local.get([CUC.makeStorageKey()]);
-    const usage = CUC.normalizeUsage(stored[CUC.makeStorageKey()]);
-    const csv = CUC.usageHistoryCsv(usage);
+    const stored = await chrome.storage.local.get(["cuc:spend-days", "cuc:settings"]);
+    const settings = { ...CUC.DEFAULT_SETTINGS, ...(stored["cuc:settings"] || {}) };
+    const csv = CUC.spendDaysCsv(stored["cuc:spend-days"], settings.defaultModel);
     const rowCount = Math.max(0, csv.split("\n").length - 1);
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
@@ -120,8 +120,8 @@ async function exportCsv() {
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 5000);
     status.textContent = rowCount === 0
-      ? "No usage recorded yet — the file has headers only."
-      : `Exported ${rowCount} day${rowCount === 1 ? "" : "s"} of usage.`;
+      ? "No spend recorded yet — the file has headers only."
+      : `Exported ${rowCount} day${rowCount === 1 ? "" : "s"} of real spend.`;
   } catch (error) {
     status.textContent = `Export failed: ${error?.message || error}`;
   }
