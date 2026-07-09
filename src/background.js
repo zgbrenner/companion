@@ -202,25 +202,136 @@ chrome.alarms?.onAlarm?.addListener(alarm => {
   }
 });
 
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  if (message?.type === "cuc:open-options") {
+// Treat every incoming message as untrusted, even when it appears to come from
+// one of our own content scripts. Only the exact sender and payload shape needed
+// for each operation is accepted; raw objects are never passed to privileged
+// APIs or storage writers.
+const BUCKET_LABELS = Object.freeze({
+  "five-hour": "Session limit",
+  "seven-day": "Weekly limit",
+  opus: "Weekly Opus limit",
+  monthly: "Monthly allowance"
+});
+const MAX_UTILIZATION_PCT = 1000;
+const MAX_USED_USD = 10_000_000;
+const MAX_LIMIT_USD = 1_000_000;
+
+function isPlainRecord(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+function hasOnlyKeys(record, allowedKeys) {
+  return Object.keys(record).every(key => allowedKeys.has(key));
+}
+
+function parseSenderUrl(sender) {
+  try {
+    return new URL(sender?.url || sender?.tab?.url || "");
+  } catch {
+    return null;
+  }
+}
+
+function isTrustedClaudeContentSender(sender) {
+  if (sender?.id !== chrome.runtime.id) return false;
+  if (!Number.isInteger(sender?.tab?.id) || sender?.frameId !== 0) return false;
+  const url = parseSenderUrl(sender);
+  if (!url || url.protocol !== "https:") return false;
+  return url.hostname === "claude.ai" || url.hostname.endsWith(".claude.ai");
+}
+
+function isTrustedPopupSender(sender) {
+  if (sender?.id !== chrome.runtime.id || sender?.tab) return false;
+  const url = parseSenderUrl(sender);
+  return Boolean(
+    url
+    && url.protocol === "chrome-extension:"
+    && url.hostname === chrome.runtime.id
+    && url.pathname === "/src/popup.html"
+  );
+}
+
+function normalizeResetTimestamp(value) {
+  if (value == null) return null;
+  if (typeof value !== "string" || value.length > 80) return undefined;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? new Date(parsed).toISOString() : undefined;
+}
+
+function normalizeNativeUsageMessage(message) {
+  if (!isPlainRecord(message)) return null;
+  if (!hasOnlyKeys(message, new Set(["type", "maxUtilizationPct", "buckets", "monthlySpend"]))) return null;
+
+  let maxUtilizationPct = null;
+  if (message.maxUtilizationPct != null) {
+    if (!Number.isFinite(message.maxUtilizationPct)
+      || message.maxUtilizationPct < 0
+      || message.maxUtilizationPct > MAX_UTILIZATION_PCT) return null;
+    maxUtilizationPct = message.maxUtilizationPct;
+  }
+
+  if (!Array.isArray(message.buckets) || message.buckets.length > Object.keys(BUCKET_LABELS).length) return null;
+  const buckets = [];
+  const seenKeys = new Set();
+  for (const bucket of message.buckets) {
+    if (!isPlainRecord(bucket)) return null;
+    if (!hasOnlyKeys(bucket, new Set(["key", "label", "pct", "resetsAt"]))) return null;
+    if (!(bucket.key in BUCKET_LABELS) || seenKeys.has(bucket.key)) return null;
+    if (!Number.isFinite(bucket.pct) || bucket.pct < 0 || bucket.pct > MAX_UTILIZATION_PCT) return null;
+    const resetsAt = normalizeResetTimestamp(bucket.resetsAt);
+    if (resetsAt === undefined) return null;
+    seenKeys.add(bucket.key);
+    buckets.push({
+      key: bucket.key,
+      label: BUCKET_LABELS[bucket.key],
+      pct: bucket.pct,
+      resetsAt
+    });
+  }
+
+  let monthlySpend = null;
+  if (message.monthlySpend != null) {
+    const spend = message.monthlySpend;
+    if (!isPlainRecord(spend) || !hasOnlyKeys(spend, new Set(["usedUsd", "limitUsd"]))) return null;
+    if (!Number.isFinite(spend.usedUsd) || spend.usedUsd < 0 || spend.usedUsd > MAX_USED_USD) return null;
+    if (!Number.isFinite(spend.limitUsd) || spend.limitUsd <= 0 || spend.limitUsd > MAX_LIMIT_USD) return null;
+    monthlySpend = { usedUsd: spend.usedUsd, limitUsd: spend.limitUsd };
+  }
+
+  return { maxUtilizationPct, buckets, monthlySpend };
+}
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (!isPlainRecord(message) || typeof message.type !== "string") return false;
+
+  if (message.type === "cuc:open-options") {
+    if (!isTrustedClaudeContentSender(sender) || !hasOnlyKeys(message, new Set(["type"]))) return false;
     chrome.runtime.openOptionsPage();
     return false;
   }
-  if (message?.type === "cuc:native-usage-updated") {
-    updateBadge(message.maxUtilizationPct);
-    serialize(() => maybeNotifyThresholds(message.buckets)).catch(() => {});
-    if (message.monthlySpend) {
-      serialize(() => recordSpendSample(message.monthlySpend)).catch(() => {});
+
+  if (message.type === "cuc:native-usage-updated") {
+    if (!isTrustedClaudeContentSender(sender)) return false;
+    const normalized = normalizeNativeUsageMessage(message);
+    if (!normalized) return false;
+    updateBadge(normalized.maxUtilizationPct);
+    serialize(() => maybeNotifyThresholds(normalized.buckets)).catch(() => {});
+    if (normalized.monthlySpend) {
+      serialize(() => recordSpendSample(normalized.monthlySpend)).catch(() => {});
     }
     return false;
   }
-  if (message?.type === "cuc:reset-spend-session") {
+
+  if (message.type === "cuc:reset-spend-session") {
+    if (!isTrustedPopupSender(sender) || !hasOnlyKeys(message, new Set(["type"]))) return false;
     serialize(() => resetSpendSession()).then(
       () => sendResponse({ ok: true }),
       () => sendResponse({ ok: false })
     );
     return true; // keep the channel open for the async sendResponse
   }
+
   return false;
 });
