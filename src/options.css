@@ -222,6 +222,61 @@ button:hover {
   opacity: 0.88;
 }
 
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+button.compact {
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
+button.danger {
+  background: #a52f2f;
+  border-color: #a52f2f;
+  color: #ffffff;
+}
+
+@media (prefers-color-scheme: dark) {
+  button.danger {
+    background: #c84a4a;
+    border-color: #c84a4a;
+    color: #ffffff;
+  }
+}
+
+.account-detail {
+  display: grid;
+  gap: 8px;
+  margin: 14px 0;
+  font-size: 13px;
+}
+
+.monospace-value {
+  display: inline-block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+}
+
+.inline-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.danger-zone {
+  border-color: #e7b8b8;
+}
+
+@media (prefers-color-scheme: dark) {
+  .danger-zone {
+    border-color: #754444;
+  }
+}
+
 #status {
   font-size: 13px;
   color: #6b7684;
