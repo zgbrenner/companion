@@ -9,21 +9,21 @@
 <body>
   <main class="popup">
     <header>
-      <h1>Claude Usage</h1>
+      <h1>Claude Companion</h1>
       <p class="org-tag">Vistage Worldwide, Inc. — internal tool</p>
     </header>
 
     <section class="meter">
-      <div class="meter-label"><span title="A local ballpark estimate of tokens and API-equivalent dollars used in this conversation. Not a bill.">Usage in this chat</span><span id="chat-value">—</span></div>
-      <div class="bar" role="progressbar" aria-label="Context window used in this chat" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div id="chat-bar"></div></div>
-      <p class="budget-line" id="chat-detail">Open a claude.ai tab to see this chat.</p>
+      <div class="meter-label"><span title="Your real usage-credit spend since you opened your browser — read from Claude's own monthly counter, accurate to the cent. Covers all your Claude activity in that time (every tab and device), not just one chat.">Spent this session</span><span id="session-value">—</span></div>
+      <div class="bar" role="progressbar" aria-label="Session spend as a share of the monthly allowance" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div id="session-bar"></div></div>
+      <p class="budget-line" id="session-detail">Open a claude.ai tab to load your usage.</p>
     </section>
 
     <section class="summary">
-      <div class="summary-row"><span>Today (estimate)</span><span id="today-value">$0.00</span></div>
-      <div class="summary-row"><span>This month (estimate)</span><span id="month-value">$0.00</span></div>
-      <div class="trend" id="trend" role="img" aria-label="Daily usage, last 14 days"></div>
-      <p class="trend-caption" id="trend-caption" hidden>Last 14 days</p>
+      <div class="summary-row"><span title="Counter samples observed today; spend while the browser was closed lands on the first day it's seen again.">Today</span><span id="today-value">—</span></div>
+      <div class="summary-row"><span title="Claude's own monthly usage-credit counter — real, to the cent.">This month</span><span id="month-value">—</span></div>
+      <div class="trend" id="trend" role="img" aria-label="Daily spend, last 14 days"></div>
+      <p class="trend-caption" id="trend-caption" hidden>Last 14 days · real spend</p>
     </section>
 
     <section class="native" id="native-section">
@@ -49,7 +49,7 @@
 
     <section class="actions">
       <button id="show-widget">Show widget</button>
-      <button id="reset">Reset usage estimates</button>
+      <button id="reset" title="Start the session counter over from $0.00 as of now">Restart session counter</button>
       <button id="settings">Settings</button>
     </section>
   </main>

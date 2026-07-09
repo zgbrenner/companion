@@ -3,91 +3,86 @@ import "./updater.js";
 
 const CUC = globalThis.ClaudeUsageCompanion;
 const UPDATER = globalThis.ClaudeUsageCompanionUpdater;
-const STORAGE_KEY = CUC.makeStorageKey();
+
+const SPEND_SESSION_KEY = "cuc:spend-session";
+const SPEND_DAYS_KEY = "cuc:spend-days";
 
 // Let content scripts use chrome.storage.session for the ephemeral cross-tab
-// cache (native usage, pace samples). Runs at every service-worker start;
-// content scripts fall back to storage.local until this has taken effect.
+// cache (native usage, pace samples, session spend baseline). Runs at every
+// service-worker start; content scripts fall back to storage.local until this
+// has taken effect.
 try {
   chrome.storage.session?.setAccessLevel?.({ accessLevel: "TRUSTED_AND_UNTRUSTED_CONTEXTS" });
 } catch {
   // Older Chrome without session access levels — the fallback covers it.
 }
 
-// The background service worker is the SINGLE writer of the usage aggregate.
-// Content scripts (one per claude.ai tab) send delta events; we apply them here
-// one at a time against the freshest stored state. Serializing through a single
-// promise chain means two tabs recording usage within the same instant can't
-// each read-modify-write a stale copy and clobber the other's event (the
-// previous design let the later storage.onChanged overwrite an unsaved event).
+// The background service worker is the SINGLE writer of the spend baselines.
+// Content scripts (one per claude.ai tab) report each fresh reading of
+// Claude's monthly usage-credit counter; we fold them here one at a time so
+// two tabs polling in the same instant can't each read-modify-write a stale
+// copy and clobber the other's sample.
 let writeChain = Promise.resolve();
 function serialize(task) {
   const run = writeChain.then(task, task);
   // Keep the chain alive even if a task rejects, so one failure doesn't wedge
-  // every subsequent event behind a permanently-rejected promise.
+  // every subsequent write behind a permanently-rejected promise.
   writeChain = run.catch(() => {});
   return run;
 }
 
-async function loadUsageAndSettings() {
-  const stored = await chrome.storage.local.get([STORAGE_KEY, "cuc:settings"]);
-  const settings = { ...CUC.DEFAULT_SETTINGS, ...(stored["cuc:settings"] || {}) };
-  const usage = CUC.normalizeUsage(stored[STORAGE_KEY]);
-  return { usage, settings };
-}
-
-async function writeUsage(usage) {
-  usage.lastUpdatedAt = Date.now();
+async function sessionStoreGet(key) {
   try {
-    await chrome.storage.local.set({ [STORAGE_KEY]: usage });
+    const stored = await chrome.storage.session.get([key]);
+    return stored[key] || null;
   } catch {
-    // Likely QUOTA_BYTES. pruneUsage bounds growth so this should be rare, but
-    // if it happens, shed the coldest history and retry once so new usage keeps
-    // persisting instead of silently failing forever.
-    CUC.pruneUsage(usage);
-    usage.recentEvents = (usage.recentEvents || []).slice(0, 10);
+    const stored = await chrome.storage.local.get([key]);
+    return stored[key] || null;
+  }
+}
+
+async function sessionStoreSet(key, value) {
+  try {
+    await chrome.storage.session.set({ [key]: value });
+  } catch {
+    await chrome.storage.local.set({ [key]: value });
+  }
+}
+
+// Fold one fresh reading of the monthly counter into the session baseline
+// (storage.session — defines "spent this session") and the daily chain
+// (storage.local — powers "today", the popup trend, and the CSV export).
+async function recordSpendSample(sample) {
+  const usedUsd = Number(sample?.usedUsd);
+  if (!Number.isFinite(usedUsd)) return;
+
+  const session = await sessionStoreGet(SPEND_SESSION_KEY);
+  const nextSession = CUC.applySessionSpendSample(session, { usedUsd });
+  if (nextSession !== session) await sessionStoreSet(SPEND_SESSION_KEY, nextSession);
+
+  const stored = await chrome.storage.local.get([SPEND_DAYS_KEY]);
+  const nextDays = CUC.applyDailySpendSample(stored[SPEND_DAYS_KEY], { usedUsd });
+  await chrome.storage.local.set({ [SPEND_DAYS_KEY]: nextDays });
+}
+
+// "Restart session counter" (popup): re-baseline at the last known reading so
+// the delta returns to $0.00 immediately.
+async function resetSpendSession() {
+  const session = await sessionStoreGet(SPEND_SESSION_KEY);
+  if (!session || !Number.isFinite(session.lastUsd)) {
+    // Nothing sampled yet this session — removing lets the next sample baseline.
     try {
-      await chrome.storage.local.set({ [STORAGE_KEY]: usage });
+      await chrome.storage.session.remove([SPEND_SESSION_KEY]);
     } catch {
-      // Give up on this write; the next event will try again from fresh state.
+      await chrome.storage.local.remove([SPEND_SESSION_KEY]);
     }
+    return;
   }
-}
-
-async function applyEvent(event) {
-  const { usage, settings } = await loadUsageAndSettings();
-  let next = usage;
-  // Fold the five-hour session reset into the same serialized path so a reset
-  // and a concurrent event can't race each other across tabs either.
-  if (CUC.shouldResetSession(next, settings)) {
-    next = CUC.resetSession(next, "five-hour-window");
-  }
-  next = CUC.addUsageEvent(next, event, settings);
-  await writeUsage(next);
-}
-
-async function maybeResetStaleSession() {
-  const { usage, settings } = await loadUsageAndSettings();
-  // Re-check against the CURRENT stored state, not a tab's stale copy, so two
-  // tabs both loading a stale session don't reset twice.
-  if (CUC.shouldResetSession(usage, settings)) {
-    await writeUsage(CUC.resetSession(usage, "five-hour-window"));
-  }
-}
-
-async function migrateConversationEvents(fromId, toId, events) {
-  const { usage } = await loadUsageAndSettings();
-  const next = CUC.migrateConversationEvents(usage, fromId, toId, events);
-  await writeUsage(next);
-}
-
-async function resetSession(reason) {
-  const { usage } = await loadUsageAndSettings();
-  // A user-initiated reset (popup button) also clears per-chat estimates —
-  // that's the number on screen, so the button must visibly do something.
-  // Automatic five-hour rollovers keep them.
-  const clearConversations = String(reason || "").startsWith("manual");
-  await writeUsage(CUC.resetSession(usage, reason || "manual", { clearConversations }));
+  await sessionStoreSet(SPEND_SESSION_KEY, {
+    ...session,
+    baselineUsd: session.lastUsd,
+    startedAt: Date.now()
+  });
 }
 
 // Toolbar badge: a red/amber percentage when any of Claude's real limits is
@@ -102,15 +97,14 @@ function updateBadge(maxUtilizationPct) {
       chrome.action.setBadgeText({ text: "" });
     }
   } catch {
-    // Badge failures must never affect usage tracking.
+    // Badge failures must never affect spend tracking.
   }
 }
 
 // Desktop notifications when a limit crosses 85% / 95% — once per threshold
-// per reset window, so this nudges rather than nags (the "gentle reminder"
-// pattern from mindful-browsing-style extensions). State lives in storage so
-// multiple tabs reporting the same reading can't duplicate a notification;
-// calls are routed through the same serialized writer as usage events.
+// per reset window, so this nudges rather than nags. State lives in storage
+// so multiple tabs reporting the same reading can't duplicate a notification;
+// calls are routed through the same serialized writer as spend samples.
 const NOTIFY_THRESHOLDS = [85, 95];
 const NOTIFY_STATE_KEY = "cuc:notify-state";
 const NOTIFY_MIN_REPEAT_MS = 6 * 60 * 60 * 1000;
@@ -193,6 +187,8 @@ chrome.runtime.onInstalled.addListener(async () => {
   if (!existing["cuc:settings"] && CUC?.DEFAULT_SETTINGS) {
     await chrome.storage.local.set({ "cuc:settings": CUC.DEFAULT_SETTINGS });
   }
+  // v0.8.0 dropped the token-estimate event store; clear the orphaned blob.
+  chrome.storage.local.remove(["cuc:usage"]).catch(() => {});
 });
 
 // Periodic GitHub update check. The alarm survives service-worker teardown;
@@ -214,35 +210,17 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === "cuc:native-usage-updated") {
     updateBadge(message.maxUtilizationPct);
     serialize(() => maybeNotifyThresholds(message.buckets)).catch(() => {});
+    if (message.monthlySpend) {
+      serialize(() => recordSpendSample(message.monthlySpend)).catch(() => {});
+    }
     return false;
   }
-  if (message?.type === "cuc:record-event" && message.event) {
-    serialize(() => applyEvent(message.event)).then(
+  if (message?.type === "cuc:reset-spend-session") {
+    serialize(() => resetSpendSession()).then(
       () => sendResponse({ ok: true }),
       () => sendResponse({ ok: false })
     );
     return true; // keep the channel open for the async sendResponse
-  }
-  if (message?.type === "cuc:migrate-conversation-events" && message.fromId && message.toId && Array.isArray(message.events)) {
-    serialize(() => migrateConversationEvents(message.fromId, message.toId, message.events)).then(
-      () => sendResponse({ ok: true }),
-      () => sendResponse({ ok: false })
-    );
-    return true;
-  }
-  if (message?.type === "cuc:maybe-reset-session") {
-    serialize(() => maybeResetStaleSession()).then(
-      () => sendResponse({ ok: true }),
-      () => sendResponse({ ok: false })
-    );
-    return true;
-  }
-  if (message?.type === "cuc:reset-session") {
-    serialize(() => resetSession(message.reason)).then(
-      () => sendResponse({ ok: true }),
-      () => sendResponse({ ok: false })
-    );
-    return true;
   }
   return false;
 });
