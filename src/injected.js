@@ -5,12 +5,32 @@
   const EVENT_NAME = "cuc:network-event";
   const USAGE_EVENT_NAME = "cuc:usage-snapshot";
 
+  // Handshake token minted by the content script and passed in on our own
+  // <script> tag. Every event we emit carries it, and the content script
+  // drops events without it — so another page-world script can't forge
+  // usage events and silently corrupt the numbers. (Read once, then the
+  // attribute is gone along with the script element itself.)
+  const AUTH_TOKEN = document.currentScript?.dataset?.cucToken || "";
+
   function emit(detail) {
-    window.dispatchEvent(new CustomEvent(EVENT_NAME, { detail }));
+    window.dispatchEvent(new CustomEvent(EVENT_NAME, { detail: { ...detail, token: AUTH_TOKEN } }));
   }
 
   function emitUsage(detail) {
-    window.dispatchEvent(new CustomEvent(USAGE_EVENT_NAME, { detail }));
+    window.dispatchEvent(new CustomEvent(USAGE_EVENT_NAME, { detail: { ...detail, token: AUTH_TOKEN } }));
+  }
+
+  // Claude's generation streams carry their own `message_limit` frames (the
+  // same data the /usage endpoint reports, but pushed live). We don't parse
+  // the payload here — just nudge the content script to re-read the usage
+  // endpoint through its own credentialed fetch, throttled so a chatty
+  // stream doesn't spam the bus.
+  let lastMessageLimitEmitAt = 0;
+  function notifyMessageLimit() {
+    const now = Date.now();
+    if (now - lastMessageLimitEmitAt < 5000) return;
+    lastMessageLimitEmitAt = now;
+    emitUsage({ kind: "message-limit", at: now });
   }
 
   function maybeParseJson(value) {
@@ -158,13 +178,19 @@
         const payload = trimmed.slice(5).trim();
         if (!payload || payload === "[DONE]") continue;
         const parsed = maybeParseJson(payload);
-        if (parsed) pieces.push(extractTextFromObject(parsed));
+        if (parsed) {
+          if (parsed.type === "message_limit" || parsed.message_limit) notifyMessageLimit();
+          pieces.push(extractTextFromObject(parsed));
+        }
         continue;
       }
 
       if (!sawDataLine) {
         const parsed = maybeParseJson(trimmed);
-        if (parsed) pieces.push(extractTextFromObject(parsed));
+        if (parsed) {
+          if (parsed.type === "message_limit" || parsed.message_limit) notifyMessageLimit();
+          pieces.push(extractTextFromObject(parsed));
+        }
       }
     }
 
@@ -313,15 +339,52 @@
     }
   }
 
+  // Length (in characters) of the user prompt inside a generation request
+  // body, for send events the DOM listeners can't see (Retry, edit-and-resend,
+  // slash-command sends). Only the LENGTH crosses the event bus — never the
+  // prompt text itself.
+  function findPromptChars(obj) {
+    if (!obj || typeof obj !== "object") return 0;
+    if (typeof obj.prompt === "string") return obj.prompt.length;
+    const visit = (node, depth = 0) => {
+      if (!node || depth > 4) return 0;
+      if (Array.isArray(node)) {
+        for (const child of node) {
+          const found = visit(child, depth + 1);
+          if (found) return found;
+        }
+        return 0;
+      }
+      if (typeof node !== "object") return 0;
+      if (typeof node.prompt === "string") return node.prompt.length;
+      for (const key of Object.keys(node)) {
+        const found = visit(node[key], depth + 1);
+        if (found) return found;
+      }
+      return 0;
+    };
+    return visit(obj);
+  }
+
   const originalFetch = window.fetch;
   window.fetch = async function patchedFetch(input, init) {
     const requestUrl = typeof input === "string" ? input : input?.url;
+    const isClaude = isClaudeOrigin(requestUrl);
+    const requestMethod = String(init?.method || input?.method || "GET").toUpperCase();
+
+    // Capture the request body BEFORE the real fetch runs: a Request object's
+    // body is consumed by the fetch itself, so cloning it afterwards throws
+    // and model detection silently failed for that request style. The clone
+    // inside parseRequestJson happens synchronously here, ahead of consumption.
+    let requestJsonPromise = null;
+    if (isClaude && requestMethod === "POST" && isGenerationUrl(requestUrl)) {
+      requestJsonPromise = parseRequestJson(input, init).catch(() => null);
+    }
+
     const response = await originalFetch.apply(this, arguments);
 
     // Only ever inspect first-party claude.ai responses.
-    if (!isClaudeOrigin(requestUrl)) return response;
-
-    const requestMethod = String(init?.method || input?.method || "GET").toUpperCase();
+    if (!isClaude) return response;
 
     // Usage endpoint: signal only that fresh usage data appeared, so the content
     // script can re-read it via its own credentialed fetch. We deliberately do
@@ -335,9 +398,10 @@
     // actual event-stream response. This is the sole path that produces
     // "output" token counts; anything else (history, lists, feature flags) is
     // ignored so it can't be mistaken for a new response.
-    if (requestMethod === "POST" && isGenerationUrl(requestUrl)) {
-      const requestJson = await parseRequestJson(input, init);
+    if (requestJsonPromise) {
+      const requestJson = await requestJsonPromise;
       const requestModel = findModelId(requestJson) || null;
+      const promptChars = findPromptChars(requestJson);
 
       const contentType = response.headers?.get?.("content-type") || "";
       if (/event-stream/i.test(contentType)) {
@@ -351,6 +415,7 @@
           requestId: requestInfo.requestId,
           conversationId: requestInfo.conversationId,
           modelId: requestInfo.modelId,
+          promptChars,
           at: Date.now()
         });
         if (requestModel) {

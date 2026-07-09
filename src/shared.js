@@ -58,17 +58,14 @@
 
   function accurateUntilLabel(modelKey) {
     if (resolveModelKey(modelKey) === "claude-sonnet-5-intro") {
-      return "Accurate till 8/31/26";
+      return "Intro pricing until 8/31/26";
     }
-    return "Pricing current";
+    return "Current pricing";
   }
 
   const DEFAULT_SETTINGS = {
     displayMode: "both",
     defaultModel: "claude-sonnet-5-intro",
-    monthlyBudgetUsd: 75,
-    sessionBudgetUsd: 2.5,
-    planName: "Claude Pro / Max / Team",
     showWidget: true,
     // The following are load-bearing for the estimate math but are no
     // longer exposed as adjustable knobs in Settings, to keep the UI simple.
@@ -78,7 +75,6 @@
     contextCarryForwardRatio: 0,
     safetyMargin: 1.2,
     autoResetSession: true,
-    priceBasisLabel: "API-equivalent estimate",
     organizationId: "1e16048b-a724-40fd-b78b-bcf3c7f9af9a",
     enterpriseMonthlyLimitUsd: 100,
     showNativeLimits: true
@@ -137,7 +133,21 @@
   }
 
   function normalizeUsage(usage) {
-    if (!usage || usage.version !== USAGE_VERSION) return emptyUsage();
+    if (!usage) return emptyUsage();
+    if (usage.version !== USAGE_VERSION) {
+      // Schema bump: don't silently throw away months of history. The
+      // days/months/conversations buckets are plain aggregate maps whose
+      // shape has been stable across versions, so salvage them when they
+      // look sane and only reset the session-level state.
+      const salvaged = emptyUsage();
+      for (const key of ["days", "months", "conversations"]) {
+        if (usage[key] && typeof usage[key] === "object" && !Array.isArray(usage[key])) {
+          salvaged[key] = usage[key];
+        }
+      }
+      salvaged.lastResetReason = "version-migration";
+      return pruneUsage(salvaged);
+    }
     return usage;
   }
 
@@ -381,19 +391,63 @@
     return Date.now() - (usage.sessionStartedAt || 0) > FIVE_HOURS_MS;
   }
 
-  function resetSession(usage, reason = "manual") {
+  function resetSession(usage, reason = "manual", options = {}) {
     const now = Date.now();
     return {
       ...emptyUsage(now),
       days: usage.days || {},
       months: usage.months || {},
-      conversations: usage.conversations || {},
+      // A user-initiated reset clears the per-chat estimates too — that's the
+      // number people actually see, so the button must have a visible effect.
+      // The automatic five-hour rollover keeps them: an open chat's estimate
+      // shouldn't silently zero out mid-conversation just because time passed.
+      conversations: options.clearConversations ? {} : (usage.conversations || {}),
+      // Carry the idempotency ring buffers through the reset. Wiping them
+      // reopened the exact double-count window they exist to close: a reset
+      // landing between the background's apply and a content-script fallback
+      // re-submit made the retried event look brand new.
+      appliedEventIds: Array.isArray(usage.appliedEventIds) ? usage.appliedEventIds : [],
+      migratedEventIds: Array.isArray(usage.migratedEventIds) ? usage.migratedEventIds : [],
       lastResetReason: reason
     };
   }
 
   function getTodayUsage(usage, date = new Date()) {
     return usage.days?.[todayKey(date)] || {};
+  }
+
+  function getMonthUsage(usage, date = new Date()) {
+    return usage.months?.[monthKey(date)] || {};
+  }
+
+  // Rows for the CSV export in Settings: one line per stored local-date
+  // bucket, newest first. Contains only counts and estimates — never any
+  // prompt/response text, consistent with the privacy posture.
+  function usageHistoryRows(usage) {
+    const days = usage?.days || {};
+    return Object.keys(days)
+      .sort()
+      .reverse()
+      .map(day => {
+        const bucket = days[day] || {};
+        return {
+          date: day,
+          messages: bucket.messages || 0,
+          responses: bucket.responses || 0,
+          inputTokens: bucket.inputTokens || 0,
+          outputTokens: bucket.outputTokens || 0,
+          attachmentEvents: bucket.attachmentEvents || 0,
+          estimatedUsd: Number((bucket.estimatedUsd || 0).toFixed(4))
+        };
+      });
+  }
+
+  function usageHistoryCsv(usage) {
+    const header = "date,messages,responses,input_tokens,output_tokens,attachments,estimated_usd";
+    const lines = usageHistoryRows(usage).map(row =>
+      [row.date, row.messages, row.responses, row.inputTokens, row.outputTokens, row.attachmentEvents, row.estimatedUsd].join(",")
+    );
+    return [header, ...lines].join("\n");
   }
 
   function getConversationUsage(usage, conversationId = currentConversationId()) {
@@ -448,6 +502,9 @@
     migrateConversationEvents,
     pruneUsage,
     getTodayUsage,
+    getMonthUsage,
+    usageHistoryRows,
+    usageHistoryCsv,
     shouldResetSession,
     resetSession,
     getConversationUsage,

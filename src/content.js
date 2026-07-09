@@ -84,9 +84,15 @@
     }
   }
 
+  // Random handshake token passed to the injected page-world script via its
+  // own <script> tag. Events arriving on the page-global bus without this
+  // token are ignored, so an arbitrary page script can't forge usage events.
+  const NETWORK_EVENT_TOKEN = (crypto?.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`);
+
   function injectNetworkWatcher() {
     const script = document.createElement("script");
     script.src = chrome.runtime.getURL("src/injected.js");
+    script.dataset.cucToken = NETWORK_EVENT_TOKEN;
     script.onload = () => script.remove();
     (document.documentElement || document.head || document.body).appendChild(script);
   }
@@ -463,6 +469,10 @@
 
   function observeSends() {
     document.addEventListener("keydown", event => {
+      // Enter that confirms an IME composition (Japanese/Chinese/Korean input)
+      // is not a send — without this check every conversion confirm recorded a
+      // phantom usage event.
+      if (event.isComposing || event.keyCode === 229) return;
       const isEnterSend = event.key === "Enter" && !event.shiftKey && !event.metaKey && !event.ctrlKey && !event.altKey;
       if (!isEnterSend) return;
       // Only treat this as a "send" if Enter was pressed while focus was
@@ -500,9 +510,51 @@
     return CUC.detectModelFromId(modelId) || CUC.detectModelFromText(modelId) || null;
   }
 
+  // A generation request that starts without a matching DOM-observed send is
+  // a Retry / edit-and-resend / other non-composer send. Those still consume
+  // input tokens, so record a synthetic input event from the request's prompt
+  // length (characters only — the text itself never crosses the event bus).
+  function recordNetworkInputIfUnseen(detail) {
+    const now = Date.now();
+    // A composer send was just recorded by the DOM listeners; this request is
+    // almost certainly that same send, so don't double-count it. The window is
+    // generous because generation-start fires only once response HEADERS
+    // arrive, which can lag several seconds behind the keystroke under load —
+    // and a missed retry (undercount) is a better failure than double-counting
+    // an ordinary send.
+    if (now - lastPromptAt < 10000) return;
+    const promptChars = Number(detail.promptChars || 0);
+    if (!(promptChars > 0)) return;
+
+    const conversationId = detail.conversationId || CUC.currentConversationId();
+    const modelKey = mapDetailModelKey(detail.modelId) || detectModelKey();
+    const model = CUC.MODEL_PRICES[CUC.resolveModelKey(modelKey)] || {};
+    // Char-based estimate (same ratio as the heuristic path) — we only have a
+    // length, not the text, so the tokenizer can't run here.
+    const rawInputTokens = Math.ceil((promptChars / 3.8) * (model.tokenizerMultiplier || 1));
+    const inputTokens = rawInputTokens + getContextTokensForConversation(modelKey);
+    lastPromptAt = now;
+
+    recordEvent({
+      at: now,
+      kind: "input",
+      inputTokens,
+      rawInputTokens,
+      outputTokens: 0,
+      estimatedUsd: CUC.estimateCostUsd(inputTokens, 0, modelKey, settings),
+      modelKey,
+      attachmentCount: 0,
+      conversationId,
+      reason: "network-send"
+    });
+  }
+
   function observeNetworkEvents() {
     window.addEventListener("cuc:network-event", event => {
       const detail = event.detail || {};
+      // Drop events that don't carry the handshake token minted at injection
+      // time — anything else is a forgery from some other page-world script.
+      if (detail.token !== NETWORK_EVENT_TOKEN) return;
 
       if ((detail.kind === "model-detected" || detail.kind === "generation-start") && detail.modelId) {
         const detected = mapDetailModelKey(detail.modelId);
@@ -512,8 +564,9 @@
         }
       }
 
-      if (detail.kind === "generation-start" && detail.conversationId) {
-        onRealConversationIdDiscovered(detail.conversationId);
+      if (detail.kind === "generation-start") {
+        if (detail.conversationId) onRealConversationIdDiscovered(detail.conversationId);
+        recordNetworkInputIfUnseen(detail);
       }
 
       if (detail.kind === "response-complete" && detail.text) {
@@ -545,9 +598,11 @@
       }
     });
 
-    window.addEventListener("cuc:usage-snapshot", () => {
-      // claude.ai just fetched its own usage data, so ours may be stale —
-      // refresh opportunistically (throttled). We never persist the raw payload
+    window.addEventListener("cuc:usage-snapshot", event => {
+      if (event.detail?.token !== NETWORK_EVENT_TOKEN) return;
+      // claude.ai just fetched its own usage data (or a generation stream
+      // carried a live message_limit frame), so ours may be stale — refresh
+      // opportunistically (throttled). We never persist the raw payload
       // (it's not even forwarded across the world boundary anymore), and we do
       // not write the usage aggregate from here: the background is the single
       // writer, so a content-side write would reintroduce the multi-tab race.
@@ -562,38 +617,60 @@
     if (widget || !document.body) return;
     widget = document.createElement("div");
     widget.id = "cuc-widget";
+    const nativeRow = (key, label) => `
+      <div class="cuc-native-row" data-cuc="row-${key}" hidden>
+        <div class="cuc-native-label">
+          <span>${label}</span>
+          <span data-cuc="${key}-value">—</span>
+        </div>
+        <div class="cuc-progress cuc-progress--thin" role="progressbar" aria-label="${label}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+          <div class="cuc-progress-bar" data-cuc="${key}-bar"></div>
+        </div>
+      </div>
+    `;
     widget.innerHTML = `
-      <div class="cuc-card">
+      <div class="cuc-card" role="complementary" aria-label="Claude usage meter">
         <div class="cuc-header">
           <span class="cuc-title">Vistage · Claude Usage</span>
           <div class="cuc-controls">
-            <button class="cuc-button" data-cuc-action="cycle" title="Switch between dollars/tokens">$</button>
-            <button class="cuc-button" data-cuc-action="options" title="Settings">⚙</button>
-            <button class="cuc-button" data-cuc-action="hide" title="Hide">✕</button>
+            <button class="cuc-button" data-cuc-action="cycle" title="Switch between dollars/tokens" aria-label="Switch display between dollars, tokens, and both">$</button>
+            <button class="cuc-button" data-cuc-action="options" title="Settings" aria-label="Open settings">⚙</button>
+            <button class="cuc-button" data-cuc-action="hide" title="Hide" aria-label="Hide usage widget">✕</button>
           </div>
         </div>
         <div class="cuc-body" data-cuc="body">
           <div class="cuc-meter">
             <div class="cuc-meter-label">
               <span>Usage in this chat</span>
-              <span data-cuc="chat-value">$0.00</span>
+              <span data-cuc="chat-value" aria-live="polite">$0.00</span>
             </div>
-            <div class="cuc-progress"><div class="cuc-progress-bar" data-cuc="chat-bar"></div></div>
+            <div class="cuc-progress" role="progressbar" aria-label="Context window used in this chat" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+              <div class="cuc-progress-bar" data-cuc="chat-bar"></div>
+            </div>
             <div class="cuc-budget-line" data-cuc="chat-detail">0 tokens · ballpark estimate</div>
           </div>
 
-          <div class="cuc-meter" data-cuc="enterprise-section">
-            <div class="cuc-meter-label">
-              <span>Enterprise limit</span>
-              <span data-cuc="enterprise-value">—</span>
+          <div class="cuc-native" data-cuc="native-section">
+            ${nativeRow("five-hour", "Session limit (5-hour)")}
+            ${nativeRow("seven-day", "Weekly limit")}
+            ${nativeRow("opus", "Weekly Opus limit")}
+            <div class="cuc-native-row" data-cuc="row-enterprise" hidden>
+              <div class="cuc-native-label">
+                <span>Monthly allowance</span>
+                <span data-cuc="enterprise-value">—</span>
+              </div>
+              <div class="cuc-progress cuc-progress--thin" role="progressbar" aria-label="Monthly allowance" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                <div class="cuc-progress-bar" data-cuc="enterprise-bar"></div>
+              </div>
             </div>
-            <div class="cuc-progress"><div class="cuc-progress-bar" data-cuc="enterprise-bar"></div></div>
-            <div class="cuc-budget-line" data-cuc="enterprise-note">Loading Claude usage…</div>
+            <div class="cuc-native-note" data-cuc="enterprise-note" aria-live="polite">Loading Claude usage…</div>
           </div>
+
+          <div class="cuc-tip" data-cuc="tip" hidden></div>
 
           <div class="cuc-footer">
             <span data-cuc="model">Model estimate</span>
-            <span data-cuc="accurate-until">Accurate till 8/31</span>
+            <span data-cuc="accurate-until"></span>
           </div>
         </div>
       </div>
@@ -691,8 +768,16 @@
     widget.style.left = "";
     widget.style.right = "";
     widget.style.bottom = "";
-    dockTarget.parentElement.insertBefore(widget, dockTarget.nextSibling);
+    try {
+      dockTarget.parentElement.insertBefore(widget, dockTarget.nextSibling);
+    } catch {
+      // The parent is React-managed and can be mid-reconciliation; the dock
+      // observer will retry on the next mutation batch rather than letting a
+      // transient NotFoundError propagate into the page.
+    }
   }
+
+  const DISPLAY_MODE_GLYPHS = { dollars: "$", tokens: "#", both: "$#" };
 
   function renderWidget() {
     if (!widget) return;
@@ -701,7 +786,10 @@
     const conversation = CUC.getConversationUsage(usage);
     const chatTokens = (conversation.inputTokens || 0) + (conversation.outputTokens || 0);
     const modelKey = detectModelKey();
-    const model = CUC.MODEL_PRICES[modelKey] || CUC.MODEL_PRICES[settings.defaultModel];
+    // Resolve intro→standard pricing before the label lookup, so the footer
+    // doesn't keep saying "intro pricing" after the cutoff has passed while
+    // the math has already moved on to standard pricing.
+    const model = CUC.MODEL_PRICES[CUC.resolveModelKey(modelKey)] || CUC.MODEL_PRICES[CUC.resolveModelKey(settings.defaultModel)];
     const effort = detectEffortLevel();
     const chatSpend = conversation.estimatedUsd || 0;
 
@@ -717,11 +805,14 @@
       chatDetail = "Ballpark estimate for this chat";
     }
 
+    const cycleButton = widget.querySelector("[data-cuc-action='cycle']");
+    if (cycleButton) cycleButton.textContent = DISPLAY_MODE_GLYPHS[settings.displayMode] || "$";
+
     const chatPct = CUC.clamp((chatTokens / MAX_CONTEXT_WINDOW_TOKENS) * 100, 0, 100);
+    if (chatPct >= 40) chatDetail += ` · chat ~${Math.round(chatPct)}% of context`;
     widget.querySelector("[data-cuc='chat-value']").textContent = chatValue;
     widget.querySelector("[data-cuc='chat-detail']").textContent = chatDetail;
-    widget.querySelector("[data-cuc='chat-bar']").style.width = `${chatPct}%`;
-    widget.querySelector("[data-cuc='chat-bar']").className = `cuc-progress-bar ${nativeUsageBarLevel(chatPct)}`;
+    setBar(widget.querySelector("[data-cuc='chat-bar']"), chatPct);
 
     widget.querySelector("[data-cuc='model']").textContent = effort
       ? `${model?.label || "Model estimate"} · ${effort} effort`
@@ -729,7 +820,8 @@
     const methodNote = lastTokenEstimateMethod === "tokenizer" ? "tokenizer estimate" : "rough estimate";
     widget.querySelector("[data-cuc='accurate-until']").textContent = `${CUC.accurateUntilLabel(modelKey)} · ${methodNote}`;
 
-    renderEnterpriseLimit();
+    renderNativeLimits();
+    renderTip(chatPct);
   }
 
   function nativeUsageBarLevel(pct) {
@@ -738,8 +830,57 @@
     return "low";
   }
 
-  function renderEnterpriseLimit() {
-    const section = widget.querySelector("[data-cuc='enterprise-section']");
+  // Update a progress bar's fill, color, and the aria-valuenow on its
+  // role="progressbar" container in one place.
+  function setBar(bar, pct) {
+    if (!bar) return;
+    const clamped = CUC.clamp(pct, 0, 100);
+    bar.style.width = `${clamped}%`;
+    bar.className = `cuc-progress-bar ${nativeUsageBarLevel(clamped)}`;
+    bar.parentElement?.setAttribute?.("aria-valuenow", String(Math.round(clamped)));
+  }
+
+  // The three rolling-limit buckets Claude itself reports. These are what
+  // actually locks a person out mid-workday, so they get first-class rows.
+  const NATIVE_BUCKETS = [
+    { key: "five-hour", prop: "fiveHour", label: "Session limit" },
+    { key: "seven-day", prop: "sevenDay", label: "Weekly limit" },
+    { key: "opus", prop: "sevenDayOpus", label: "Weekly Opus limit" }
+  ];
+
+  function bucketValueText(bucket) {
+    const pct = Math.round(CUC.clamp(bucket.utilizationPct, 0, 100));
+    const countdown = CUCNative?.formatResetCountdown ? CUCNative.formatResetCountdown(bucket.resetsAt) : null;
+    return countdown ? `${pct}% · resets in ${countdown}` : `${pct}%`;
+  }
+
+  // Returns the most urgent plain-English warning across all native buckets,
+  // or null when everything is comfortably below the warning threshold.
+  function mostUrgentNativeWarning(native) {
+    if (!native) return null;
+    const candidates = [];
+    for (const { prop, label } of NATIVE_BUCKETS) {
+      const bucket = native[prop];
+      if (bucket && typeof bucket.utilizationPct === "number") {
+        candidates.push({ pct: bucket.utilizationPct, label, resetsAt: bucket.resetsAt });
+      }
+    }
+    const spend = native.monthlySpendLimit;
+    if (spend) candidates.push({ pct: spend.utilizationPct, label: "Monthly allowance", resetsAt: null });
+
+    const worst = candidates.filter(c => c.pct >= 80).sort((a, b) => b.pct - a.pct)[0];
+    if (!worst) return null;
+    const countdown = worst.resetsAt && CUCNative?.formatResetCountdown ? CUCNative.formatResetCountdown(worst.resetsAt) : null;
+    if (worst.pct >= 90) {
+      return countdown
+        ? `${worst.label} almost used up — it resets in ${countdown}.`
+        : `${worst.label} almost used up.`;
+    }
+    return `Heads up: ${worst.label.toLowerCase()} is at ${Math.round(worst.pct)}%.`;
+  }
+
+  function renderNativeLimits() {
+    const section = widget.querySelector("[data-cuc='native-section']");
     if (!section) return;
 
     if (!settings.showNativeLimits) {
@@ -749,50 +890,112 @@
     section.style.display = "block";
 
     const note = widget.querySelector("[data-cuc='enterprise-note']");
-    const value = widget.querySelector("[data-cuc='enterprise-value']");
-    const bar = widget.querySelector("[data-cuc='enterprise-bar']");
+    const rows = {};
+    for (const { key } of NATIVE_BUCKETS) {
+      rows[key] = widget.querySelector(`[data-cuc='row-${key}']`);
+    }
+    const enterpriseRow = widget.querySelector("[data-cuc='row-enterprise']");
+    const enterpriseValue = widget.querySelector("[data-cuc='enterprise-value']");
+    const enterpriseBar = widget.querySelector("[data-cuc='enterprise-bar']");
+
+    const hideAllRows = () => {
+      for (const { key } of NATIVE_BUCKETS) rows[key] && (rows[key].hidden = true);
+      if (enterpriseRow) enterpriseRow.hidden = true;
+    };
 
     if (nativeUsageError === "not-logged-in") {
-      note.textContent = "Sign in to claude.ai to see native limits.";
-      value.textContent = "—";
-      bar.style.width = "0%";
-    } else if (nativeUsageError === "rate-limited") {
-      note.textContent = "Claude is rate-limiting usage lookups; retrying with backoff.";
-      value.textContent = "—";
-      bar.style.width = "0%";
-    } else if (nativeUsageError) {
-      note.textContent = "Native limits unavailable right now.";
-      value.textContent = "—";
-      bar.style.width = "0%";
-    } else if (!nativeUsage) {
-      note.textContent = "Loading Claude usage…";
-      value.textContent = "—";
-      bar.style.width = "0%";
-    } else {
-      const spendLimit = nativeUsage.monthlySpendLimit;
-      if (!spendLimit) {
-        note.textContent = nativeUsage.monthlySpendLimitRejected
-          ? `Claude returned ${CUC.formatUsd(nativeUsage.monthlySpendLimitRejected.foundLimitUsd)}, expected ${CUC.formatUsd(nativeUsage.monthlySpendLimitRejected.expectedLimitUsd)} — looks like a units mismatch, not a real cap change.`
-          : "Employee monthly spend limit unavailable right now.";
-        value.textContent = "—";
-        bar.style.width = "0%";
-        return;
-      }
-      const pct = CUC.clamp(spendLimit.utilizationPct, 0, 100);
-      const resetLabel = CUCNative?.formatResetLabel ? CUCNative.formatResetLabel(spendLimit) : null;
-      value.textContent = resetLabel
-        ? `${CUC.formatUsd(spendLimit.usedUsd)} of ${CUC.formatUsd(spendLimit.limitUsd)} · ${resetLabel}`
-        : `${CUC.formatUsd(spendLimit.usedUsd)} of ${CUC.formatUsd(spendLimit.limitUsd)}`;
-      bar.style.width = `${pct}%`;
-      bar.className = `cuc-progress-bar ${nativeUsageBarLevel(pct)}`;
-      if (spendLimit.outOfCredits) {
-        note.textContent = "Monthly usage-credit limit reached";
-      } else if (spendLimit.capAdvisory) {
-        note.textContent = `Cap differs from expected ${CUC.formatUsd(spendLimit.capAdvisory.expectedLimitUsd)} — update Settings if this changed.`;
-      } else {
-        note.textContent = "Monthly usage-credit spend from Claude.ai";
-      }
+      hideAllRows();
+      note.textContent = "Sign in to claude.ai to see your real limits.";
+      return;
     }
+    if (nativeUsageError === "forbidden") {
+      hideAllRows();
+      note.textContent = "The configured Organization ID doesn't match this account — check Settings, or clear it to auto-detect.";
+      return;
+    }
+    if (nativeUsageError === "rate-limited") {
+      hideAllRows();
+      note.textContent = "Claude is rate-limiting usage lookups; retrying with backoff.";
+      return;
+    }
+    if (nativeUsageError) {
+      hideAllRows();
+      note.textContent = "Claude's limit data is unavailable right now.";
+      return;
+    }
+    if (!nativeUsage) {
+      hideAllRows();
+      note.textContent = "Loading Claude usage…";
+      return;
+    }
+
+    // Rolling limits (session/weekly/Opus) — Claude's own numbers.
+    for (const { key, prop } of NATIVE_BUCKETS) {
+      const row = rows[key];
+      if (!row) continue;
+      const bucket = nativeUsage[prop];
+      if (!bucket || typeof bucket.utilizationPct !== "number") {
+        row.hidden = true;
+        continue;
+      }
+      // The Opus row only matters for people who actually use Opus — hide it
+      // at zero to keep the widget calm for everyone else.
+      if (key === "opus" && bucket.utilizationPct <= 0) {
+        row.hidden = true;
+        continue;
+      }
+      row.hidden = false;
+      widget.querySelector(`[data-cuc='${key}-value']`).textContent = bucketValueText(bucket);
+      setBar(widget.querySelector(`[data-cuc='${key}-bar']`), bucket.utilizationPct);
+    }
+
+    // Monthly usage-credit allowance.
+    const spendLimit = nativeUsage.monthlySpendLimit;
+    if (!spendLimit) {
+      if (enterpriseRow) enterpriseRow.hidden = true;
+      note.textContent = nativeUsage.monthlySpendLimitRejected
+        ? `Claude returned ${CUC.formatUsd(nativeUsage.monthlySpendLimitRejected.foundLimitUsd)}, expected ${CUC.formatUsd(nativeUsage.monthlySpendLimitRejected.expectedLimitUsd)} — looks like a units mismatch, not a real cap change.`
+        : "Live limits from Claude.ai — not an estimate.";
+      return;
+    }
+    if (enterpriseRow) enterpriseRow.hidden = false;
+    const pct = CUC.clamp(spendLimit.utilizationPct, 0, 100);
+    const resetLabel = CUCNative?.formatResetLabel ? CUCNative.formatResetLabel(spendLimit) : null;
+    enterpriseValue.textContent = resetLabel
+      ? `${CUC.formatUsd(spendLimit.usedUsd)} of ${CUC.formatUsd(spendLimit.limitUsd)} · ${resetLabel}`
+      : `${CUC.formatUsd(spendLimit.usedUsd)} of ${CUC.formatUsd(spendLimit.limitUsd)}`;
+    setBar(enterpriseBar, pct);
+
+    if (spendLimit.outOfCredits) {
+      note.textContent = "Monthly usage-credit limit reached";
+    } else if (spendLimit.capAdvisory) {
+      note.textContent = `Cap differs from expected ${CUC.formatUsd(spendLimit.capAdvisory.expectedLimitUsd)} — update Settings if this changed.`;
+    } else {
+      note.textContent = mostUrgentNativeWarning(nativeUsage) || "Live limits from Claude.ai — not an estimate.";
+    }
+  }
+
+  // One plain-English coaching line, shown only when it's actionable. The
+  // native-limit warning wins over the long-chat tip because it's the one
+  // that ends with a lockout.
+  function renderTip(chatPct) {
+    const tip = widget.querySelector("[data-cuc='tip']");
+    if (!tip) return;
+    if (!settings.showPlainEnglishTips) {
+      tip.hidden = true;
+      return;
+    }
+    if (settings.showNativeLimits && mostUrgentNativeWarning(nativeUsage)) {
+      // Already surfaced in the native note — don't say it twice.
+      tip.hidden = true;
+      return;
+    }
+    if (chatPct >= 60) {
+      tip.textContent = "This chat is getting long. Long chats use your limits faster — consider starting a fresh chat for new topics.";
+      tip.hidden = false;
+      return;
+    }
+    tip.hidden = true;
   }
 
   function observeSpaNavigation() {
@@ -838,15 +1041,37 @@
 
     // React re-renders can replace the composer DOM node even without a
     // path change (e.g. attaching a file, switching models). If that
-    // detaches our docked widget from the page, re-insert it. Skipped while
-    // the tab is hidden so backgrounded tabs don't poll the DOM forever.
-    setInterval(() => {
+    // detaches our docked widget from the page, re-insert it. Driven by a
+    // throttled MutationObserver instead of a fixed 2s poll, so a quiet page
+    // costs nothing and a re-render storm is still handled within ~1s.
+    let dockCheckTimer = null;
+    const checkDock = () => {
       if (document.hidden || !widget) return;
       const anchor = findComposerAnchor();
       const dockTarget = anchor?.closest?.("form, [data-testid*='composer']") || anchor;
       const isDockedAfterAnchor = dockTarget?.parentElement && widget.parentElement === dockTarget.parentElement && widget.previousElementSibling === dockTarget;
       if (!document.body.contains(widget) || !isDockedAfterAnchor) placeWidget();
-    }, 2000);
+    };
+    const dockObserver = new MutationObserver(mutations => {
+      if (dockCheckTimer || document.hidden || !widget) return;
+      // Our own re-insert triggers mutations too; ignore batches that touch
+      // only the widget so placement can't feed back into itself.
+      const external = mutations.some(m => !widget.contains(m.target));
+      if (!external) return;
+      dockCheckTimer = setTimeout(() => {
+        dockCheckTimer = null;
+        checkDock();
+      }, 1000);
+    });
+    const startDockObserver = () => {
+      if (document.body) dockObserver.observe(document.body, { childList: true, subtree: true });
+      else requestAnimationFrame(startDockObserver);
+    };
+    startDockObserver();
+    // Catch anything a hidden tab missed the moment it becomes visible again.
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") checkDock();
+    });
   }
 
   function bootWhenReady() {
@@ -857,11 +1082,59 @@
     requestAnimationFrame(bootWhenReady);
   }
 
+  // If another tab fetched Claude's usage this recently, reuse its stored
+  // result instead of issuing a duplicate request. Cuts N open claude.ai tabs
+  // from N usage GETs per minute down to ~1, which also lowers the whole
+  // org's 429 exposure.
+  const NATIVE_USAGE_SHARED_FRESH_MS = 45 * 1000;
+
+  function maxNativeUtilizationPct(native) {
+    if (!native) return null;
+    const values = [];
+    for (const prop of ["fiveHour", "sevenDay", "sevenDayOpus"]) {
+      const bucket = native[prop];
+      if (bucket && typeof bucket.utilizationPct === "number") values.push(bucket.utilizationPct);
+    }
+    if (typeof native.monthlySpendLimit?.utilizationPct === "number") {
+      values.push(native.monthlySpendLimit.utilizationPct);
+    }
+    return values.length ? Math.max(...values) : null;
+  }
+
+  function updateToolbarBadge() {
+    try {
+      chrome.runtime.sendMessage({
+        type: "cuc:update-badge",
+        maxUtilizationPct: maxNativeUtilizationPct(nativeUsage)
+      }).catch(() => {});
+    } catch {
+      // Badge is a nice-to-have; never let it break the refresh path.
+    }
+  }
+
   async function refreshNativeUsage() {
     if (!settings.showNativeLimits || !CUCNative) {
       scheduleNextNativeUsagePoll();
       return;
     }
+
+    // Multi-tab dedupe: another tab may have polled seconds ago and stored
+    // the result. Freshness rides on fetchedAt, which fetchNativeUsage stamps.
+    try {
+      const stored = await chrome.storage.local.get(["cuc:native-usage"]);
+      const shared = stored["cuc:native-usage"];
+      if (shared?.fetchedAt && Date.now() - shared.fetchedAt < NATIVE_USAGE_SHARED_FRESH_MS) {
+        nativeUsage = shared;
+        nativeUsageError = null;
+        renderWidget();
+        updateToolbarBadge();
+        scheduleNextNativeUsagePoll();
+        return;
+      }
+    } catch {
+      // Storage hiccup — fall through to a live fetch.
+    }
+
     try {
       nativeUsage = await CUCNative.fetchNativeUsage();
       nativeUsageError = null;
@@ -889,6 +1162,7 @@
       // best-effort; the in-page widget still has the in-memory value
     }
     renderWidget();
+    updateToolbarBadge();
     scheduleNextNativeUsagePoll();
   }
 
@@ -944,10 +1218,14 @@
     return false;
   });
 
+  // Patch window.fetch as early as possible — before the async settings load —
+  // so a generation kicked off immediately on page load (e.g. a queued draft
+  // sent the moment the composer mounts) isn't missed while storage resolves.
+  injectNetworkWatcher();
+  observeNetworkEvents();
+
   loadState().then(() => {
-    injectNetworkWatcher();
     observeSends();
-    observeNetworkEvents();
     observeSpaNavigation();
     observeNativeUsageRefresh();
     bootWhenReady();

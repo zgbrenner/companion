@@ -96,6 +96,27 @@ h2 {
   line-height: 1.4;
 }
 
+.hint.warning {
+  color: #b45309;
+}
+
+@media (prefers-color-scheme: dark) {
+  .hint.warning {
+    color: #e3a34c;
+  }
+}
+
+.hint a {
+  color: #3d7a5c;
+  font-weight: 600;
+}
+
+@media (prefers-color-scheme: dark) {
+  .hint a {
+    color: #5fb383;
+  }
+}
+
 @media (prefers-color-scheme: dark) {
   .hint {
     color: #a09c98;

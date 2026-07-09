@@ -41,7 +41,7 @@
         Organization ID
         <input id="organizationId" type="text" spellcheck="false" />
       </label>
-      <p class="hint" id="organizationId-warning" style="display:none;color:#b45309;"></p>
+      <p class="hint warning" id="organizationId-warning" style="display:none;"></p>
       <label>
         Employee monthly limit, USD
         <input id="enterpriseMonthlyLimitUsd" type="number" min="0" step="1" />
@@ -55,8 +55,15 @@
     </section>
 
     <section class="card">
+      <h2>Usage history</h2>
+      <p class="hint">Download your local usage history (one row per day: counts and dollar estimates only — never any chat text). Handy for expense notes or a quick month-over-month look.</p>
+      <button id="export-csv" type="button" class="secondary">Download CSV</button>
+      <p class="hint" id="export-status"></p>
+    </section>
+
+    <section class="card">
       <h2>Updates</h2>
-      <p class="hint">Checks GitHub for the newest release. If no release exists, checks the version on main. Browser extensions cannot replace their own installed files directly, so the button opens GitHub when an update is available.</p>
+      <p class="hint">Checks GitHub for the newest release. If no release exists, checks the version on main. Browser extensions cannot replace their own installed files directly, so an update link is shown when one is available.</p>
       <button id="check-updates" type="button" class="secondary">Check for updates</button>
       <button id="open-github" type="button" class="secondary">Open GitHub</button>
       <p class="hint" id="update-status">Current version: checking not run yet.</p>
