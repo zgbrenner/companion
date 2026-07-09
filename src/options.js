@@ -2,6 +2,7 @@ const CUC = globalThis.ClaudeUsageCompanion;
 const CUCNative = globalThis.ClaudeUsageCompanionNative;
 const CUCUpdater = globalThis.ClaudeUsageCompanionUpdater;
 const REPO_URL = "https://github.com/zgbrenner/claudecompanion";
+const UPDATER_DB_NAME = "cuc-updater";
 
 // Settings simplified to the two visible bars: chat usage and enterprise limit.
 const fields = [
@@ -10,6 +11,9 @@ const fields = [
   "showNativeLimits",
   "desktopNotifications"
 ];
+
+let detectedOrganizationId = null;
+let organizationRevealed = false;
 
 function populateModels() {
   const select = document.getElementById("defaultModel");
@@ -24,15 +28,61 @@ function populateModels() {
   });
 }
 
-async function renderDetectedAccount() {
+function maskOrganizationId(value) {
+  const id = String(value || "");
+  if (id.length <= 12) return "••••••••";
+  return `${id.slice(0, 8)}…${id.slice(-4)}`;
+}
+
+function setAccountActionStatus(message) {
+  const status = document.getElementById("account-action-status");
+  if (!status) return;
+  status.textContent = message || "";
+}
+
+function renderOrganizationId() {
   const orgEl = document.getElementById("detected-organization");
+  const revealButton = document.getElementById("toggle-organization");
+  const copyButton = document.getElementById("copy-organization");
+  if (!orgEl || !revealButton || !copyButton) return;
+
+  const hasOrganization = Boolean(detectedOrganizationId);
+  orgEl.textContent = hasOrganization
+    ? (organizationRevealed ? detectedOrganizationId : maskOrganizationId(detectedOrganizationId))
+    : "Not detected yet";
+  revealButton.disabled = !hasOrganization;
+  copyButton.disabled = !hasOrganization;
+  revealButton.textContent = organizationRevealed ? "Hide" : "Reveal";
+}
+
+async function renderDetectedAccount() {
   const capEl = document.getElementById("detected-cap");
-  if (!orgEl || !capEl) return;
+  if (!capEl) return;
   const detected = await CUCNative?.getCachedAccountConfig?.();
-  orgEl.textContent = detected?.orgId || "Not detected yet";
+  const nextOrganizationId = detected?.orgId || null;
+  if (nextOrganizationId !== detectedOrganizationId) organizationRevealed = false;
+  detectedOrganizationId = nextOrganizationId;
+  renderOrganizationId();
   capEl.textContent = detected?.limitUsd > 0
     ? `${CUC.formatUsd(detected.limitUsd)} (${detected.currency || "USD"})`
     : "Not detected yet";
+}
+
+async function copyOrganizationId() {
+  if (!detectedOrganizationId) return;
+  try {
+    await navigator.clipboard.writeText(detectedOrganizationId);
+    setAccountActionStatus("Full organization ID copied.");
+  } catch {
+    setAccountActionStatus("Could not copy the organization ID.");
+  }
+}
+
+function toggleOrganizationVisibility() {
+  if (!detectedOrganizationId) return;
+  organizationRevealed = !organizationRevealed;
+  renderOrganizationId();
+  setAccountActionStatus(organizationRevealed ? "Full organization ID revealed." : "Organization ID masked.");
 }
 
 async function openUrl(url) {
@@ -56,16 +106,16 @@ async function renderUpdateSection(check) {
 
   if (!check) {
     status.textContent = `Current version: ${current}.`;
-    applyButton.style.display = "none";
+    applyButton.hidden = true;
     return;
   }
   if (check.updateAvailable) {
     status.textContent = `Update available: v${check.latestVersion} (you have v${current}).${folderNote}`;
-    applyButton.style.display = "inline-block";
+    applyButton.hidden = false;
     applyButton.textContent = `Install v${check.latestVersion}`;
   } else {
     status.textContent = `You're up to date (v${current}).`;
-    applyButton.style.display = "none";
+    applyButton.hidden = true;
   }
 }
 
@@ -77,7 +127,7 @@ async function checkForUpdates() {
     await renderUpdateSection(check);
   } catch (error) {
     status.textContent = `Could not check for updates: ${error?.message || error}`;
-    applyUpdateButton().style.display = "none";
+    applyUpdateButton().hidden = true;
   }
 }
 
@@ -182,15 +232,63 @@ async function resetDefaults() {
   setTimeout(() => { status.textContent = ""; }, 1800);
 }
 
+function deleteUpdaterDatabase() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.deleteDatabase(UPDATER_DB_NAME);
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error || new Error("Could not clear updater database."));
+    request.onblocked = () => reject(new Error("Updater database is still in use. Close and reopen Settings, then try again."));
+  });
+}
+
+async function clearAllLocalData() {
+  const confirmed = window.confirm(
+    "Clear all Claude Companion data stored in this browser? This removes settings, usage history, caches, and the connected update folder. Claude itself is not changed."
+  );
+  if (!confirmed) return;
+
+  const button = document.getElementById("clear-all-data");
+  const status = document.getElementById("clear-data-status");
+  button.disabled = true;
+  status.textContent = "Clearing local data…";
+
+  const operations = [
+    chrome.storage.local.clear(),
+    chrome.storage.session?.clear?.() || Promise.resolve(),
+    deleteUpdaterDatabase(),
+    chrome.action?.setBadgeText?.({ text: "" }) || Promise.resolve()
+  ];
+  const results = await Promise.allSettled(operations);
+  const failed = results.filter(result => result.status === "rejected");
+
+  detectedOrganizationId = null;
+  organizationRevealed = false;
+  setAccountActionStatus("");
+  updateDetailEl().textContent = "";
+  await loadSettings();
+  await renderUpdateSection(null);
+
+  status.textContent = failed.length
+    ? "Browser storage was cleared, but one local item could not be removed. Close and reopen Settings, then try again."
+    : "All local Claude Companion data has been cleared.";
+  button.disabled = false;
+}
+
 document.getElementById("save").addEventListener("click", saveSettings);
 document.getElementById("reset-defaults").addEventListener("click", resetDefaults);
+document.getElementById("toggle-organization")?.addEventListener("click", toggleOrganizationVisibility);
+document.getElementById("copy-organization")?.addEventListener("click", copyOrganizationId);
 document.getElementById("clear-org-cache")?.addEventListener("click", async () => {
   if (CUCNative?.clearCachedOrgId) await CUCNative.clearCachedOrgId();
   const status = document.getElementById("status");
+  detectedOrganizationId = null;
+  organizationRevealed = false;
+  setAccountActionStatus("");
   await renderDetectedAccount();
   status.textContent = "Cleared. Refresh a claude.ai tab to re-detect.";
   setTimeout(() => { status.textContent = ""; }, 2400);
 });
+document.getElementById("clear-all-data")?.addEventListener("click", clearAllLocalData);
 document.getElementById("export-csv")?.addEventListener("click", exportCsv);
 document.getElementById("check-updates")?.addEventListener("click", checkForUpdates);
 document.getElementById("setup-folder")?.addEventListener("click", setupUpdateFolder);
