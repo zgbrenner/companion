@@ -55,8 +55,10 @@ If Claude.ai's page structure changes and the composer can't be found, the widge
 
 ```text
 manifest.json              Chrome extension manifest
+icons/                     Toolbar/notification icons
 src/content.js             Injects the in-page widget, docking logic, and local estimator
-src/content.css            Widget styles
+src/content.css            Host-level docking styles (widget internals are shadow-DOM scoped)
+src/widget.css             Widget styles, injected inside the widget's shadow root
 src/injected.js            Page-context network/SSE observer
 src/native-usage.js        Reads Claude's own /usage endpoint (ground truth, not estimated)
 src/o200k_base.js          Vendored tokenizer (gpt-tokenizer's o200k_base build)
@@ -100,10 +102,38 @@ The extension uses a real tokenizer (`src/o200k_base.js`, from the `gpt-tokenize
 - Add a small on-device classifier to label sessions as HR, marketing, legal, research, coding, or general admin without storing text.
 - Add a “why did this cost so much?” drilldown that explains context, attachments, output length, and model choice.
 - Read the actual conversation message tree (like Claude's own API returns) instead of scraping composer text, for more reliable per-conversation token totals.
-- Render the widget in a Shadow DOM so claude.ai's global styles can never bleed into it.
-- Simple pace projection (“at this rate you'll hit the session limit around 3 PM”), from consecutive utilization samples.
+- A snooze control on desktop warnings, and optional quiet hours.
+- A replayable “what do these numbers mean?” first-run walkthrough.
 
 ## Changelog
+
+### 0.6.0
+
+Built from the v0.5.0 roadmap plus a second, deliberately broad open-source research pass — not just Claude-tracker projects but extension-engineering frameworks (Plasmo, wxt.dev, Bitwarden's inline UI), burn-rate forecasting tools (ccusage's blocks math, Claude-Code-Usage-Monitor's trailing-window smoothing and prediction phrasing), tiny-visualization patterns (fnando/sparkline, GitHub-contribution graphs), digital-wellbeing nudge extensions, and budget-app pacing language (Actual Budget, Firefly III).
+
+**Pace projection (new):**
+- The widget and popup now answer the question that matters most before lunch: *“At this pace, you'll hit your session limit around 3:45 PM (estimated).”*
+- Computed from a trailing window of session-limit samples (shared across tabs), never a jumpy two-point delta; requires ≥3 samples over ≥5 minutes and a genuinely rising slope before it says anything.
+- The key rule, borrowed from Claude-Code-Usage-Monitor: if the 5-hour window resets **before** the projected depletion, no warning is shown at all — the reset will save you, so there's nothing to worry about. Warnings always carry “(estimated)” and day-relative times (“tomorrow 9:15 AM”).
+
+**Shadow DOM widget isolation (new):**
+- The in-page widget now renders inside a shadow root: claude.ai's global styles can no longer bleed into it (and its styles can't leak out), making it far more robust against claude.ai redesigns.
+- claude.ai's `html.dark` class is mirrored onto the shadow host (observed live), with `prefers-color-scheme` as the system-level fallback — dark mode keeps working in both directions.
+- Widget styles moved from the page-level `content.css` into `src/widget.css`, injected inside the shadow root via constructable stylesheets (with a `<style>` fallback); `content.css` now carries only host-level docking rules.
+
+**Desktop warnings (new):**
+- A gentle desktop notification when any limit crosses 85% or 95% — once per threshold per reset window, deduped across tabs, never repeated nagging. Toggle in Settings (“Warnings”); the toolbar badge is unaffected.
+- The extension finally has real icons (16/32/48/128) — a green meter mark in the toolbar instead of the generic puzzle piece — which the notifications also use.
+
+**14-day trend (new):**
+- The popup shows a small bar trend of daily estimated spend (last 14 days, today highlighted), rendered with plain flexbox — no chart library. Hidden until there are at least two active days, so a fresh install isn't greeted by an empty chart.
+
+**Learnability:**
+- Every limit label in the widget and popup has a plain-English hover explanation (“This is the limit that pauses you mid-day. Read from Claude directly — not an estimate.”).
+- First-run empty state in the popup: “No usage tracked yet — send Claude a message to start.”
+
+**Efficiency:**
+- The cross-tab native-usage cache and pace samples moved from `chrome.storage.local` to `chrome.storage.session` (memory-backed, self-clearing on browser restart, no disk write per poll), with the background granting content-script access and a transparent local fallback for older Chrome.
 
 ### 0.5.0
 

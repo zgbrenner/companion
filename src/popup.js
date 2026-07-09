@@ -16,17 +16,16 @@ async function getActiveClaudeTab() {
 }
 
 async function loadState() {
-  const stored = await chrome.storage.local.get([
-    STORAGE_KEY,
-    "cuc:settings",
-    "cuc:native-usage",
-    "cuc:native-usage-error"
-  ]);
+  const stored = await chrome.storage.local.get([STORAGE_KEY, "cuc:settings"]);
+  // The native-usage cache and pace samples are ephemeral cross-tab state —
+  // they live in storage.session (with a local fallback), not storage.local.
+  const ephemeral = await CUC.ephemeralGet(["cuc:native-usage", "cuc:native-usage-error", "cuc:pace-samples"]);
   return {
     usage: CUC.normalizeUsage(stored[STORAGE_KEY]),
     settings: { ...CUC.DEFAULT_SETTINGS, ...(stored["cuc:settings"] || {}) },
-    nativeUsage: stored["cuc:native-usage"] || null,
-    nativeUsageError: stored["cuc:native-usage-error"] || null
+    nativeUsage: ephemeral["cuc:native-usage"] || null,
+    nativeUsageError: ephemeral["cuc:native-usage-error"] || null,
+    paceSamples: Array.isArray(ephemeral["cuc:pace-samples"]) ? ephemeral["cuc:pace-samples"] : []
   };
 }
 
@@ -46,7 +45,12 @@ function render(usage, settings) {
 
   if (!knownConversationId) {
     chatValueEl.textContent = "—";
-    chatDetailEl.textContent = "Open a claude.ai tab to see this chat.";
+    // First-run empty state: a fresh install with zero history gets a
+    // friendly pointer instead of a wall of dashes and $0.00.
+    const nothingTrackedYet = Object.keys(usage.days || {}).length === 0;
+    chatDetailEl.textContent = nothingTrackedYet
+      ? "No usage tracked yet — send Claude a message to start."
+      : "Open a claude.ai tab to see this chat.";
     setBar(chatBarEl, 0);
     return;
   }
@@ -78,6 +82,40 @@ function renderSummary(usage) {
   const month = CUC.getMonthUsage(usage);
   document.getElementById("today-value").textContent = CUC.formatUsd(today.estimatedUsd || 0);
   document.getElementById("month-value").textContent = CUC.formatUsd(month.estimatedUsd || 0);
+  renderTrend(usage);
+}
+
+// 14 flexbox bars, no chart library — each day's estimated spend scaled to
+// the busiest day in the window. Hidden entirely until there are at least
+// two active days, so a fresh install isn't greeted by an empty chart.
+function renderTrend(usage) {
+  const trend = document.getElementById("trend");
+  const caption = document.getElementById("trend-caption");
+  if (!trend) return;
+  const series = CUC.recentDaysSeries(usage, 14);
+  const max = Math.max(...series.map(d => d.estimatedUsd));
+  const activeDays = series.filter(d => d.estimatedUsd > 0).length;
+  if (!(max > 0) || activeDays < 2) {
+    trend.hidden = true;
+    if (caption) caption.hidden = true;
+    return;
+  }
+  trend.hidden = false;
+  if (caption) caption.hidden = false;
+  trend.textContent = "";
+  const todayKey = CUC.todayKey();
+  for (const day of series) {
+    const bar = document.createElement("div");
+    bar.className = day.date === todayKey ? "trend-bar today" : "trend-bar";
+    const pct = Math.max(day.estimatedUsd > 0 ? 7 : 0, Math.round((day.estimatedUsd / max) * 100));
+    bar.style.height = `${pct}%`;
+    bar.title = `${day.date}: ${CUC.formatUsd(day.estimatedUsd)}`;
+    trend.appendChild(bar);
+  }
+  trend.setAttribute(
+    "aria-label",
+    `Daily usage, last 14 days. Busiest day ${CUC.formatUsd(max)}. Today ${CUC.formatUsd(series[series.length - 1].estimatedUsd)}.`
+  );
 }
 
 function nativeBarLevel(pct) {
@@ -188,10 +226,24 @@ function renderNative(nativeUsage, nativeUsageError, settings) {
   }
 }
 
+function renderPace(paceSamples, nativeUsage, settings) {
+  const el = document.getElementById("pace-note");
+  if (!el) return;
+  if (!settings.showNativeLimits) {
+    el.hidden = true;
+    return;
+  }
+  const projection = CUC.projectDepletion(paceSamples, Date.now(), nativeUsage?.fiveHour?.resetsAt || null);
+  const text = CUC.paceWarningText(projection);
+  el.textContent = text || "";
+  el.hidden = !text;
+}
+
 async function boot() {
   const state = await loadState();
   render(state.usage, state.settings);
   renderNative(state.nativeUsage, state.nativeUsageError, state.settings);
+  renderPace(state.paceSamples, state.nativeUsage, state.settings);
 
   // Ask the content script (if a claude.ai tab is open) to refresh native
   // usage and provide the active chat id/state now. The popup page itself has

@@ -4,7 +4,14 @@
   const STORAGE_KEY = CUC.makeStorageKey();
   let settings = { ...CUC.DEFAULT_SETTINGS };
   let usage = CUC.emptyUsage();
-  let widget = null;
+  let widget = null;      // shadow HOST element (docked in page flow)
+  let widgetRoot = null;  // shadow root; null until the widget is fully built
+  // The widget renders inside a shadow root so claude.ai's global styles
+  // can't bleed into it (and its styles can't leak out). Start fetching the
+  // shadow stylesheet immediately; it's a bundled extension file.
+  const widgetCssText = fetch(chrome.runtime.getURL("src/widget.css"))
+    .then(response => response.text())
+    .catch(() => "");
   let lastPromptHash = "";
   let lastPromptAt = 0;
   let outputBuffer = "";
@@ -16,6 +23,9 @@
   let nativeUsageError = null;
   let nativeUsageTimer = null;
   let nativeUsageBackoffMs = null;
+  // Recent (timestamp, session-limit %) samples shared across tabs via the
+  // ephemeral store; feeds the "at this pace…" projection.
+  let paceSamples = [];
   let lastTokenEstimateMethod = "heuristic";
   let lastUsageSnapshotRefreshAt = 0;
   const NATIVE_USAGE_REFRESH_MS = 60 * 1000;
@@ -613,14 +623,48 @@
     });
   }
 
-  function createWidget() {
+  // Mirror claude.ai's html.dark class onto the shadow host as .cuc-dark —
+  // a shadow tree's CSS can't match ancestors past its host, so widget.css
+  // keys dark rules off :host(.cuc-dark) (plus prefers-color-scheme, which
+  // still works inside shadow DOM as the system-level fallback).
+  function syncWidgetDarkMode() {
+    if (!widget) return;
+    widget.classList.toggle("cuc-dark", document.documentElement.classList.contains("dark"));
+  }
+
+  function observeDarkMode() {
+    const observer = new MutationObserver(syncWidgetDarkMode);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+  }
+
+  async function createWidget() {
     if (widget || !document.body) return;
     widget = document.createElement("div");
     widget.id = "cuc-widget";
-    const nativeRow = (key, label) => `
+    const shadow = widget.attachShadow({ mode: "open" });
+
+    const cssText = await widgetCssText;
+    let styled = false;
+    try {
+      const sheet = new CSSStyleSheet();
+      sheet.replaceSync(cssText);
+      shadow.adoptedStyleSheets = [sheet];
+      styled = true;
+    } catch {
+      // Constructable stylesheets unavailable — fall through to a <style> tag.
+    }
+    if (!styled) {
+      const style = document.createElement("style");
+      style.textContent = cssText;
+      shadow.appendChild(style);
+    }
+
+    const container = document.createElement("div");
+    container.className = "cuc-root";
+    const nativeRow = (key, label, hint) => `
       <div class="cuc-native-row" data-cuc="row-${key}" hidden>
         <div class="cuc-native-label">
-          <span>${label}</span>
+          <span title="${hint}">${label}</span>
           <span data-cuc="${key}-value">—</span>
         </div>
         <div class="cuc-progress cuc-progress--thin" role="progressbar" aria-label="${label}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
@@ -628,7 +672,7 @@
         </div>
       </div>
     `;
-    widget.innerHTML = `
+    container.innerHTML = `
       <div class="cuc-card" role="complementary" aria-label="Claude usage meter">
         <div class="cuc-header">
           <span class="cuc-title">Vistage · Claude Usage</span>
@@ -641,7 +685,7 @@
         <div class="cuc-body" data-cuc="body">
           <div class="cuc-meter">
             <div class="cuc-meter-label">
-              <span>Usage in this chat</span>
+              <span title="A local ballpark estimate of tokens and API-equivalent dollars used in this conversation. Not a bill.">Usage in this chat</span>
               <span data-cuc="chat-value" aria-live="polite">$0.00</span>
             </div>
             <div class="cuc-progress" role="progressbar" aria-label="Context window used in this chat" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
@@ -651,12 +695,12 @@
           </div>
 
           <div class="cuc-native" data-cuc="native-section">
-            ${nativeRow("five-hour", "Session limit (5-hour)")}
-            ${nativeRow("seven-day", "Weekly limit")}
-            ${nativeRow("opus", "Weekly Opus limit")}
+            ${nativeRow("five-hour", "Session limit (5-hour)", "How much of your rolling 5-hour Claude allowance you've used. This is the limit that pauses you mid-day. Read from Claude directly — not an estimate.")}
+            ${nativeRow("seven-day", "Weekly limit", "Your 7-day Claude allowance across all models. Read from Claude directly — not an estimate.")}
+            ${nativeRow("opus", "Weekly Opus limit", "Your 7-day allowance for the Opus model specifically. Only shown once you've used Opus this week.")}
             <div class="cuc-native-row" data-cuc="row-enterprise" hidden>
               <div class="cuc-native-label">
-                <span>Monthly allowance</span>
+                <span title="Monthly usage-credit spend and cap from Claude.ai — real account data, not an estimate.">Monthly allowance</span>
                 <span data-cuc="enterprise-value">—</span>
               </div>
               <div class="cuc-progress cuc-progress--thin" role="progressbar" aria-label="Monthly allowance" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
@@ -676,9 +720,18 @@
       </div>
     `;
 
+    shadow.appendChild(container);
+    // Only now is the widget fully built — renders that raced the CSS fetch
+    // bail on widgetRoot being null and re-run on the next state change.
+    widgetRoot = shadow;
+
+    syncWidgetDarkMode();
+    observeDarkMode();
     placeWidget();
 
-    widget.addEventListener("click", async event => {
+    // Attached inside the shadow root, so event.target is the real internal
+    // element (retargeting only applies to listeners outside the root).
+    container.addEventListener("click", async event => {
       const action = event.target?.getAttribute?.("data-cuc-action");
       if (!action) return;
       if (action === "hide") {
@@ -780,7 +833,9 @@
   const DISPLAY_MODE_GLYPHS = { dollars: "$", tokens: "#", both: "$#" };
 
   function renderWidget() {
-    if (!widget) return;
+    // widgetRoot stays null until the shadow content (and its stylesheet)
+    // is in place — early renders just skip; state changes re-render later.
+    if (!widget || !widgetRoot) return;
     widget.classList.toggle("cuc-hidden", !settings.showWidget);
 
     const conversation = CUC.getConversationUsage(usage);
@@ -805,20 +860,20 @@
       chatDetail = "Ballpark estimate for this chat";
     }
 
-    const cycleButton = widget.querySelector("[data-cuc-action='cycle']");
+    const cycleButton = widgetRoot.querySelector("[data-cuc-action='cycle']");
     if (cycleButton) cycleButton.textContent = DISPLAY_MODE_GLYPHS[settings.displayMode] || "$";
 
     const chatPct = CUC.clamp((chatTokens / MAX_CONTEXT_WINDOW_TOKENS) * 100, 0, 100);
     if (chatPct >= 40) chatDetail += ` · chat ~${Math.round(chatPct)}% of context`;
-    widget.querySelector("[data-cuc='chat-value']").textContent = chatValue;
-    widget.querySelector("[data-cuc='chat-detail']").textContent = chatDetail;
-    setBar(widget.querySelector("[data-cuc='chat-bar']"), chatPct);
+    widgetRoot.querySelector("[data-cuc='chat-value']").textContent = chatValue;
+    widgetRoot.querySelector("[data-cuc='chat-detail']").textContent = chatDetail;
+    setBar(widgetRoot.querySelector("[data-cuc='chat-bar']"), chatPct);
 
-    widget.querySelector("[data-cuc='model']").textContent = effort
+    widgetRoot.querySelector("[data-cuc='model']").textContent = effort
       ? `${model?.label || "Model estimate"} · ${effort} effort`
       : (model?.label || "Model estimate");
     const methodNote = lastTokenEstimateMethod === "tokenizer" ? "tokenizer estimate" : "rough estimate";
-    widget.querySelector("[data-cuc='accurate-until']").textContent = `${CUC.accurateUntilLabel(modelKey)} · ${methodNote}`;
+    widgetRoot.querySelector("[data-cuc='accurate-until']").textContent = `${CUC.accurateUntilLabel(modelKey)} · ${methodNote}`;
 
     renderNativeLimits();
     renderTip(chatPct);
@@ -880,7 +935,7 @@
   }
 
   function renderNativeLimits() {
-    const section = widget.querySelector("[data-cuc='native-section']");
+    const section = widgetRoot.querySelector("[data-cuc='native-section']");
     if (!section) return;
 
     if (!settings.showNativeLimits) {
@@ -889,14 +944,14 @@
     }
     section.style.display = "block";
 
-    const note = widget.querySelector("[data-cuc='enterprise-note']");
+    const note = widgetRoot.querySelector("[data-cuc='enterprise-note']");
     const rows = {};
     for (const { key } of NATIVE_BUCKETS) {
-      rows[key] = widget.querySelector(`[data-cuc='row-${key}']`);
+      rows[key] = widgetRoot.querySelector(`[data-cuc='row-${key}']`);
     }
-    const enterpriseRow = widget.querySelector("[data-cuc='row-enterprise']");
-    const enterpriseValue = widget.querySelector("[data-cuc='enterprise-value']");
-    const enterpriseBar = widget.querySelector("[data-cuc='enterprise-bar']");
+    const enterpriseRow = widgetRoot.querySelector("[data-cuc='row-enterprise']");
+    const enterpriseValue = widgetRoot.querySelector("[data-cuc='enterprise-value']");
+    const enterpriseBar = widgetRoot.querySelector("[data-cuc='enterprise-bar']");
 
     const hideAllRows = () => {
       for (const { key } of NATIVE_BUCKETS) rows[key] && (rows[key].hidden = true);
@@ -945,8 +1000,8 @@
         continue;
       }
       row.hidden = false;
-      widget.querySelector(`[data-cuc='${key}-value']`).textContent = bucketValueText(bucket);
-      setBar(widget.querySelector(`[data-cuc='${key}-bar']`), bucket.utilizationPct);
+      widgetRoot.querySelector(`[data-cuc='${key}-value']`).textContent = bucketValueText(bucket);
+      setBar(widgetRoot.querySelector(`[data-cuc='${key}-bar']`), bucket.utilizationPct);
     }
 
     // Monthly usage-credit allowance.
@@ -975,20 +1030,29 @@
     }
   }
 
-  // One plain-English coaching line, shown only when it's actionable. The
-  // native-limit warning wins over the long-chat tip because it's the one
-  // that ends with a lockout.
+  // One plain-English coaching line, shown only when it's actionable.
+  // Priority: pace projection (forward-looking, most decision-relevant) >
+  // suppress if the native note already carries a warning > long-chat tip.
   function renderTip(chatPct) {
-    const tip = widget.querySelector("[data-cuc='tip']");
+    const tip = widgetRoot.querySelector("[data-cuc='tip']");
     if (!tip) return;
     if (!settings.showPlainEnglishTips) {
       tip.hidden = true;
       return;
     }
-    if (settings.showNativeLimits && mostUrgentNativeWarning(nativeUsage)) {
-      // Already surfaced in the native note — don't say it twice.
-      tip.hidden = true;
-      return;
+    if (settings.showNativeLimits) {
+      const projection = CUC.projectDepletion(paceSamples, Date.now(), nativeUsage?.fiveHour?.resetsAt || null);
+      const paceText = CUC.paceWarningText(projection);
+      if (paceText) {
+        tip.textContent = paceText;
+        tip.hidden = false;
+        return;
+      }
+      if (mostUrgentNativeWarning(nativeUsage)) {
+        // Already surfaced in the native note — don't say it twice.
+        tip.hidden = true;
+        return;
+      }
     }
     if (chatPct >= 60) {
       tip.textContent = "This chat is getting long. Long chats use your limits faster — consider starting a fresh chat for new topics.";
@@ -1101,14 +1165,33 @@
     return values.length ? Math.max(...values) : null;
   }
 
+  // Flatten the current native reading into per-bucket rows the background
+  // can use for the toolbar badge and threshold notifications. Percentages
+  // and reset timestamps only — no account payload crosses this message.
+  function nativeUsageBucketsForBackground() {
+    if (!nativeUsage) return [];
+    const rows = [];
+    const push = (key, label, bucket) => {
+      if (bucket && typeof bucket.utilizationPct === "number") {
+        rows.push({ key, label, pct: bucket.utilizationPct, resetsAt: bucket.resetsAt || null });
+      }
+    };
+    push("five-hour", "Session limit", nativeUsage.fiveHour);
+    push("seven-day", "Weekly limit", nativeUsage.sevenDay);
+    push("opus", "Weekly Opus limit", nativeUsage.sevenDayOpus);
+    push("monthly", "Monthly allowance", nativeUsage.monthlySpendLimit);
+    return rows;
+  }
+
   function updateToolbarBadge() {
     try {
       chrome.runtime.sendMessage({
-        type: "cuc:update-badge",
-        maxUtilizationPct: maxNativeUtilizationPct(nativeUsage)
+        type: "cuc:native-usage-updated",
+        maxUtilizationPct: maxNativeUtilizationPct(nativeUsage),
+        buckets: nativeUsageBucketsForBackground()
       }).catch(() => {});
     } catch {
-      // Badge is a nice-to-have; never let it break the refresh path.
+      // Badge/notifications are nice-to-haves; never let them break refresh.
     }
   }
 
@@ -1121,11 +1204,13 @@
     // Multi-tab dedupe: another tab may have polled seconds ago and stored
     // the result. Freshness rides on fetchedAt, which fetchNativeUsage stamps.
     try {
-      const stored = await chrome.storage.local.get(["cuc:native-usage"]);
+      const stored = await CUC.ephemeralGet(["cuc:native-usage", "cuc:pace-samples"]);
       const shared = stored["cuc:native-usage"];
       if (shared?.fetchedAt && Date.now() - shared.fetchedAt < NATIVE_USAGE_SHARED_FRESH_MS) {
         nativeUsage = shared;
         nativeUsageError = null;
+        // Another tab is the sampler; just read its samples for display.
+        if (Array.isArray(stored["cuc:pace-samples"])) paceSamples = stored["cuc:pace-samples"];
         renderWidget();
         updateToolbarBadge();
         scheduleNextNativeUsagePoll();
@@ -1153,14 +1238,24 @@
         nativeUsageBackoffMs = null;
       }
     }
-    try {
-      await chrome.storage.local.set({
-        "cuc:native-usage": nativeUsage,
-        "cuc:native-usage-error": nativeUsageError
-      });
-    } catch {
-      // best-effort; the in-page widget still has the in-memory value
+    // This tab did the live fetch, so it's the one that appends the pace
+    // sample (shared-cache readers don't, keeping one sample per poll).
+    if (nativeUsage?.fiveHour && typeof nativeUsage.fiveHour.utilizationPct === "number") {
+      try {
+        const stored = await CUC.ephemeralGet(["cuc:pace-samples"]);
+        paceSamples = CUC.appendPaceSample(stored["cuc:pace-samples"], {
+          at: nativeUsage.fetchedAt || Date.now(),
+          pct: nativeUsage.fiveHour.utilizationPct
+        });
+        await CUC.ephemeralSet({ "cuc:pace-samples": paceSamples });
+      } catch {
+        // Sampling is best-effort; the bars themselves don't depend on it.
+      }
     }
+    await CUC.ephemeralSet({
+      "cuc:native-usage": nativeUsage,
+      "cuc:native-usage-error": nativeUsageError
+    });
     renderWidget();
     updateToolbarBadge();
     scheduleNextNativeUsagePoll();

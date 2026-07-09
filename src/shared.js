@@ -77,7 +77,8 @@
     autoResetSession: true,
     organizationId: "1e16048b-a724-40fd-b78b-bcf3c7f9af9a",
     enterpriseMonthlyLimitUsd: 100,
-    showNativeLimits: true
+    showNativeLimits: true,
+    desktopNotifications: true
   };
 
   // Key daily/monthly buckets by the user's LOCAL date, not UTC. Using
@@ -227,6 +228,36 @@
 
   function makeStorageKey(prefix = "cuc") {
     return `${prefix}:usage`;
+  }
+
+  // Ephemeral cross-tab state (the shared native-usage cache, pace samples)
+  // belongs in chrome.storage.session: memory-backed, self-clearing on
+  // browser restart, and it doesn't hit disk once a minute. Content scripts
+  // can only touch session storage after the background grants access
+  // (setAccessLevel), so fall back to storage.local if session isn't
+  // reachable yet — worst case is one redundant fetch, not lost data.
+  async function ephemeralGet(keys) {
+    try {
+      return await chrome.storage.session.get(keys);
+    } catch {
+      try {
+        return await chrome.storage.local.get(keys);
+      } catch {
+        return {};
+      }
+    }
+  }
+
+  async function ephemeralSet(items) {
+    try {
+      await chrome.storage.session.set(items);
+    } catch {
+      try {
+        await chrome.storage.local.set(items);
+      } catch {
+        // Best-effort cache only.
+      }
+    }
   }
 
   function currentConversationId() {
@@ -442,6 +473,25 @@
       });
   }
 
+  // Last `count` calendar days (oldest → newest, today last), zero-filled for
+  // days with no recorded usage — feeds the popup's trend bars.
+  function recentDaysSeries(usage, count = 14, now = new Date()) {
+    const days = usage?.days || {};
+    const series = [];
+    for (let i = count - 1; i >= 0; i -= 1) {
+      const date = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
+      const key = todayKey(date);
+      const bucket = days[key] || {};
+      series.push({
+        date: key,
+        estimatedUsd: bucket.estimatedUsd || 0,
+        inputTokens: bucket.inputTokens || 0,
+        outputTokens: bucket.outputTokens || 0
+      });
+    }
+    return series;
+  }
+
   function usageHistoryCsv(usage) {
     const header = "date,messages,responses,input_tokens,output_tokens,attachments,estimated_usd";
     const lines = usageHistoryRows(usage).map(row =>
@@ -482,6 +532,85 @@
     return Math.min(max, Math.max(min, num));
   }
 
+  // ---- Pace projection ("at this pace you'll hit your session limit…") ----
+  //
+  // Approach modeled on ccusage's burn-rate math and Claude-Code-Usage-
+  // Monitor's trailing-window smoothing: a slope over a trailing window of
+  // samples (never a jumpy two-point instantaneous delta), a minimum sample
+  // count/time span before any prediction is made, and — the key rule — a
+  // warning is only surfaced when the projected depletion lands BEFORE the
+  // window's reset. If the reset comes first, the reset will save you, so
+  // nothing alarming is shown.
+
+  const PACE_TRAILING_WINDOW_MS = 45 * 60 * 1000;
+  const PACE_MIN_SAMPLES = 3;
+  const PACE_MIN_SPAN_MINUTES = 5;
+  const PACE_MIN_SLOPE_PCT_PER_MIN = 0.05;
+
+  // Append a new utilization sample to a ring buffer, detecting window
+  // resets (utilization dropped) by clearing history so the new window's
+  // pace isn't polluted by the old one's.
+  function appendPaceSample(samples, sample, { maxSamples = 100, maxAgeMs = 90 * 60 * 1000 } = {}) {
+    let next = Array.isArray(samples) ? samples.slice() : [];
+    const last = next[next.length - 1];
+    if (last) {
+      if (sample.at <= last.at) return next; // duplicate/out-of-order poll
+      if (sample.pct < last.pct - 0.5) next = []; // window reset — start fresh
+    }
+    next.push({ at: sample.at, pct: sample.pct });
+    const cutoff = sample.at - maxAgeMs;
+    next = next.filter(s => s.at >= cutoff);
+    if (next.length > maxSamples) next = next.slice(-maxSamples);
+    return next;
+  }
+
+  // Returns null (not enough signal), {kind:"safe"} (rising but the reset
+  // arrives first), or {kind:"depletes", atMs} (on pace to hit the limit
+  // before it resets — the only case worth alarming anyone about).
+  function projectDepletion(samples, nowMs = Date.now(), resetsAtIso = null) {
+    if (!Array.isArray(samples) || samples.length < PACE_MIN_SAMPLES) return null;
+    const recent = samples.filter(s => nowMs - s.at <= PACE_TRAILING_WINDOW_MS);
+    const usable = recent.length >= PACE_MIN_SAMPLES ? recent : samples;
+    const first = usable[0];
+    const last = usable[usable.length - 1];
+    const spanMinutes = (last.at - first.at) / 60000;
+    if (spanMinutes < PACE_MIN_SPAN_MINUTES) return null;
+
+    const slope = (last.pct - first.pct) / spanMinutes; // pct per minute
+    if (!(slope > PACE_MIN_SLOPE_PCT_PER_MIN)) return null; // steady — no prediction
+    if (last.pct >= 100) return null; // already there; the bar says it all
+
+    const minutesToLimit = (100 - last.pct) / slope;
+    const depletesAtMs = last.at + minutesToLimit * 60000;
+    const resetMs = Date.parse(resetsAtIso || "");
+    if (!Number.isNaN(resetMs) && depletesAtMs >= resetMs) {
+      return { kind: "safe" };
+    }
+    return { kind: "depletes", atMs: depletesAtMs };
+  }
+
+  // "3:45 PM" with a day-relative prefix when it isn't today — a glance
+  // answers "is this today?" without date math (pattern borrowed from
+  // Claude-Code-Usage-Monitor's prediction labels).
+  function formatClockTime(ms, now = new Date()) {
+    const when = new Date(ms);
+    const time = when.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    const sameDay = when.getFullYear() === now.getFullYear()
+      && when.getMonth() === now.getMonth()
+      && when.getDate() === now.getDate();
+    if (sameDay) return time;
+    const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+    const isTomorrow = when.getFullYear() === tomorrow.getFullYear()
+      && when.getMonth() === tomorrow.getMonth()
+      && when.getDate() === tomorrow.getDate();
+    return isTomorrow ? `tomorrow ${time}` : `${when.toLocaleDateString()} ${time}`;
+  }
+
+  function paceWarningText(projection, now = new Date()) {
+    if (!projection || projection.kind !== "depletes") return null;
+    return `At this pace, you'll hit your session limit around ${formatClockTime(projection.atMs, now)} (estimated).`;
+  }
+
   globalThis.ClaudeUsageCompanion = {
     FIVE_HOURS_MS,
     DAY_MS,
@@ -497,12 +626,15 @@
     formatUsd,
     formatTokens,
     makeStorageKey,
+    ephemeralGet,
+    ephemeralSet,
     currentConversationId,
     addUsageEvent,
     migrateConversationEvents,
     pruneUsage,
     getTodayUsage,
     getMonthUsage,
+    recentDaysSeries,
     usageHistoryRows,
     usageHistoryCsv,
     shouldResetSession,
@@ -514,6 +646,10 @@
     accurateUntilLabel,
     todayKey,
     monthKey,
-    clamp
+    clamp,
+    appendPaceSample,
+    projectDepletion,
+    formatClockTime,
+    paceWarningText
   };
 })();
