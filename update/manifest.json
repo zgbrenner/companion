@@ -1,0 +1,85 @@
+{
+  "version": "0.7.0",
+  "files": [
+    {
+      "path": "icons/icon128.png",
+      "sha256": "d3fcebee5c9cbcef1c7d2513bb24a761800761c577b2419da4e3c40cef363e73"
+    },
+    {
+      "path": "icons/icon16.png",
+      "sha256": "b334c7c9f4d521bc058a405164ad564aeb97061e1767eb0a2cddd2f8e3acdef7"
+    },
+    {
+      "path": "icons/icon32.png",
+      "sha256": "9b12b65a6cd9e88c9e71624d661f0e2378a26bba99493542ed35a6234cce2eeb"
+    },
+    {
+      "path": "icons/icon48.png",
+      "sha256": "a6b70d30383a609af6c648ee0d7399eeb53e28b6079f01180783cfc5e5412d4b"
+    },
+    {
+      "path": "manifest.json",
+      "sha256": "5549b0d66a7f4d2f4f6e2ab66f3d7ea5f233d41212ca6077933c842e9c643d0a"
+    },
+    {
+      "path": "src/background.js",
+      "sha256": "68bfd8e5fa25a2ecc19feb1abf0019f1cf4852e9da839a36333382d77b8bebc6"
+    },
+    {
+      "path": "src/content.css",
+      "sha256": "6af3c970a3bbcc221628e621c2c1b3968d379b276530675728a1782144cd00e6"
+    },
+    {
+      "path": "src/content.js",
+      "sha256": "44cb9b649cdbac6f9248f2668952003f2a1fb71cab05e2d15ef49cebf6469221"
+    },
+    {
+      "path": "src/injected.js",
+      "sha256": "9235cbee796b68aaa4081fa0fc82ac3e27109401dc6b706def1b6afe1da8535d"
+    },
+    {
+      "path": "src/native-usage.js",
+      "sha256": "8c18e1b6850684b800024aa48dcfaf6771f8263610108e0e16dab2096e3d650f"
+    },
+    {
+      "path": "src/o200k_base.js",
+      "sha256": "fbc7419f14fb3a1460b56b156b94adb3480ec375a1dd404b0d0bd807fbff97e1"
+    },
+    {
+      "path": "src/options.css",
+      "sha256": "b31ea0499581995b7490df3b952a3f17c42c87adddfbf323119dc25f6d764272"
+    },
+    {
+      "path": "src/options.html",
+      "sha256": "7de16f14b2bdf47346785c8026df1ed9d0518a08ea1218e457fd020c10b3c007"
+    },
+    {
+      "path": "src/options.js",
+      "sha256": "3e03b597040ca5875bf270e36ed6847d4c313c0f0609a6a226f941916ca0e159"
+    },
+    {
+      "path": "src/popup.css",
+      "sha256": "2d4bb15009d6af218f72bff3d02f5674e9c960efe7219a226b5817772f83bc3a"
+    },
+    {
+      "path": "src/popup.html",
+      "sha256": "f645fdada9aa756486dca42c17008d96896662e025fb3ff434cceb11978d1062"
+    },
+    {
+      "path": "src/popup.js",
+      "sha256": "1e8e3a4b64606a35f12a7ad75f1faea1fa030c9e2b377cda99ce69dd9dd6024b"
+    },
+    {
+      "path": "src/shared.js",
+      "sha256": "8d12cea56ca5bbd139b4963c7703f6147b27cae78debd317c891bb33f9c8bc92"
+    },
+    {
+      "path": "src/updater.js",
+      "sha256": "9e0d171bd67165709ca63e2ebb55c95fe8d50a480911938ae253aeaef3e5d306"
+    },
+    {
+      "path": "src/widget.css",
+      "sha256": "065cf0bd8c2e3e42bcda618a8c2fac7b7111e655c8c6a4eb4d69256bab344046"
+    }
+  ]
+}

@@ -26,8 +26,10 @@
   // Recent (timestamp, session-limit %) samples shared across tabs via the
   // ephemeral store; feeds the "at this pace…" projection.
   let paceSamples = [];
-  let lastTokenEstimateMethod = "heuristic";
   let lastUsageSnapshotRefreshAt = 0;
+  // Newest version published on GitHub, recorded by the background's update
+  // checker; drives the "Update ready" banner at the top of the widget.
+  let updateAvailableVersion = null;
   const NATIVE_USAGE_REFRESH_MS = 60 * 1000;
   const NATIVE_USAGE_MAX_BACKOFF_MS = 10 * 60 * 1000;
 
@@ -94,17 +96,23 @@
     }
   }
 
-  // Random handshake token passed to the injected page-world script via its
-  // own <script> tag. Events arriving on the page-global bus without this
-  // token are ignored, so an arbitrary page script can't forge usage events.
+  // Random handshake token offered to the MAIN-world network watcher
+  // (src/injected.js, a manifest-declared world:"MAIN" content script) via a
+  // DOM event. Events arriving on the page-global bus without this token are
+  // ignored, so an arbitrary page script can't forge usage events. Both
+  // content scripts run at document_start — before ANY page script — so the
+  // first offer the watcher sees is guaranteed to be ours; the offer is
+  // repeated on "cuc:main-ready" because Chrome doesn't guarantee which
+  // world's content script runs first.
   const NETWORK_EVENT_TOKEN = (crypto?.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`);
 
-  function injectNetworkWatcher() {
-    const script = document.createElement("script");
-    script.src = chrome.runtime.getURL("src/injected.js");
-    script.dataset.cucToken = NETWORK_EVENT_TOKEN;
-    script.onload = () => script.remove();
-    (document.documentElement || document.head || document.body).appendChild(script);
+  function offerNetworkToken() {
+    window.dispatchEvent(new CustomEvent("cuc:token-offer", { detail: { token: NETWORK_EVENT_TOKEN } }));
+  }
+
+  function startNetworkTokenHandshake() {
+    window.addEventListener("cuc:main-ready", offerNetworkToken);
+    offerNetworkToken();
   }
 
   function hashString(value) {
@@ -117,8 +125,9 @@
   }
 
   async function loadState() {
-    const stored = await chrome.storage.local.get([STORAGE_KEY, "cuc:settings"]);
+    const stored = await chrome.storage.local.get([STORAGE_KEY, "cuc:settings", "cuc:update-available"]);
     settings = { ...CUC.DEFAULT_SETTINGS, ...(stored["cuc:settings"] || {}) };
+    updateAvailableVersion = stored["cuc:update-available"]?.latestVersion || null;
     usage = CUC.normalizeUsage(stored[STORAGE_KEY]);
     // Let the background (single writer) perform any stale-session reset, so two
     // tabs loading at once don't both reset. The fresh state returns via
@@ -425,7 +434,6 @@
     const rawInputTokens = Math.ceil(promptTokens + attachmentTokens);
     const inputTokens = rawInputTokens + contextTokens;
     const estimatedUsd = CUC.estimateCostUsd(inputTokens, 0, modelKey, settings);
-    lastTokenEstimateMethod = promptEstimate.method;
 
     recordEvent({
       at: now,
@@ -456,7 +464,6 @@
 
     const outputEstimate = CUC.estimateTokensPrecise(text, modelKey);
     const outputTokens = outputEstimate.tokens;
-    lastTokenEstimateMethod = outputEstimate.method;
     const estimatedUsd = CUC.estimateCostUsd(0, outputTokens, modelKey, settings);
     recordEvent({
       at: Date.now(),
@@ -610,6 +617,31 @@
 
     window.addEventListener("cuc:usage-snapshot", event => {
       if (event.detail?.token !== NETWORK_EVENT_TOKEN) return;
+
+      // Generation streams push live message_limit frames with the same
+      // utilization data the /usage endpoint reports — fresher than our poll.
+      // Merge the sanitized buckets straight into the current reading for an
+      // instant display update (display-only; the polled endpoint remains the
+      // authoritative cross-tab source).
+      const buckets = event.detail?.buckets;
+      if (buckets && nativeUsage) {
+        let merged = false;
+        for (const prop of ["fiveHour", "sevenDay", "sevenDayOpus"]) {
+          const fresh = buckets[prop];
+          if (!fresh || typeof fresh.utilizationPct !== "number") continue;
+          nativeUsage[prop] = {
+            ...(nativeUsage[prop] || {}),
+            utilizationPct: fresh.utilizationPct,
+            resetsAt: fresh.resetsAt || nativeUsage[prop]?.resetsAt || null
+          };
+          merged = true;
+        }
+        if (merged) {
+          renderWidget();
+          updateToolbarBadge();
+        }
+      }
+
       // claude.ai just fetched its own usage data (or a generation stream
       // carried a live message_limit frame), so ours may be stale — refresh
       // opportunistically (throttled). We never persist the raw payload
@@ -623,18 +655,45 @@
     });
   }
 
-  // Mirror claude.ai's html.dark class onto the shadow host as .cuc-dark —
-  // a shadow tree's CSS can't match ancestors past its host, so widget.css
-  // keys dark rules off :host(.cuc-dark) (plus prefers-color-scheme, which
-  // still works inside shadow DOM as the system-level fallback).
+  // The widget follows claude.ai's OWN theme (what the user picked in Claude's
+  // appearance settings), not the OS preference — a dark-OS user running
+  // Claude in light mode gets a light widget. Claude tags dark mode on the
+  // <html> element (class "dark" today; data attributes checked in case that
+  // markup drifts); when no explicit marker is present, fall back to sampling
+  // the page's actual rendered background color so the widget still matches
+  // whatever is really on screen.
+  function pageIsDarkMode() {
+    const root = document.documentElement;
+    const markers = `${root.className || ""} ${root.getAttribute("data-theme") || ""} ${root.getAttribute("data-mode") || ""}`.toLowerCase();
+    if (/\bdark\b/.test(markers)) return true;
+    if (/\blight\b/.test(markers)) return false;
+    try {
+      const bg = getComputedStyle(document.body).backgroundColor;
+      const rgb = bg.match(/rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)/);
+      if (rgb) {
+        const luminance = 0.2126 * rgb[1] + 0.7152 * rgb[2] + 0.0722 * rgb[3];
+        return luminance < 128;
+      }
+    } catch {
+      // Detached body or unparsable color — fall through to the OS hint.
+    }
+    return Boolean(window.matchMedia?.("(prefers-color-scheme: dark)")?.matches);
+  }
+
+  // Mirror the detected theme onto the shadow host as .cuc-dark — a shadow
+  // tree's CSS can't match ancestors past its host, so widget.css keys every
+  // dark rule off :host(.cuc-dark). Light is the default.
   function syncWidgetDarkMode() {
     if (!widget) return;
-    widget.classList.toggle("cuc-dark", document.documentElement.classList.contains("dark"));
+    widget.classList.toggle("cuc-dark", pageIsDarkMode());
   }
 
   function observeDarkMode() {
     const observer = new MutationObserver(syncWidgetDarkMode);
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class", "data-theme", "data-mode", "style"] });
+    if (document.body) {
+      observer.observe(document.body, { attributes: true, attributeFilter: ["class", "style"] });
+    }
   }
 
   async function createWidget() {
@@ -675,13 +734,14 @@
     container.innerHTML = `
       <div class="cuc-card" role="complementary" aria-label="Claude usage meter">
         <div class="cuc-header">
-          <span class="cuc-title">Vistage · Claude Usage</span>
+          <span class="cuc-title">Vistage · Claude Companion</span>
           <div class="cuc-controls">
             <button class="cuc-button" data-cuc-action="cycle" title="Switch between dollars/tokens" aria-label="Switch display between dollars, tokens, and both">$</button>
             <button class="cuc-button" data-cuc-action="options" title="Settings" aria-label="Open settings">⚙</button>
             <button class="cuc-button" data-cuc-action="hide" title="Hide" aria-label="Hide usage widget">✕</button>
           </div>
         </div>
+        <button class="cuc-update" data-cuc="update-banner" data-cuc-action="update" hidden></button>
         <div class="cuc-body" data-cuc="body">
           <div class="cuc-meter">
             <div class="cuc-meter-label">
@@ -691,7 +751,7 @@
             <div class="cuc-progress" role="progressbar" aria-label="Context window used in this chat" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
               <div class="cuc-progress-bar" data-cuc="chat-bar"></div>
             </div>
-            <div class="cuc-budget-line" data-cuc="chat-detail">0 tokens · ballpark estimate</div>
+            <div class="cuc-budget-line" data-cuc="chat-detail" hidden></div>
           </div>
 
           <div class="cuc-native" data-cuc="native-section">
@@ -714,7 +774,6 @@
 
           <div class="cuc-footer">
             <span data-cuc="model">Model estimate</span>
-            <span data-cuc="accurate-until"></span>
           </div>
         </div>
       </div>
@@ -739,7 +798,9 @@
         await chrome.storage.local.set({ "cuc:settings": settings });
         renderWidget();
       }
-      if (action === "options") {
+      if (action === "options" || action === "update") {
+        // The update banner routes to the options page too — that's where the
+        // one-click installer lives.
         chrome.runtime.sendMessage({ type: "cuc:open-options" });
       }
       if (action === "cycle") {
@@ -805,22 +866,72 @@
     return findComposerAnchorFallback();
   }
 
+  // The anchor selectors match the composer's inner input area, but the box
+  // the user SEES — the rounded, bordered container around the text field —
+  // is usually a few ancestors above it. Docking after the inner anchor put
+  // the widget INSIDE that box. Walk upward and keep the outermost ancestor
+  // that still looks like the visual chat box (rounded corners plus a border,
+  // background, or shadow), so the widget lands BELOW the box instead.
+  function findVisualComposerBox(anchor) {
+    let best = null;
+    let node = anchor;
+    for (let depth = 0; depth < 8 && node && node !== document.body && node !== document.documentElement; depth += 1) {
+      let style;
+      try {
+        style = getComputedStyle(node);
+      } catch {
+        break;
+      }
+      const rounded = parseFloat(style.borderTopLeftRadius) >= 8;
+      const bordered = style.borderTopStyle !== "none" && parseFloat(style.borderTopWidth) > 0;
+      const bg = style.backgroundColor;
+      const surfaced = (style.boxShadow && style.boxShadow !== "none")
+        || (bg && bg !== "transparent" && bg !== "rgba(0, 0, 0, 0)");
+      if (rounded && (bordered || surfaced) && isSaneAnchorCandidate(node)) best = node;
+      node = node.parentElement;
+    }
+    return best;
+  }
+
+  function resolveDockTarget() {
+    const anchor = findComposerAnchor();
+    if (!anchor) return null;
+    return findVisualComposerBox(anchor)
+      || anchor.closest?.("form, [data-testid*='composer']")
+      || anchor;
+  }
+
+  // Keep the widget exactly as wide as the chat box it docks under, tracking
+  // window resizes and claude.ai layout changes via ResizeObserver.
+  let widthSyncObserver = null;
+  let widthSyncTarget = null;
+
+  function syncWidgetWidthTo(target) {
+    if (!widget || !target) return;
+    const apply = () => {
+      if (!widget) return;
+      const rect = target.getBoundingClientRect();
+      if (rect.width > 0) widget.style.width = `${rect.width}px`;
+    };
+    if (widthSyncTarget !== target) {
+      widthSyncObserver?.disconnect();
+      widthSyncObserver = new ResizeObserver(apply);
+      widthSyncObserver.observe(target);
+      widthSyncTarget = target;
+    }
+    apply();
+  }
+
   function placeWidget() {
     if (!widget) return;
 
-    const anchor = findComposerAnchor();
-    const dockTarget = anchor?.closest?.("form, [data-testid*='composer']") || anchor;
+    const dockTarget = resolveDockTarget();
     if (!dockTarget || !dockTarget.parentElement) {
       widget.remove();
       return;
     }
 
     widget.classList.add("cuc-docked");
-    widget.style.position = "";
-    widget.style.top = "";
-    widget.style.left = "";
-    widget.style.right = "";
-    widget.style.bottom = "";
     try {
       dockTarget.parentElement.insertBefore(widget, dockTarget.nextSibling);
     } catch {
@@ -828,6 +939,7 @@
       // observer will retry on the next mutation batch rather than letting a
       // transient NotFoundError propagate into the page.
     }
+    syncWidgetWidthTo(dockTarget);
   }
 
   const DISPLAY_MODE_GLYPHS = { dollars: "$", tokens: "#", both: "$#" };
@@ -851,29 +963,43 @@
     const chatCostText = CUC.formatUsd(chatSpend);
     const chatTokensText = `${CUC.formatTokens(chatTokens)} tokens`;
     let chatValue = chatCostText;
-    let chatDetail = `${chatTokensText} · ballpark estimate`;
     if (settings.displayMode === "tokens") {
       chatValue = chatTokensText;
-      chatDetail = `${chatCostText} · ballpark estimate`;
     } else if (settings.displayMode === "both") {
       chatValue = `${chatCostText} · ${chatTokensText}`;
-      chatDetail = "Ballpark estimate for this chat";
     }
 
     const cycleButton = widgetRoot.querySelector("[data-cuc-action='cycle']");
     if (cycleButton) cycleButton.textContent = DISPLAY_MODE_GLYPHS[settings.displayMode] || "$";
 
+    // Update banner: shown while GitHub has a newer version than the one
+    // running. The inequality check auto-hides it once the update applies,
+    // even before the background clears the stored flag.
+    const updateBanner = widgetRoot.querySelector("[data-cuc='update-banner']");
+    if (updateBanner) {
+      const runningVersion = chrome.runtime.getManifest().version;
+      const showBanner = Boolean(updateAvailableVersion) && updateAvailableVersion !== runningVersion;
+      updateBanner.hidden = !showBanner;
+      if (showBanner) updateBanner.textContent = `Update v${updateAvailableVersion} is ready — click to install`;
+    }
+
+    // The standing "ballpark estimate" caption is gone (it lives in the row's
+    // hover tooltip instead); the detail line only appears once the chat is
+    // heavy enough that the context-share note is actionable.
     const chatPct = CUC.clamp((chatTokens / MAX_CONTEXT_WINDOW_TOKENS) * 100, 0, 100);
-    if (chatPct >= 40) chatDetail += ` · chat ~${Math.round(chatPct)}% of context`;
+    const chatDetailEl = widgetRoot.querySelector("[data-cuc='chat-detail']");
+    if (chatPct >= 40) {
+      chatDetailEl.textContent = `Chat is ~${Math.round(chatPct)}% of the context window`;
+      chatDetailEl.hidden = false;
+    } else {
+      chatDetailEl.hidden = true;
+    }
     widgetRoot.querySelector("[data-cuc='chat-value']").textContent = chatValue;
-    widgetRoot.querySelector("[data-cuc='chat-detail']").textContent = chatDetail;
     setBar(widgetRoot.querySelector("[data-cuc='chat-bar']"), chatPct);
 
     widgetRoot.querySelector("[data-cuc='model']").textContent = effort
       ? `${model?.label || "Model estimate"} · ${effort} effort`
       : (model?.label || "Model estimate");
-    const methodNote = lastTokenEstimateMethod === "tokenizer" ? "tokenizer estimate" : "rough estimate";
-    widgetRoot.querySelector("[data-cuc='accurate-until']").textContent = `${CUC.accurateUntilLabel(modelKey)} · ${methodNote}`;
 
     renderNativeLimits();
     renderTip(chatPct);
@@ -945,6 +1071,13 @@
     section.style.display = "block";
 
     const note = widgetRoot.querySelector("[data-cuc='enterprise-note']");
+    // The note line only renders when it says something actionable (loading,
+    // errors, warnings) — the old always-on "Live limits from Claude.ai — not
+    // an estimate." caption is covered by each row's hover tooltip now.
+    const setNote = (text) => {
+      note.textContent = text || "";
+      note.hidden = !text;
+    };
     const rows = {};
     for (const { key } of NATIVE_BUCKETS) {
       rows[key] = widgetRoot.querySelector(`[data-cuc='row-${key}']`);
@@ -960,27 +1093,27 @@
 
     if (nativeUsageError === "not-logged-in") {
       hideAllRows();
-      note.textContent = "Sign in to claude.ai to see your real limits.";
+      setNote("Sign in to claude.ai to see your real limits.");
       return;
     }
     if (nativeUsageError === "forbidden") {
       hideAllRows();
-      note.textContent = "The configured Organization ID doesn't match this account — check Settings, or clear it to auto-detect.";
+      setNote("The configured Organization ID doesn't match this account — check Settings, or clear it to auto-detect.");
       return;
     }
     if (nativeUsageError === "rate-limited") {
       hideAllRows();
-      note.textContent = "Claude is rate-limiting usage lookups; retrying with backoff.";
+      setNote("Claude is rate-limiting usage lookups; retrying with backoff.");
       return;
     }
     if (nativeUsageError) {
       hideAllRows();
-      note.textContent = "Claude's limit data is unavailable right now.";
+      setNote("Claude's limit data is unavailable right now.");
       return;
     }
     if (!nativeUsage) {
       hideAllRows();
-      note.textContent = "Loading Claude usage…";
+      setNote("Loading Claude usage…");
       return;
     }
 
@@ -1008,9 +1141,9 @@
     const spendLimit = nativeUsage.monthlySpendLimit;
     if (!spendLimit) {
       if (enterpriseRow) enterpriseRow.hidden = true;
-      note.textContent = nativeUsage.monthlySpendLimitRejected
+      setNote(nativeUsage.monthlySpendLimitRejected
         ? `Claude returned ${CUC.formatUsd(nativeUsage.monthlySpendLimitRejected.foundLimitUsd)}, expected ${CUC.formatUsd(nativeUsage.monthlySpendLimitRejected.expectedLimitUsd)} — looks like a units mismatch, not a real cap change.`
-        : "Live limits from Claude.ai — not an estimate.";
+        : mostUrgentNativeWarning(nativeUsage));
       return;
     }
     if (enterpriseRow) enterpriseRow.hidden = false;
@@ -1022,11 +1155,11 @@
     setBar(enterpriseBar, pct);
 
     if (spendLimit.outOfCredits) {
-      note.textContent = "Monthly usage-credit limit reached";
+      setNote("Monthly usage-credit limit reached");
     } else if (spendLimit.capAdvisory) {
-      note.textContent = `Cap differs from expected ${CUC.formatUsd(spendLimit.capAdvisory.expectedLimitUsd)} — update Settings if this changed.`;
+      setNote(`Cap differs from expected ${CUC.formatUsd(spendLimit.capAdvisory.expectedLimitUsd)} — update Settings if this changed.`);
     } else {
-      note.textContent = mostUrgentNativeWarning(nativeUsage) || "Live limits from Claude.ai — not an estimate.";
+      setNote(mostUrgentNativeWarning(nativeUsage));
     }
   }
 
@@ -1111,8 +1244,7 @@
     let dockCheckTimer = null;
     const checkDock = () => {
       if (document.hidden || !widget) return;
-      const anchor = findComposerAnchor();
-      const dockTarget = anchor?.closest?.("form, [data-testid*='composer']") || anchor;
+      const dockTarget = resolveDockTarget();
       const isDockedAfterAnchor = dockTarget?.parentElement && widget.parentElement === dockTarget.parentElement && widget.previousElementSibling === dockTarget;
       if (!document.body.contains(widget) || !isDockedAfterAnchor) placeWidget();
     };
@@ -1294,6 +1426,10 @@
       usage = CUC.normalizeUsage(changes[STORAGE_KEY].newValue);
       renderWidget();
     }
+    if ("cuc:update-available" in changes) {
+      updateAvailableVersion = changes["cuc:update-available"].newValue?.latestVersion || null;
+      renderWidget();
+    }
   });
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
@@ -1313,10 +1449,12 @@
     return false;
   });
 
-  // Patch window.fetch as early as possible — before the async settings load —
-  // so a generation kicked off immediately on page load (e.g. a queued draft
-  // sent the moment the composer mounts) isn't missed while storage resolves.
-  injectNetworkWatcher();
+  // Hand the MAIN-world network watcher its auth token immediately — before
+  // the async settings load — so a generation kicked off on page load (e.g. a
+  // queued draft sent the moment the composer mounts) isn't missed while
+  // storage resolves. The watcher itself is a manifest-declared MAIN-world
+  // content script, so its fetch/XHR patches are installed before any page code.
+  startNetworkTokenHandshake();
   observeNetworkEvents();
 
   loadState().then(() => {

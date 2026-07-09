@@ -2,15 +2,18 @@
    root and is styled by src/widget.css, injected into the shadow root by
    content.js — claude.ai's page styles cannot reach it there. */
 
+/* Width is synced to the chat box's measured width by content.js (inline
+   style, via ResizeObserver); 100% is only the fallback before first sync. */
 #cuc-widget {
-  width: 300px;
+  width: 100%;
   display: block;
+  box-sizing: border-box;
 }
 
-/* Docked: sits in normal page flow, right under the composer. */
+/* Docked: sits in normal page flow, right under the chat box. */
 #cuc-widget.cuc-docked {
   position: static;
-  margin: 10px auto 4px;
+  margin: 8px auto 4px;
 }
 
 .cuc-hidden {

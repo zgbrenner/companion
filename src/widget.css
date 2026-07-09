@@ -1,10 +1,11 @@
 /* Styles for the in-page widget, injected INSIDE its shadow root so
    claude.ai's global styles can never break the widget and vice versa.
-   Dark mode: claude.ai's html.dark class can't be matched from inside a
-   shadow tree, so content.js mirrors it as a .cuc-dark class on the shadow
-   HOST (matched here via :host(.cuc-dark)); the prefers-color-scheme media
-   queries still work unchanged inside shadow DOM and act as the system-level
-   fallback. */
+
+   Theme: the widget follows claude.ai's OWN appearance setting, not the OS.
+   Light is the default; content.js detects Claude's dark theme and mirrors it
+   as a .cuc-dark class on the shadow HOST (matched here via :host(.cuc-dark)).
+   There are deliberately NO prefers-color-scheme rules — those made the
+   widget go dark for dark-OS users even when Claude itself was in light mode. */
 
 /* Block property inheritance from the page (shadow DOM scopes selectors,
    not inherited properties like color/font). */
@@ -17,12 +18,6 @@
 
 :host(.cuc-dark) .cuc-root {
   color: #e8e6e3;
-}
-
-@media (prefers-color-scheme: dark) {
-  .cuc-root {
-    color: #e8e6e3;
-  }
 }
 
 .cuc-card {
@@ -39,20 +34,12 @@
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
 }
 
-@media (prefers-color-scheme: dark) {
-  .cuc-card {
-    background: #2b2a27;
-    border-color: #4a4945;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
-  }
-}
-
 .cuc-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 9px 10px;
+  padding: 6px 10px;
   background: #f4f6f9;
   border-bottom: 1px solid #dde3ea;
   user-select: none;
@@ -61,13 +48,6 @@
 :host(.cuc-dark) .cuc-header {
   background: #323036;
   border-bottom-color: #4a4945;
-}
-
-@media (prefers-color-scheme: dark) {
-  .cuc-header {
-    background: #323036;
-    border-bottom-color: #4a4945;
-  }
 }
 
 .cuc-title {
@@ -79,12 +59,6 @@
 
 :host(.cuc-dark) .cuc-title {
   color: #e8e6e3;
-}
-
-@media (prefers-color-scheme: dark) {
-  .cuc-title {
-    color: #e8e6e3;
-  }
 }
 
 .cuc-controls {
@@ -109,12 +83,6 @@
   color: #a09c98;
 }
 
-@media (prefers-color-scheme: dark) {
-  .cuc-button {
-    color: #a09c98;
-  }
-}
-
 .cuc-button:hover {
   background: rgba(43, 54, 72, 0.08);
   color: #1c2430;
@@ -125,15 +93,41 @@
   color: #e8e6e3;
 }
 
-@media (prefers-color-scheme: dark) {
-  .cuc-button:hover {
-    background: rgba(200, 196, 190, 0.1);
-    color: #e8e6e3;
-  }
+.cuc-update {
+  display: block;
+  width: 100%;
+  border: none;
+  border-bottom: 1px solid #d3e3f5;
+  cursor: pointer;
+  padding: 6px 10px;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  text-align: left;
+  background: #e8f1fb;
+  color: #1d4f8f;
+}
+
+.cuc-update:hover {
+  background: #dceafa;
+}
+
+.cuc-update[hidden] {
+  display: none;
+}
+
+:host(.cuc-dark) .cuc-update {
+  background: #20303f;
+  border-bottom-color: #2c4257;
+  color: #9ec5ee;
+}
+
+:host(.cuc-dark) .cuc-update:hover {
+  background: #263a4d;
 }
 
 .cuc-body {
-  padding: 12px 14px 14px;
+  padding: 9px 12px 10px;
 }
 
 .cuc-progress {
@@ -142,21 +136,15 @@
   background: #eaeef3;
   border-radius: 999px;
   overflow: hidden;
-  margin-top: 8px;
+  margin-top: 6px;
 }
 
 :host(.cuc-dark) .cuc-progress {
   background: #4a4945;
 }
 
-@media (prefers-color-scheme: dark) {
-  .cuc-progress {
-    background: #4a4945;
-  }
-}
-
 .cuc-meter {
-  margin-top: 10px;
+  margin-top: 8px;
 }
 
 .cuc-meter:first-child {
@@ -176,12 +164,6 @@
   color: #a09c98;
 }
 
-@media (prefers-color-scheme: dark) {
-  .cuc-meter-label {
-    color: #a09c98;
-  }
-}
-
 .cuc-meter-label span:first-child {
   flex-shrink: 0;
   font-weight: 600;
@@ -199,12 +181,6 @@
 
 :host(.cuc-dark) .cuc-meter-label span:last-child {
   color: #e8e6e3;
-}
-
-@media (prefers-color-scheme: dark) {
-  .cuc-meter-label span:last-child {
-    color: #e8e6e3;
-  }
 }
 
 .cuc-progress-bar {
@@ -231,22 +207,20 @@
 .cuc-budget-line {
   font-size: 11px;
   color: #6b7684;
-  margin-top: 6px;
+  margin-top: 5px;
+}
+
+.cuc-budget-line[hidden] {
+  display: none;
 }
 
 :host(.cuc-dark) .cuc-budget-line {
   color: #a09c98;
 }
 
-@media (prefers-color-scheme: dark) {
-  .cuc-budget-line {
-    color: #a09c98;
-  }
-}
-
 .cuc-native {
-  margin-top: 12px;
-  padding-top: 10px;
+  margin-top: 9px;
+  padding-top: 8px;
   border-top: 1px solid #eaeef3;
 }
 
@@ -254,14 +228,8 @@
   border-top-color: #4a4945;
 }
 
-@media (prefers-color-scheme: dark) {
-  .cuc-native {
-    border-top-color: #4a4945;
-  }
-}
-
 .cuc-native-row {
-  margin-bottom: 7px;
+  margin-bottom: 6px;
 }
 
 .cuc-native-row:last-of-type {
@@ -284,31 +252,23 @@
   color: #a09c98;
 }
 
-@media (prefers-color-scheme: dark) {
-  .cuc-native-label {
-    color: #a09c98;
-  }
-}
-
 .cuc-native-note {
   font-size: 11px;
   color: #6b7684;
-  margin-top: 6px;
+  margin-top: 5px;
+}
+
+.cuc-native-note[hidden] {
+  display: none;
 }
 
 :host(.cuc-dark) .cuc-native-note {
   color: #a09c98;
 }
 
-@media (prefers-color-scheme: dark) {
-  .cuc-native-note {
-    color: #a09c98;
-  }
-}
-
 .cuc-tip {
-  margin-top: 10px;
-  padding: 8px 10px;
+  margin-top: 8px;
+  padding: 7px 10px;
   border-radius: 8px;
   background: #fdf3e3;
   border: 1px solid #ecd9b0;
@@ -327,21 +287,13 @@
   color: #e3c983;
 }
 
-@media (prefers-color-scheme: dark) {
-  .cuc-tip {
-    background: #3a3220;
-    border-color: #5c4d26;
-    color: #e3c983;
-  }
-}
-
 .cuc-footer {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 8px;
-  margin-top: 10px;
-  padding-top: 8px;
+  margin-top: 8px;
+  padding-top: 6px;
   border-top: 1px solid #eaeef3;
   font-size: 10px;
   color: #8b95a3;
@@ -352,19 +304,8 @@
   color: #8a8784;
 }
 
-@media (prefers-color-scheme: dark) {
-  .cuc-footer {
-    border-top-color: #4a4945;
-    color: #8a8784;
-  }
-}
-
 .cuc-footer span:first-child {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.cuc-footer span:last-child {
-  flex-shrink: 0;
 }
