@@ -38,10 +38,18 @@
         <input id="showNativeLimits" type="checkbox" />
         Show enterprise usage limit
       </label>
-      <p><strong>Detected organization:</strong> <span id="detected-organization">Not detected yet</span></p>
+      <div class="account-detail">
+        <strong>Detected organization:</strong>
+        <span id="detected-organization" class="monospace-value">Not detected yet</span>
+        <div class="inline-actions">
+          <button id="toggle-organization" type="button" class="secondary compact" disabled>Reveal</button>
+          <button id="copy-organization" type="button" class="secondary compact" disabled>Copy full ID</button>
+        </div>
+      </div>
       <p><strong>Cached monthly cap:</strong> <span id="detected-cap">Not detected yet</span></p>
       <button id="clear-org-cache" type="button" class="secondary">Clear detected account cache</button>
-      <p class="hint">Detected values are cached in <code>chrome.storage.local</code> for convenience. Claude's live response remains the source of truth.</p>
+      <p class="hint">Detected values are cached in <code>chrome.storage.local</code> for up to 48 hours. Claude's live response remains the source of truth.</p>
+      <p class="hint" id="account-action-status" aria-live="polite"></p>
     </section>
 
     <section class="card">
@@ -60,11 +68,18 @@
       <p class="hint" id="export-status"></p>
     </section>
 
+    <section class="card danger-zone">
+      <h2>Local data</h2>
+      <p class="hint">Clears settings, spend history, session baselines, detected account details, learned endpoints, notification state, update status, and the saved extension-folder handle. Claude account data is not changed.</p>
+      <button id="clear-all-data" type="button" class="danger">Clear all local data</button>
+      <p class="hint" id="clear-data-status" aria-live="polite"></p>
+    </section>
+
     <section class="card">
       <h2>Updates</h2>
       <p class="hint">Updates install straight from GitHub — no uninstall or reinstall, and your settings are kept. One-time setup: click "Connect extension folder" and pick the folder this extension was loaded from (the one chosen at chrome://extensions → Load unpacked). After that, updating is a single click.</p>
       <p class="hint" id="update-status">Checking for updates…</p>
-      <button id="apply-update" type="button" style="display:none;">Install update</button>
+      <button id="apply-update" type="button" hidden>Install update</button>
       <button id="check-updates" type="button" class="secondary">Check for updates</button>
       <button id="setup-folder" type="button" class="secondary">Connect extension folder</button>
       <button id="open-github" type="button" class="secondary">Open GitHub</button>

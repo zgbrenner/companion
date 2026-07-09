@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Vistage Claude Usage Companion",
-  "version": "0.8.1",
+  "version": "0.8.2",
   "minimum_chrome_version": "111",
   "description": "Internal Vistage Worldwide, Inc. tool. Shows Claude.ai usage in dollars, tokens, or both, pinned under the chat box while you work.",
   "permissions": [
@@ -16,6 +16,9 @@
     "https://api.github.com/repos/zgbrenner/claudecompanion/*",
     "https://raw.githubusercontent.com/zgbrenner/claudecompanion/*"
   ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'none'; base-uri 'none'; connect-src 'self' https://claude.ai https://*.claude.ai https://api.github.com https://raw.githubusercontent.com https://cdn.jsdelivr.net https://*.pages.dev; img-src 'self' data:; style-src 'self' 'unsafe-inline';"
+  },
   "background": {
     "service_worker": "src/background.js",
     "type": "module"

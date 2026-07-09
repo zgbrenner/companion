@@ -2,14 +2,15 @@
 // estimating from local heuristics. This is ground truth, not an estimate.
 //
 // Endpoints (undocumented, may change without notice):
-//   GET https://claude.ai/api/organizations                -> org list, cached 24h
+//   GET https://claude.ai/api/organizations                -> org list, cached 48h
 //   GET https://claude.ai/api/organizations/{orgId}/usage   -> { five_hour, seven_day, seven_day_opus }
 //   GET https://claude.ai/api/organizations/{orgId}/overage_spend_limit
 //                                                        -> monthly usage-credit spend/limit
 //
-// The browser attaches the session cookie automatically because these requests
-// originate from a content script running on a claude.ai page with host
-// permission for claude.ai. This code never reads or stores the cookie itself.
+// The browser attaches the authenticated Claude session automatically because
+// these requests originate from a content script on claude.ai. The extension
+// reads only the non-authentication `lastActiveOrg` organization identifier;
+// it never reads, stores, or transmits the authentication/session cookie.
 //
 // /usage response shape (as observed by prior open-source extensions targeting
 // this endpoint; not officially documented by Anthropic, so shape may drift):
@@ -24,21 +25,31 @@
 (() => {
   const CACHE_KEY = "cuc:native-org-cache";
   const ACCOUNT_CACHE_KEY = "cuc:detected-account-cache";
-  const ORG_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+  const CACHE_TTL_MS = 48 * 60 * 60 * 1000;
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+  function cacheIsFresh(cache) {
+    const cachedAt = Number(cache?.cachedAt);
+    return Number.isFinite(cachedAt) && cachedAt > 0 && Date.now() - cachedAt <= CACHE_TTL_MS;
+  }
 
   async function getCachedOrgId() {
     try {
       const stored = await chrome.storage.local.get([CACHE_KEY]);
       const cache = stored[CACHE_KEY];
       if (!cache) return null;
-      if (Date.now() - (cache.cachedAt || 0) > ORG_CACHE_TTL_MS) return null;
-      return cache.orgId || null;
+      if (!cacheIsFresh(cache) || !UUID_RE.test(String(cache.orgId || ""))) {
+        await chrome.storage.local.remove([CACHE_KEY]);
+        return null;
+      }
+      return cache.orgId;
     } catch {
       return null;
     }
   }
 
   async function setCachedOrgId(orgId) {
+    if (!UUID_RE.test(String(orgId || ""))) return;
     try {
       await chrome.storage.local.set({
         [CACHE_KEY]: { orgId, cachedAt: Date.now() }
@@ -55,8 +66,6 @@
       // ignore
     }
   }
-
-  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
   async function cacheDetectedAccount(orgId, spendLimit) {
     if (!UUID_RE.test(String(orgId || ""))) return;
@@ -81,11 +90,21 @@
       const stored = await chrome.storage.local.get([CACHE_KEY, ACCOUNT_CACHE_KEY]);
       const org = stored[CACHE_KEY] || null;
       const account = stored[ACCOUNT_CACHE_KEY] || null;
+      const orgFresh = cacheIsFresh(org) && UUID_RE.test(String(org?.orgId || ""));
+      const accountFresh = cacheIsFresh(account) && UUID_RE.test(String(account?.orgId || ""));
+      const staleKeys = [];
+      if (org && !orgFresh) staleKeys.push(CACHE_KEY);
+      if (account && !accountFresh) staleKeys.push(ACCOUNT_CACHE_KEY);
+      if (staleKeys.length) await chrome.storage.local.remove(staleKeys);
+
+      const orgId = orgFresh ? org.orgId : (accountFresh ? account.orgId : null);
+      const capMatchesOrganization = accountFresh && account.orgId === orgId;
+      const limitUsd = Number(account?.limitUsd);
       return {
-        orgId: account?.orgId || org?.orgId || null,
-        limitUsd: Number.isFinite(Number(account?.limitUsd)) ? Number(account.limitUsd) : null,
-        currency: account?.currency || "USD",
-        cachedAt: account?.cachedAt || org?.cachedAt || null
+        orgId,
+        limitUsd: capMatchesOrganization && Number.isFinite(limitUsd) && limitUsd > 0 ? limitUsd : null,
+        currency: capMatchesOrganization && typeof account.currency === "string" ? account.currency : "USD",
+        cachedAt: capMatchesOrganization ? account.cachedAt : (orgFresh ? org.cachedAt : null)
       };
     } catch {
       return { orgId: null, limitUsd: null, currency: "USD", cachedAt: null };
@@ -97,9 +116,9 @@
   // script on a claude.ai page). This is the most reliable "which org am I
   // actually using" signal available browser-side — the /api/organizations
   // list order is not — and the same approach is used by other actively
-  // maintained open-source claude.ai extensions. The cookie value is used
-  // only to pick which usage endpoint to read; it is never stored or sent
-  // anywhere.
+  // maintained open-source claude.ai extensions. Only the organization UUID is
+  // cached locally for 48 hours; it is never sent anywhere other than Claude's
+  // own usage endpoints.
   function orgIdFromCookie() {
     try {
       const match = document.cookie.match(/(?:^|;\s*)lastActiveOrg=([^;]+)/);
@@ -158,11 +177,10 @@
     try {
       usagePayload = await fetchJson(`https://claude.ai/api/organizations/${orgId}/usage`);
     } catch (error) {
-      // A 403 usually means the configured/cached org id doesn't match the
-      // signed-in account (e.g. a contractor outside the Vistage org, or a
-      // stale cache after switching accounts) — NOT that the user is signed
-      // out. Retry once with live discovery (cookie/org list), bypassing the
-      // configured value, before giving up.
+      // A 403 usually means the cached/detected organization no longer matches
+      // the signed-in account (for example, after switching accounts) — not that
+      // the user is signed out. Clear local detection state and retry once from
+      // the live cookie or organization list before giving up.
       if (String(error?.message) !== "forbidden") throw error;
       await clearCachedOrgId();
       const rediscovered = await discoverOrgId();
@@ -200,9 +218,8 @@
     if (response.status === 401) {
       throw new Error("not-logged-in");
     }
-    // 403 is "signed in, but this org isn't yours" — telling the user to
-    // sign in (as the old combined mapping did) sends them in a re-login
-    // loop when the real fix is the Organization ID setting.
+    // Keep 403 distinct from 401 so callers can clear detection state and retry
+    // instead of sending the user through an unnecessary sign-in loop.
     if (response.status === 403) {
       throw new Error("forbidden");
     }
