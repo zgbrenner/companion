@@ -35,7 +35,7 @@
     },
     {
       "path": "src/injected.js",
-      "sha256": "3d2bab559ebcd5caca72097216c40ceb4369927276af8642fd965c53cba980fd"
+      "sha256": "9235cbee796b68aaa4081fa0fc82ac3e27109401dc6b706def1b6afe1da8535d"
     },
     {
       "path": "src/native-usage.js",

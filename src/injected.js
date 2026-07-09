@@ -207,7 +207,14 @@
     if (typeof body === "string") return maybeParseJson(body);
     if (body instanceof URLSearchParams) return maybeParseJson(body.toString());
     try {
-      if (input instanceof Request) return await input.clone().json();
+      if (input instanceof Request) {
+        // Don't clone non-JSON bodies: cloning tees the body stream, so
+        // reading the clone of a large multipart file upload would buffer the
+        // whole file a second time for nothing.
+        const contentType = input.headers?.get?.("content-type") || "";
+        if (contentType && !/json/i.test(contentType)) return null;
+        return await input.clone().json();
+      }
     } catch {
       // Not JSON or already consumed; best-effort only.
     }
