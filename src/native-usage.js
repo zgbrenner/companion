@@ -23,29 +23,8 @@
 //     out_of_credits, disabled_reason, disabled_until, ... }
 (() => {
   const CACHE_KEY = "cuc:native-org-cache";
+  const ACCOUNT_CACHE_KEY = "cuc:detected-account-cache";
   const ORG_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
-
-  async function configuredOrgId() {
-    const defaults = globalThis.ClaudeUsageCompanion?.DEFAULT_SETTINGS || {};
-    try {
-      const stored = await chrome.storage.local.get(["cuc:settings"]);
-      const settings = { ...defaults, ...(stored["cuc:settings"] || {}) };
-      return String(settings.organizationId || "").trim();
-    } catch {
-      return String(defaults.organizationId || "").trim();
-    }
-  }
-
-  async function configuredEnterpriseLimitUsd() {
-    const defaults = globalThis.ClaudeUsageCompanion?.DEFAULT_SETTINGS || {};
-    try {
-      const stored = await chrome.storage.local.get(["cuc:settings"]);
-      const settings = { ...defaults, ...(stored["cuc:settings"] || {}) };
-      return Number(settings.enterpriseMonthlyLimitUsd || 0);
-    } catch {
-      return Number(defaults.enterpriseMonthlyLimitUsd || 0);
-    }
-  }
 
   async function getCachedOrgId() {
     try {
@@ -71,13 +50,47 @@
 
   async function clearCachedOrgId() {
     try {
-      await chrome.storage.local.remove([CACHE_KEY]);
+      await chrome.storage.local.remove([CACHE_KEY, ACCOUNT_CACHE_KEY]);
     } catch {
       // ignore
     }
   }
 
   const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+  async function cacheDetectedAccount(orgId, spendLimit) {
+    if (!UUID_RE.test(String(orgId || ""))) return;
+    const limitUsd = Number(spendLimit?.limitUsd);
+    if (!(limitUsd > 0)) return;
+    try {
+      await chrome.storage.local.set({
+        [ACCOUNT_CACHE_KEY]: {
+          orgId,
+          limitUsd,
+          currency: typeof spendLimit.currency === "string" ? spendLimit.currency : "USD",
+          cachedAt: Date.now()
+        }
+      });
+    } catch {
+      // The live Claude response remains the source of truth; caching is best-effort.
+    }
+  }
+
+  async function getCachedAccountConfig() {
+    try {
+      const stored = await chrome.storage.local.get([CACHE_KEY, ACCOUNT_CACHE_KEY]);
+      const org = stored[CACHE_KEY] || null;
+      const account = stored[ACCOUNT_CACHE_KEY] || null;
+      return {
+        orgId: account?.orgId || org?.orgId || null,
+        limitUsd: Number.isFinite(Number(account?.limitUsd)) ? Number(account.limitUsd) : null,
+        currency: account?.currency || "USD",
+        cachedAt: account?.cachedAt || org?.cachedAt || null
+      };
+    } catch {
+      return { orgId: null, limitUsd: null, currency: "USD", cachedAt: null };
+    }
+  }
 
   // claude.ai stores the organization the user is actively working in inside
   // the `lastActiveOrg` cookie (readable here because this runs in a content
@@ -97,14 +110,12 @@
     }
   }
 
-  async function discoverOrgId({ ignoreConfigured = false } = {}) {
-    if (!ignoreConfigured) {
-      const configured = await configuredOrgId();
-      if (configured) return configured;
-    }
-
+  async function discoverOrgId() {
     const fromCookie = orgIdFromCookie();
-    if (fromCookie) return fromCookie;
+    if (fromCookie) {
+      await setCachedOrgId(fromCookie);
+      return fromCookie;
+    }
 
     const cached = await getCachedOrgId();
     if (cached) return cached;
@@ -154,29 +165,21 @@
       // configured value, before giving up.
       if (String(error?.message) !== "forbidden") throw error;
       await clearCachedOrgId();
-      const rediscovered = await discoverOrgId({ ignoreConfigured: true });
+      const rediscovered = await discoverOrgId();
       if (!rediscovered || rediscovered === orgId) throw error;
       usagePayload = await fetchJson(`https://claude.ai/api/organizations/${rediscovered}/usage`);
       orgId = rediscovered;
     }
     const normalized = normalizeUsagePayload(usagePayload);
-    const expectedLimit = await configuredEnterpriseLimitUsd();
-
-    const capResult = applyCapAdvisory(normalized.monthlySpendLimit, expectedLimit);
-    normalized.monthlySpendLimit = capResult.spendLimit;
-    normalized.monthlySpendLimitRejected = capResult.rejected;
 
     // Prefer /usage.extra_usage, which reflects the member-visible usage-credit
-    // card. /overage_spend_limit can be the organization-wide cap (for example
-    // $5000) and must not replace a per-employee cap like $100.
+    // card. Fall back to /overage_spend_limit only when the usage response does
+    // not include a cap. No organization or cap value is configured locally.
     if (!normalized.monthlySpendLimit) {
-      const fallback = await fetchMonthlySpendLimit(orgId, expectedLimit);
-      if (fallback.spendLimit) {
-        normalized.monthlySpendLimit = fallback.spendLimit;
-        normalized.monthlySpendLimitRejected = null;
-      } else if (fallback.rejected) {
-        normalized.monthlySpendLimitRejected = fallback.rejected;
-      }
+      normalized.monthlySpendLimit = await fetchMonthlySpendLimit(orgId);
+    }
+    if (normalized.monthlySpendLimit) {
+      await cacheDetectedAccount(orgId, normalized.monthlySpendLimit);
     }
 
     // A 200 with none of the expected buckets means the endpoint shape drifted
@@ -212,66 +215,16 @@
     return response.json();
   }
 
-  // Compares a normalized spend-limit reading against the admin-configured
-  // expected cap. Three outcomes:
-  //   - matches (or no expectation configured): pass through unchanged.
-  //   - close in value but different (a genuine cap change, e.g. admin bumped
-  //     the per-employee limit): keep showing the real data, but attach a
-  //     capAdvisory so the UI can note the mismatch instead of hiding it.
-  //   - off by ~100x (classic cents-vs-dollars unit drift): the number would
-  //     be wildly misleading if displayed, so reject it outright.
-  function applyCapAdvisory(spendLimit, expectedLimitUsd) {
-    if (!spendLimit) return { spendLimit: null, rejected: null };
-    if (!(expectedLimitUsd > 0)) return { spendLimit, rejected: null };
-
-    const diff = Math.abs(spendLimit.limitUsd - expectedLimitUsd);
-    if (diff <= 0.01) return { spendLimit, rejected: null };
-
-    if (isLikelyUnitDrift(spendLimit.limitUsd, expectedLimitUsd)) {
-      return {
-        spendLimit: null,
-        rejected: {
-          foundLimitUsd: spendLimit.limitUsd,
-          expectedLimitUsd,
-          reason: "unit-drift"
-        }
-      };
-    }
-
-    return {
-      spendLimit: {
-        ...spendLimit,
-        capAdvisory: { foundLimitUsd: spendLimit.limitUsd, expectedLimitUsd }
-      },
-      rejected: null
-    };
-  }
-
-  // Heuristic: a returned limit that is ~100x (or ~1/100x) the expected cap
-  // looks like a cents/dollars unit mismatch rather than a genuine cap
-  // change, so it gets rejected rather than displayed as an "advisory".
-  // Tolerance is +/-20% around the 100x ratio to allow for rounding.
-  function isLikelyUnitDrift(foundLimitUsd, expectedLimitUsd) {
-    if (!(foundLimitUsd > 0) || !(expectedLimitUsd > 0)) return false;
-    const ratio = foundLimitUsd / expectedLimitUsd;
-    const within = (target) => ratio > target * 0.8 && ratio < target * 1.2;
-    return within(100) || within(0.01);
-  }
-
-  async function fetchMonthlySpendLimit(orgId, expectedLimitUsd) {
+  async function fetchMonthlySpendLimit(orgId) {
     try {
       const payload = await fetchJson(`https://claude.ai/api/organizations/${orgId}/overage_spend_limit`);
-      const normalized = normalizeMonthlySpendLimit(payload);
-      if (!normalized) return { spendLimit: null, rejected: null };
-      return applyCapAdvisory(normalized, expectedLimitUsd);
+      return normalizeMonthlySpendLimit(payload);
     } catch (error) {
       const message = String(error?.message || error);
-      // "forbidden" is deliberately NOT rethrown here: this endpoint can be
-      // admin-restricted, and by the time we call it the main /usage fetch
-      // has already succeeded — a member-level 403 on this optional fallback
-      // must not discard the session/weekly data we already have.
+      // This endpoint is optional and can be admin-restricted. Preserve the
+      // rolling-limit data already fetched from /usage when it is unavailable.
       if (message === "not-logged-in" || message === "rate-limited") throw error;
-      return { spendLimit: null, rejected: null };
+      return null;
     }
   }
 
@@ -510,11 +463,12 @@
   globalThis.ClaudeUsageCompanionNative = {
     fetchNativeUsage,
     clearCachedOrgId,
+    getCachedAccountConfig,
     rememberSpendEndpoint,
     fetchSpendBreakdown,
     formatResetCountdown,
     formatResetLabel,
     // Exposed for unit testing pure helpers; not used elsewhere in the extension.
-    _internal: { isLikelyUnitDrift, applyCapAdvisory, nextMonthFirstDayUtcIso, normalizeSpendBreakdownRows, isCandidateSpendPath }
+    _internal: { nextMonthFirstDayUtcIso, normalizeSpendBreakdownRows, isCandidateSpendPath }
   };
 })();

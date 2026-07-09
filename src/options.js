@@ -7,8 +7,6 @@ const REPO_URL = "https://github.com/zgbrenner/claudecompanion";
 const fields = [
   "displayMode",
   "defaultModel",
-  "organizationId",
-  "enterpriseMonthlyLimitUsd",
   "showNativeLimits",
   "desktopNotifications"
 ];
@@ -24,6 +22,17 @@ function populateModels() {
     option.textContent = `${model.label} — $${model.inputPerMTok}/$${model.outputPerMTok} per MTok${suffix}`;
     select.appendChild(option);
   });
+}
+
+async function renderDetectedAccount() {
+  const orgEl = document.getElementById("detected-organization");
+  const capEl = document.getElementById("detected-cap");
+  if (!orgEl || !capEl) return;
+  const detected = await CUCNative?.getCachedAccountConfig?.();
+  orgEl.textContent = detected?.orgId || "Not detected yet";
+  capEl.textContent = detected?.limitUsd > 0
+    ? `${CUC.formatUsd(detected.limitUsd)} (${detected.currency || "USD"})`
+    : "Not detected yet";
 }
 
 async function openUrl(url) {
@@ -138,6 +147,7 @@ async function loadSettings() {
     if (el.type === "checkbox") el.checked = Boolean(settings[field]);
     else el.value = settings[field];
   }
+  await renderDetectedAccount();
 }
 
 async function readSettings() {
@@ -156,28 +166,8 @@ async function readSettings() {
   return settings;
 }
 
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-// Blank is a supported "auto-discover" mode, so this only flags values that
-// are present but don't look like a UUID. Non-blocking: callers still save.
-function organizationIdWarning(value) {
-  const trimmed = String(value || "").trim();
-  if (!trimmed) return null;
-  if (UUID_PATTERN.test(trimmed)) return null;
-  return "This doesn't look like a valid organization UUID. Saving anyway — leave blank to auto-discover instead.";
-}
-
-function renderOrganizationIdWarning(value) {
-  const warningEl = document.getElementById("organizationId-warning");
-  if (!warningEl) return;
-  const message = organizationIdWarning(value);
-  warningEl.textContent = message || "";
-  warningEl.style.display = message ? "block" : "none";
-}
-
 async function saveSettings() {
   const settings = await readSettings();
-  renderOrganizationIdWarning(settings.organizationId);
   await chrome.storage.local.set({ "cuc:settings": settings });
   const status = document.getElementById("status");
   status.textContent = "Saved";
@@ -192,14 +182,12 @@ async function resetDefaults() {
   setTimeout(() => { status.textContent = ""; }, 1800);
 }
 
-document.getElementById("organizationId")?.addEventListener("input", (event) => {
-  renderOrganizationIdWarning(event.target.value);
-});
 document.getElementById("save").addEventListener("click", saveSettings);
 document.getElementById("reset-defaults").addEventListener("click", resetDefaults);
 document.getElementById("clear-org-cache")?.addEventListener("click", async () => {
   if (CUCNative?.clearCachedOrgId) await CUCNative.clearCachedOrgId();
   const status = document.getElementById("status");
+  await renderDetectedAccount();
   status.textContent = "Cleared. Refresh a claude.ai tab to re-detect.";
   setTimeout(() => { status.textContent = ""; }, 2400);
 });

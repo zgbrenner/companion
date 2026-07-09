@@ -33,26 +33,15 @@
 
     <section class="card">
       <h2>Enterprise limit (from Claude.ai)</h2>
-      <p class="hint">Reads Claude's monthly usage-credit spend limit directly — not an estimate. Uses an undocumented endpoint that Anthropic could change without notice; if it stops working, this section shows an error and the chat estimate still works.</p>
+      <p class="hint">The extension automatically discovers the active Claude organization from the <code>lastActiveOrg</code> cookie, then falls back to <code>/api/organizations</code>. The monthly cap comes directly from Claude's usage response or <code>overage_spend_limit</code>; neither value is hardcoded.</p>
       <label class="checkbox">
         <input id="showNativeLimits" type="checkbox" />
         Show enterprise usage limit
       </label>
-      <label>
-        Organization ID
-        <input id="organizationId" type="text" spellcheck="false" />
-      </label>
-      <p class="hint warning" id="organizationId-warning" style="display:none;"></p>
-      <label>
-        Employee monthly limit, USD
-        <input id="enterpriseMonthlyLimitUsd" type="number" min="0" step="1" />
-      </label>
-      <p class="hint">This is the expected per-employee cap, used only as an advisory comparison — if Claude returns a different cap it's still shown (with a note), not hidden. Only values that look like a cents/dollars unit mismatch get rejected.</p>
-      <label>
-        Team account
-        <button id="clear-org-cache" type="button" class="secondary">Clear cached organization</button>
-      </label>
-      <p class="hint">With an Organization ID set, that ID is used directly. Clear the cache only matters if the Organization ID field is blank.</p>
+      <p><strong>Detected organization:</strong> <span id="detected-organization">Not detected yet</span></p>
+      <p><strong>Cached monthly cap:</strong> <span id="detected-cap">Not detected yet</span></p>
+      <button id="clear-org-cache" type="button" class="secondary">Clear detected account cache</button>
+      <p class="hint">Detected values are cached in <code>chrome.storage.local</code> for convenience. Claude's live response remains the source of truth.</p>
     </section>
 
     <section class="card">
