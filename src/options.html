@@ -3,100 +3,250 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Vistage Claude Usage Companion</title>
+  <title>Claude Companion Settings</title>
   <link rel="stylesheet" href="options.css" />
 </head>
 <body>
-  <main>
-    <header>
-      <h1>Claude Usage</h1>
-      <p class="org-tag">Vistage Worldwide, Inc. — internal tool</p>
-      <p>Choose how chat usage should be shown.</p>
+  <div class="app-shell">
+    <header class="app-header">
+      <div class="brand-mark" aria-hidden="true">
+        <span></span><span></span><span></span>
+      </div>
+      <div class="brand-copy">
+        <p class="eyebrow">Settings</p>
+        <h1>Claude Companion</h1>
+        <p>Make usage easier to understand without sending your data anywhere else.</p>
+      </div>
+      <div class="header-badges" aria-label="Privacy status">
+        <span class="badge badge-success"><span class="status-dot"></span> Local-first</span>
+        <span class="badge" id="version-badge">v—</span>
+      </div>
     </header>
 
-    <section class="card">
-      <h2>Display</h2>
-      <label>
-        Show usage as
-        <select id="displayMode">
-          <option value="dollars">Dollars only</option>
-          <option value="tokens">Tokens only</option>
-          <option value="both">Dollars and tokens</option>
-        </select>
-      </label>
-      <label>
-        Model for token conversion
-        <select id="defaultModel"></select>
-      </label>
-      <p class="hint">Only used to translate real dollar spend into an approximate token range when the active model can't be detected. Dollar figures never depend on this.</p>
-    </section>
-
-    <section class="card">
-      <h2>Enterprise limit (from Claude.ai)</h2>
-      <p class="hint">The extension automatically discovers the active Claude organization from the <code>lastActiveOrg</code> cookie, then falls back to <code>/api/organizations</code>. The monthly cap comes directly from Claude's usage response or <code>overage_spend_limit</code>; neither value is hardcoded.</p>
-      <label class="checkbox">
-        <input id="showNativeLimits" type="checkbox" />
-        Show enterprise usage limit
-      </label>
-      <div class="account-detail">
-        <strong>Detected organization:</strong>
-        <span id="detected-organization" class="monospace-value">Not detected yet</span>
-        <div class="inline-actions">
-          <button id="toggle-organization" type="button" class="secondary compact" disabled>Reveal</button>
-          <button id="copy-organization" type="button" class="secondary compact" disabled>Copy full ID</button>
+    <div class="settings-layout">
+      <aside class="settings-sidebar">
+        <nav class="section-nav" aria-label="Settings sections">
+          <a href="#display" class="active">Display</a>
+          <a href="#alerts">Alerts</a>
+          <a href="#account">Claude connection</a>
+          <a href="#privacy">Data &amp; privacy</a>
+          <a href="#updates">Updates</a>
+        </nav>
+        <div class="privacy-summary">
+          <div class="privacy-icon" aria-hidden="true">✓</div>
+          <div>
+            <strong>Your chats stay private</strong>
+            <p>Claude Companion does not save prompt or response text.</p>
+          </div>
         </div>
+      </aside>
+
+      <main class="settings-content">
+        <section class="settings-card" id="display">
+          <div class="card-header">
+            <div>
+              <p class="section-kicker">Appearance</p>
+              <h2>Display</h2>
+              <p>Choose what Claude Companion shows while you work.</p>
+            </div>
+          </div>
+          <div class="card-content">
+            <div class="setting-block">
+              <div class="setting-copy">
+                <label id="display-mode-label">Show usage as</label>
+                <p>Dollar amounts are read from Claude. Token counts are approximate ranges.</p>
+              </div>
+              <div class="segmented-control" role="radiogroup" aria-labelledby="display-mode-label">
+                <label><input type="radio" name="displayMode" value="dollars" /><span>Dollars</span></label>
+                <label><input type="radio" name="displayMode" value="tokens" /><span>Tokens</span></label>
+                <label><input type="radio" name="displayMode" value="both" /><span>Both</span></label>
+              </div>
+            </div>
+
+            <div class="separator"></div>
+
+            <div class="setting-block setting-block-stack-mobile">
+              <div class="setting-copy">
+                <label for="defaultModel">Fallback model</label>
+                <p>Used only to estimate a token range when the active model cannot be detected.</p>
+              </div>
+              <select id="defaultModel" class="select-control"></select>
+            </div>
+
+            <div class="separator"></div>
+
+            <label class="setting-block switch-row" for="showNativeLimits">
+              <div class="setting-copy">
+                <span class="setting-label">Show Claude limits</span>
+                <p>Show your live session, weekly, Opus, and monthly allowance.</p>
+              </div>
+              <span class="switch-control">
+                <input id="showNativeLimits" type="checkbox" />
+                <span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
+              </span>
+            </label>
+          </div>
+        </section>
+
+        <section class="settings-card" id="alerts">
+          <div class="card-header">
+            <div>
+              <p class="section-kicker">Attention</p>
+              <h2>Alerts</h2>
+              <p>Get a quiet warning before a Claude limit interrupts your work.</p>
+            </div>
+          </div>
+          <div class="card-content">
+            <label class="setting-block switch-row" for="desktopNotifications">
+              <div class="setting-copy">
+                <span class="setting-label">Desktop notifications</span>
+                <p>Notify once at 85% and again at 95% for each reset period. The toolbar badge remains available either way.</p>
+              </div>
+              <span class="switch-control">
+                <input id="desktopNotifications" type="checkbox" />
+                <span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
+              </span>
+            </label>
+          </div>
+        </section>
+
+        <section class="settings-card" id="account">
+          <div class="card-header">
+            <div>
+              <p class="section-kicker">Account</p>
+              <h2>Claude connection</h2>
+              <p>Claude Companion detects the Claude workspace currently open in your browser.</p>
+            </div>
+            <span class="badge badge-success" id="connection-status"><span class="status-dot"></span> Checking</span>
+          </div>
+          <div class="card-content">
+            <div class="account-grid">
+              <div class="account-item">
+                <span class="account-label">Organization</span>
+                <strong id="detected-organization" class="monospace-value">Not detected yet</strong>
+                <div class="button-row compact-row">
+                  <button id="toggle-organization" type="button" class="button button-outline button-small" disabled>Reveal</button>
+                  <button id="copy-organization" type="button" class="button button-ghost button-small" disabled>Copy ID</button>
+                </div>
+              </div>
+              <div class="account-item">
+                <span class="account-label">Monthly allowance</span>
+                <strong id="detected-cap">Not detected yet</strong>
+                <span class="account-meta" id="cache-age">Opens after Claude reports it</span>
+              </div>
+            </div>
+
+            <div class="inline-notice">
+              <div class="notice-icon" aria-hidden="true">i</div>
+              <p>The organization ID is an account identifier, not a password. It is masked by default and cached with the allowance for no more than 48 hours.</p>
+            </div>
+
+            <div class="button-row">
+              <button id="clear-org-cache" type="button" class="button button-outline">Forget detected account</button>
+            </div>
+            <p class="feedback" id="account-action-status" aria-live="polite"></p>
+
+            <details class="technical-details">
+              <summary>How account detection works</summary>
+              <p>Claude Companion checks Claude.ai's active-organization identifier first, then asks Claude for the list of organizations available to the signed-in account. It uses read-only usage requests and never stores the authentication cookie.</p>
+            </details>
+          </div>
+        </section>
+
+        <section class="settings-card" id="privacy">
+          <div class="card-header">
+            <div>
+              <p class="section-kicker">Control</p>
+              <h2>Data &amp; privacy</h2>
+              <p>See what stays on this device and remove it whenever you choose.</p>
+            </div>
+          </div>
+          <div class="card-content">
+            <div class="privacy-grid">
+              <div class="privacy-tile">
+                <span class="tile-icon" aria-hidden="true">✓</span>
+                <strong>No chat text saved</strong>
+                <p>Prompt and response text are not written to extension storage.</p>
+              </div>
+              <div class="privacy-tile">
+                <span class="tile-icon" aria-hidden="true">↙</span>
+                <strong>Read-only access</strong>
+                <p>Claude Companion reads usage information and does not change your Claude account.</p>
+              </div>
+              <div class="privacy-tile">
+                <span class="tile-icon" aria-hidden="true">⌂</span>
+                <strong>Stored in this browser</strong>
+                <p>Settings and usage history stay in local browser storage.</p>
+              </div>
+            </div>
+
+            <div class="separator"></div>
+
+            <div class="action-row">
+              <div class="setting-copy">
+                <span class="setting-label">Export usage history</span>
+                <p>Download one CSV row per day with dollar totals and approximate token ranges. Chat text is never included.</p>
+              </div>
+              <button id="export-csv" type="button" class="button button-outline">Download CSV</button>
+            </div>
+            <p class="feedback" id="export-status" aria-live="polite"></p>
+
+            <details class="technical-details">
+              <summary>What the numbers mean</summary>
+              <p>Dollar amounts come from Claude's usage-credit counter. Session and daily totals reflect account activity observed during those time windows, including other Claude tabs or devices. Token figures are estimates derived from the dollar amount and model pricing.</p>
+            </details>
+
+            <div class="danger-panel">
+              <div>
+                <strong>Clear Claude Companion data</strong>
+                <p>Remove settings, usage history, session data, detected account details, update state, and the saved update-folder permission. Your Claude account and conversations are not affected.</p>
+              </div>
+              <button id="clear-all-data" type="button" class="button button-danger">Clear all local data</button>
+            </div>
+            <p class="feedback feedback-danger" id="clear-data-status" aria-live="polite"></p>
+          </div>
+        </section>
+
+        <section class="settings-card" id="updates">
+          <div class="card-header">
+            <div>
+              <p class="section-kicker">Maintenance</p>
+              <h2>Updates</h2>
+              <p>Keep Claude Companion current without reinstalling it.</p>
+            </div>
+          </div>
+          <div class="card-content">
+            <div class="update-status-panel">
+              <div class="update-icon" aria-hidden="true">↻</div>
+              <div>
+                <strong id="update-status">Checking for updates…</strong>
+                <p id="update-detail">Updates are downloaded from the project repository and checked before installation.</p>
+              </div>
+            </div>
+            <div class="button-row">
+              <button id="apply-update" type="button" class="button" hidden>Install update</button>
+              <button id="check-updates" type="button" class="button button-outline">Check now</button>
+              <button id="setup-folder" type="button" class="button button-outline">Enable one-click updates</button>
+              <button id="open-github" type="button" class="button button-ghost">View source</button>
+            </div>
+            <details class="technical-details">
+              <summary>One-click update setup</summary>
+              <p>Choose the same Claude Companion folder that was loaded through <code>chrome://extensions</code>. The browser stores that folder permission locally so future updates can be installed with one click.</p>
+            </details>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <footer class="save-bar">
+      <div class="save-state">
+        <span class="saved-dot"></span>
+        <span id="status" aria-live="polite">Changes save automatically</span>
       </div>
-      <p><strong>Cached monthly cap:</strong> <span id="detected-cap">Not detected yet</span></p>
-      <button id="clear-org-cache" type="button" class="secondary">Clear detected account cache</button>
-      <p class="hint">Detected values are cached in <code>chrome.storage.local</code> for up to 48 hours. Claude's live response remains the source of truth.</p>
-      <p class="hint" id="account-action-status" aria-live="polite"></p>
-    </section>
-
-    <section class="card">
-      <h2>Warnings</h2>
-      <label class="checkbox">
-        <input id="desktopNotifications" type="checkbox" />
-        Desktop notification when a limit runs hot
-      </label>
-      <p class="hint">A gentle heads-up when any Claude limit crosses 85% or 95% — once per threshold per reset window, never repeated nagging. The toolbar icon badge stays on either way.</p>
-    </section>
-
-    <section class="card">
-      <h2>Usage history</h2>
-      <p class="hint">Download your daily spend history (one row per day: real dollars from Claude's usage counter, plus an approximate token range — never any chat text). Handy for expense notes or a quick month-over-month look.</p>
-      <button id="export-csv" type="button" class="secondary">Download CSV</button>
-      <p class="hint" id="export-status"></p>
-    </section>
-
-    <section class="card danger-zone">
-      <h2>Local data</h2>
-      <p class="hint">Clears settings, spend history, session baselines, detected account details, learned endpoints, notification state, update status, and the saved extension-folder handle. Claude account data is not changed.</p>
-      <button id="clear-all-data" type="button" class="danger">Clear all local data</button>
-      <p class="hint" id="clear-data-status" aria-live="polite"></p>
-    </section>
-
-    <section class="card">
-      <h2>Updates</h2>
-      <p class="hint">Updates install straight from GitHub — no uninstall or reinstall, and your settings are kept. One-time setup: click "Connect extension folder" and pick the folder this extension was loaded from (the one chosen at chrome://extensions → Load unpacked). After that, updating is a single click.</p>
-      <p class="hint" id="update-status">Checking for updates…</p>
-      <button id="apply-update" type="button" hidden>Install update</button>
-      <button id="check-updates" type="button" class="secondary">Check for updates</button>
-      <button id="setup-folder" type="button" class="secondary">Connect extension folder</button>
-      <button id="open-github" type="button" class="secondary">Open GitHub</button>
-      <p class="hint" id="update-detail"></p>
-    </section>
-
-    <section class="card note">
-      <h2>About these numbers</h2>
-      <p>Every dollar figure is read from Claude's own usage-credit counter — real account data, accurate to the cent, never an estimate. Session and daily spend cover all of your Claude activity in that window (any tab or device), not one specific chat. Token figures are the only derived numbers: a range computed from real dollars using current Anthropic pricing and a documented input/output/caching mix.</p>
-    </section>
-
-    <footer>
-      <button id="save">Save settings</button>
-      <button id="reset-defaults" class="secondary">Reset defaults</button>
-      <span id="status"></span>
+      <button id="reset-defaults" class="button button-ghost">Restore defaults</button>
     </footer>
-  </main>
+  </div>
+
   <script src="shared.js"></script>
   <script src="native-usage.js"></script>
   <script src="updater.js"></script>
