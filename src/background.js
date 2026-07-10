@@ -6,6 +6,8 @@ const UPDATER = globalThis.ClaudeUsageCompanionUpdater;
 
 const SPEND_SESSION_KEY = "cuc:spend-session";
 const SPEND_DAYS_KEY = "cuc:spend-days";
+const CAVEMAN_INJECTED_KEY = "cuc:caveman-injected";
+const MAX_CAVEMAN_INJECTED_ENTRIES = 200;
 
 // Let content scripts use chrome.storage.session for the ephemeral cross-tab
 // cache (native usage, pace samples, session spend baseline). Runs at every
@@ -83,6 +85,46 @@ async function resetSpendSession() {
     baselineUsd: session.lastUsd,
     startedAt: Date.now()
   });
+}
+
+// Caveman Mode: atomic check-and-set of "instruction already sent to this
+// conversation", serialized here so two tabs showing the same chat can't
+// both inject. unclaim() undoes a claim whose send failed.
+async function claimCavemanInjection(conversationId) {
+  const stored = await chrome.storage.local.get([CAVEMAN_INJECTED_KEY]);
+  const map = stored[CAVEMAN_INJECTED_KEY] || {};
+  if (map[conversationId]) return { claimed: false };
+  map[conversationId] = Date.now();
+  const keys = Object.keys(map);
+  if (keys.length > MAX_CAVEMAN_INJECTED_ENTRIES) {
+    keys.sort((a, b) => map[a] - map[b]);
+    for (const key of keys.slice(0, keys.length - MAX_CAVEMAN_INJECTED_ENTRIES)) delete map[key];
+  }
+  await chrome.storage.local.set({ [CAVEMAN_INJECTED_KEY]: map });
+  return { claimed: true };
+}
+
+async function unclaimCavemanInjection(conversationId) {
+  const stored = await chrome.storage.local.get([CAVEMAN_INJECTED_KEY]);
+  const map = stored[CAVEMAN_INJECTED_KEY] || {};
+  if (!map[conversationId]) return;
+  delete map[conversationId];
+  await chrome.storage.local.set({ [CAVEMAN_INJECTED_KEY]: map });
+}
+
+// Offscreen document hosting the file→Markdown converter (see offscreen.html).
+let offscreenCreating = null;
+async function ensureOffscreenDocument() {
+  if (!chrome.offscreen?.createDocument) throw new Error("offscreen-unsupported");
+  if (await chrome.offscreen.hasDocument?.()) return;
+  if (!offscreenCreating) {
+    offscreenCreating = chrome.offscreen.createDocument({
+      url: "src/offscreen.html",
+      reasons: ["WORKERS"],
+      justification: "Convert user-dropped office files to Markdown locally for Caveman Mode; PDF parsing needs a same-origin Web Worker."
+    }).finally(() => { offscreenCreating = null; });
+  }
+  await offscreenCreating;
 }
 
 // Toolbar badge: a red/amber percentage when any of Claude's real limits is
@@ -242,6 +284,17 @@ function isTrustedClaudeContentSender(sender) {
   return url.hostname === "claude.ai" || url.hostname.endsWith(".claude.ai");
 }
 
+// Conversation ids from claude.ai are UUID-shaped; anything else is rejected
+// before it can become a storage key.
+function isValidConversationId(value) {
+  return typeof value === "string" && /^[0-9a-f-]{8,64}$/i.test(value);
+}
+
+// Mirrors the drop-zone whitelist in content.js; a 20MB file base64-encodes
+// to ~27M chars, so the cap bounds message size, not just file size.
+const CONVERTIBLE_EXTENSIONS = new Set(["pdf", "docx", "pptx", "xlsx", "odt", "odp", "ods", "rtf", "csv", "html", "htm"]);
+const MAX_CONVERT_DATAURL_CHARS = 30_000_000;
+
 function isTrustedPopupSender(sender) {
   if (sender?.id !== chrome.runtime.id || sender?.tab) return false;
   const url = parseSenderUrl(sender);
@@ -332,6 +385,42 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     );
     return true; // keep the channel open for the async sendResponse
   }
-
+  if (message.type === "cuc:claim-caveman-injection" || message.type === "cuc:unclaim-caveman-injection") {
+    if (!isTrustedClaudeContentSender(sender)) return false;
+    if (!hasOnlyKeys(message, new Set(["type", "conversationId"]))) return false;
+    if (!isValidConversationId(message.conversationId)) return false;
+    if (message.type === "cuc:claim-caveman-injection") {
+      serialize(() => claimCavemanInjection(message.conversationId)).then(
+        result => sendResponse(result),
+        () => sendResponse({ claimed: false })
+      );
+    } else {
+      serialize(() => unclaimCavemanInjection(message.conversationId)).then(
+        () => sendResponse({ ok: true }),
+        () => sendResponse({ ok: false })
+      );
+    }
+    return true;
+  }
+  if (message.type === "cuc:convert-file") {
+    if (!isTrustedClaudeContentSender(sender)) return false;
+    if (!hasOnlyKeys(message, new Set(["type", "dataUrl", "ext"]))) return false;
+    if (!CONVERTIBLE_EXTENSIONS.has(message.ext)) return false;
+    if (typeof message.dataUrl !== "string"
+      || !message.dataUrl.startsWith("data:")
+      || message.dataUrl.length > MAX_CONVERT_DATAURL_CHARS) return false;
+    (async () => {
+      await ensureOffscreenDocument();
+      return await chrome.runtime.sendMessage({
+        type: "cuc:offscreen-convert",
+        dataUrl: message.dataUrl,
+        ext: message.ext
+      });
+    })().then(
+      result => sendResponse(result || { ok: false, error: "no response from converter" }),
+      error => sendResponse({ ok: false, error: String(error?.message || error) })
+    );
+    return true;
+  }
   return false;
 });

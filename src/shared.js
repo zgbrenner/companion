@@ -57,6 +57,8 @@
     defaultModel: "claude-sonnet-5-intro",
     showWidget: true,
     showPlainEnglishTips: true,
+    // Caveman Mode: terse-reply instruction + prompt trimming + file→Markdown.
+    cavemanMode: false,
     showNativeLimits: true,
     desktopNotifications: true,
     // Optional custom base URL for self-updates (e.g. a Cloudflare Pages

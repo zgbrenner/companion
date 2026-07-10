@@ -1,0 +1,17 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Claude Companion — file conversion service</title>
+</head>
+<body>
+  <!-- Offscreen document: converts user-dropped office files to Markdown,
+       100% locally. Lives in the extension origin so officeparser's PDF Web
+       Worker loads same-origin (a content script on claude.ai can't spawn
+       chrome-extension:// workers — that's why conversion happens here, not
+       in the page). The slim officeparser bundle is the MV3-safe build: no
+       remote CDN URLs, no OCR engine. -->
+  <script src="vendor/officeparser.browser.slim.iife.js"></script>
+  <script src="offscreen.js"></script>
+</body>
+</html>

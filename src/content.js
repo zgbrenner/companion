@@ -1,6 +1,7 @@
 (() => {
   const CUC = globalThis.ClaudeUsageCompanion;
   const CUCNative = globalThis.ClaudeUsageCompanionNative;
+  const CAVEMAN = globalThis.ClaudeUsageCompanionCaveman;
   let settings = { ...CUC.DEFAULT_SETTINGS };
   let widget = null;      // shadow HOST element (docked in page flow)
   let widgetRoot = null;  // shadow root; null until the widget is fully built
@@ -34,6 +35,16 @@
   // reveals the endpoint and it validates.
   let spendBreakdown = null;
   let generationRefreshTimer = null;
+  // Caveman Mode state. cavemanInjectedMap mirrors the background-owned
+  // "instruction already sent to this conversation" map (persisted, so it
+  // survives page reloads within the same chat). responsesSinceInjection is
+  // per-tab: counts assistant responses since the instruction/reminder was
+  // last pinned, driving the every-Nth-message reminder.
+  let cavemanInjectedMap = {};
+  let cavemanPendingMark = false; // instruction rode along with the first message of a new chat
+  let skipNextSendIntercept = false;
+  let cavemanModalOpen = false;
+  const responsesSinceInjection = new Map();
   const NATIVE_USAGE_REFRESH_MS = 60 * 1000;
   const NATIVE_USAGE_MAX_BACKOFF_MS = 10 * 60 * 1000;
 
@@ -88,10 +99,11 @@
   }
 
   async function loadState() {
-    const stored = await chrome.storage.local.get(["cuc:settings", "cuc:update-available", "cuc:spend-days"]);
+    const stored = await chrome.storage.local.get(["cuc:settings", "cuc:update-available", "cuc:spend-days", "cuc:caveman-injected"]);
     settings = { ...CUC.DEFAULT_SETTINGS, ...(stored["cuc:settings"] || {}) };
     updateAvailableVersion = stored["cuc:update-available"]?.latestVersion || null;
     spendDays = stored["cuc:spend-days"] || null;
+    cavemanInjectedMap = stored["cuc:caveman-injected"] || {};
     const ephemeral = await CUC.ephemeralGet(["cuc:spend-session", "cuc:spend-breakdown"]);
     spendSession = ephemeral["cuc:spend-session"] || null;
     spendBreakdown = ephemeral["cuc:spend-breakdown"] || null;
@@ -265,6 +277,14 @@
 
           <div class="cuc-tip" data-cuc="tip" hidden></div>
 
+          <div class="cuc-caveman-row">
+            <span class="cuc-caveman-label" title="Caveman Mode saves your Claude quota: Claude answers ultra-brief, your prompts get trimmed (you approve a preview first), and dropped files convert to lean Markdown.">🪨 Caveman Mode — stretch your quota</span>
+            <button class="cuc-switch" data-cuc-action="caveman-toggle" role="switch" aria-checked="false" aria-label="Toggle Caveman Mode"><span class="cuc-switch-knob"></span></button>
+          </div>
+          <div class="cuc-dropzone" data-cuc="dropzone" hidden>
+            <span data-cuc="dropzone-label">Drop a file here → Markdown (fewer tokens than raw files)</span>
+          </div>
+
           <div class="cuc-footer">
             <span data-cuc="model" title="The model detected in this chat — used to convert real dollars into the approximate token range.">Model</span>
           </div>
@@ -284,7 +304,7 @@
     // Attached inside the shadow root, so event.target is the real internal
     // element (retargeting only applies to listeners outside the root).
     container.addEventListener("click", async event => {
-      const action = event.target?.getAttribute?.("data-cuc-action");
+      const action = event.target?.closest?.("[data-cuc-action]")?.getAttribute("data-cuc-action");
       if (!action) return;
       if (action === "hide") {
         settings.showWidget = false;
@@ -303,7 +323,16 @@
         await chrome.storage.local.set({ "cuc:settings": settings });
         renderWidget();
       }
+      if (action === "caveman-toggle") {
+        settings.cavemanMode = !settings.cavemanMode;
+        await chrome.storage.local.set({ "cuc:settings": settings });
+        renderWidget();
+        // Flipping ON inside an existing chat sends the instruction now;
+        // brand-new chats get it prepended to their first message instead.
+        if (settings.cavemanMode) maybeInjectCavemanInstruction();
+      }
     });
+    wireDropzone(container);
     renderWidget();
   }
 
@@ -314,6 +343,394 @@
     "form:has(textarea)",
     "form:has([contenteditable='true'])"
   ];
+
+  // ---- Caveman Mode ---------------------------------------------------------
+  // See src/caveman.js for the architecture decision (direct injection),
+  // instruction wording rationale, and the compressor. This section is the
+  // DOM side: reading/writing the composer, injecting the instruction once
+  // per conversation, intercepting sends for the trim-preview, and the
+  // file → Markdown drop zone.
+
+  function findComposerEditable() {
+    const anchor = findComposerAnchor();
+    const scope = anchor?.closest?.("form, [data-testid*='composer']") || anchor || document.body;
+    return scope?.querySelector?.("div[contenteditable='true'], textarea, [role='textbox']")
+      || document.querySelector("div[contenteditable='true'], textarea");
+  }
+
+  function getComposerText() {
+    const el = findComposerEditable();
+    return String(el?.value ?? el?.innerText ?? "").trim();
+  }
+
+  function setComposerText(text) {
+    const el = findComposerEditable();
+    if (!el) return false;
+    el.focus();
+    if (el.tagName === "TEXTAREA") {
+      // Go through the prototype setter so React's value tracking notices.
+      const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
+      if (setter) setter.call(el, text);
+      else el.value = text;
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+      return true;
+    }
+    // ProseMirror contenteditable: select-all + insertText runs through the
+    // editor's own input handling, producing a real editor transaction.
+    const selection = window.getSelection();
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    selection.removeAllRanges();
+    selection.addRange(range);
+    let inserted = false;
+    try {
+      inserted = document.execCommand("insertText", false, text);
+    } catch {
+      inserted = false;
+    }
+    if (!inserted) {
+      el.textContent = text;
+      el.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: text }));
+    }
+    return true;
+  }
+
+  function findSendButton() {
+    const anchor = findComposerAnchor();
+    const scope = anchor?.closest?.("form, [data-testid*='composer']")?.parentElement || document;
+    return scope.querySelector?.("button[aria-label*='send' i]:not([disabled])")
+      || document.querySelector("button[aria-label*='send' i]:not([disabled])")
+      || document.querySelector("form button[type='submit']:not([disabled])");
+  }
+
+  function isInsideComposer(el) {
+    if (!el) return false;
+    return Boolean(el.closest?.("[data-testid*='composer'], textarea, div[contenteditable='true'], [role='textbox']"));
+  }
+
+  // Type `text` into the composer and trigger claude.ai's own send. The
+  // skip flag lets our synthetic click/Enter pass the interceptor untouched.
+  async function sendComposerMessage(text) {
+    if (!setComposerText(text)) return false;
+    // Give the editor a beat to settle so the send button enables.
+    await new Promise(resolve => setTimeout(resolve, 150));
+    skipNextSendIntercept = true;
+    const button = findSendButton();
+    if (button) {
+      button.click();
+      return true;
+    }
+    const editable = findComposerEditable();
+    if (!editable) {
+      skipNextSendIntercept = false;
+      return false;
+    }
+    editable.dispatchEvent(new KeyboardEvent("keydown", {
+      key: "Enter", code: "Enter", keyCode: 13, which: 13, bubbles: true, cancelable: true
+    }));
+    return true;
+  }
+
+  // Atomic "instruction already sent to this chat?" — the background is the
+  // single writer, so two tabs on the same conversation can't both inject.
+  async function claimCavemanInjection(conversationId) {
+    try {
+      const response = await chrome.runtime.sendMessage({ type: "cuc:claim-caveman-injection", conversationId });
+      return Boolean(response?.claimed);
+    } catch {
+      return false;
+    }
+  }
+
+  function unclaimCavemanInjection(conversationId) {
+    delete cavemanInjectedMap[conversationId];
+    try {
+      chrome.runtime.sendMessage({ type: "cuc:unclaim-caveman-injection", conversationId }).catch(() => {});
+    } catch {
+      // Local removal already done; a stale claim just means one skipped re-inject.
+    }
+  }
+
+  function cavemanNeedsInstruction(conversationId) {
+    return !cavemanInjectedMap[conversationId];
+  }
+
+  // Standalone instruction turn for a conversation that already exists.
+  // Brand-new chats are handled by the send interceptor instead (the
+  // instruction is prepended to the first message, avoiding a wasted turn).
+  async function maybeInjectCavemanInstruction() {
+    if (!settings.cavemanMode || !CAVEMAN) return;
+    const conversationId = CUC.currentConversationId();
+    if (conversationId === "home-or-new-chat") return;
+    if (!cavemanNeedsInstruction(conversationId)) return;
+    if (!(await claimCavemanInjection(conversationId))) return;
+    cavemanInjectedMap[conversationId] = Date.now();
+    responsesSinceInjection.set(conversationId, 0);
+    const draft = getComposerText();
+    const sent = await sendComposerMessage(CAVEMAN.CAVEMAN_INSTRUCTION);
+    if (!sent) {
+      unclaimCavemanInjection(conversationId);
+      return;
+    }
+    // Put the user's unsent draft back once the instruction has gone out.
+    if (draft) setTimeout(() => setComposerText(draft), 900);
+  }
+
+  // What must ride along with the NEXT outgoing message: the full instruction
+  // (first message of this conversation under Caveman Mode) or the short
+  // reminder (every Nth response — long chats get compacted and early
+  // instructions lose salience, per Anthropic's own docs).
+  function cavemanPrefixForNextSend() {
+    const conversationId = CUC.currentConversationId();
+    if (cavemanNeedsInstruction(conversationId)) {
+      return { kind: "instruction", text: CAVEMAN.CAVEMAN_INSTRUCTION };
+    }
+    if ((responsesSinceInjection.get(conversationId) || 0) >= CAVEMAN.CAVEMAN_REMINDER_EVERY_N_RESPONSES) {
+      return { kind: "reminder", text: CAVEMAN.CAVEMAN_REMINDER };
+    }
+    return null;
+  }
+
+  // ---- Trim-preview modal (its own shadow host, independent of the widget) --
+
+  let cavemanModalHost = null;
+  let cavemanModalRoot = null;
+  let cavemanPreviewOriginal = "";
+
+  async function ensureCavemanModal() {
+    if (cavemanModalRoot) return;
+    cavemanModalHost = document.createElement("div");
+    cavemanModalHost.id = "cuc-caveman-modal";
+    const shadow = cavemanModalHost.attachShadow({ mode: "open" });
+    const cssText = await widgetCssText;
+    try {
+      const sheet = new CSSStyleSheet();
+      sheet.replaceSync(cssText);
+      shadow.adoptedStyleSheets = [sheet];
+    } catch {
+      const style = document.createElement("style");
+      style.textContent = cssText;
+      shadow.appendChild(style);
+    }
+    const wrap = document.createElement("div");
+    wrap.className = "cuc-root";
+    wrap.innerHTML = `
+      <div class="cuc-overlay" data-cuc="overlay" hidden>
+        <div class="cuc-modal" role="dialog" aria-modal="true" aria-label="Caveman Mode trimmed prompt">
+          <div class="cuc-modal-title">Caveman Mode · trimmed prompt <span class="cuc-modal-savings" data-cuc="modal-savings"></span></div>
+          <textarea class="cuc-modal-text" data-cuc="modal-text" rows="7" aria-label="Trimmed prompt — edit before sending"></textarea>
+          <details class="cuc-modal-original">
+            <summary>Show original</summary>
+            <div class="cuc-modal-original-text" data-cuc="modal-original"></div>
+          </details>
+          <div class="cuc-modal-note" data-cuc="modal-note" hidden></div>
+          <div class="cuc-modal-actions">
+            <button class="cuc-btn cuc-btn-primary" data-cuc-action="send-trimmed">Send trimmed</button>
+            <button class="cuc-btn" data-cuc-action="send-original">Send original</button>
+            <button class="cuc-btn" data-cuc-action="cancel-preview">Cancel</button>
+          </div>
+        </div>
+      </div>
+    `;
+    shadow.appendChild(wrap);
+    cavemanModalRoot = shadow;
+    document.body.appendChild(cavemanModalHost);
+    syncModalDarkMode();
+
+    wrap.addEventListener("click", event => {
+      const action = event.target?.closest?.("[data-cuc-action]")?.getAttribute("data-cuc-action");
+      if (action === "send-trimmed") {
+        sendFromCavemanPreview(cavemanModalRoot.querySelector("[data-cuc='modal-text']").value);
+      } else if (action === "send-original") {
+        sendFromCavemanPreview(cavemanPreviewOriginal);
+      } else if (action === "cancel-preview" || event.target?.getAttribute?.("data-cuc") === "overlay") {
+        closeCavemanPreview();
+      }
+    });
+    wrap.addEventListener("keydown", event => {
+      if (event.key === "Escape") closeCavemanPreview();
+    });
+  }
+
+  function syncModalDarkMode() {
+    cavemanModalHost?.classList.toggle("cuc-dark", pageIsDarkMode());
+  }
+
+  async function openCavemanPreview(originalText) {
+    await ensureCavemanModal();
+    syncModalDarkMode();
+    cavemanPreviewOriginal = originalText;
+    const compressed = CAVEMAN.compressPrompt(originalText);
+    cavemanModalRoot.querySelector("[data-cuc='modal-text']").value = compressed.text;
+    cavemanModalRoot.querySelector("[data-cuc='modal-savings']").textContent = compressed.changed
+      ? `· ${compressed.savedPct}% shorter`
+      : "· nothing to trim";
+    cavemanModalRoot.querySelector("[data-cuc='modal-original']").textContent = originalText;
+    const note = cavemanModalRoot.querySelector("[data-cuc='modal-note']");
+    const prefix = cavemanPrefixForNextSend();
+    if (prefix) {
+      note.textContent = prefix.kind === "instruction"
+        ? "The Caveman Mode instruction will be added to the top of this message (one time for this chat)."
+        : "A one-line brevity reminder will be added (this chat is getting long).";
+      note.hidden = false;
+    } else {
+      note.hidden = true;
+    }
+    cavemanModalRoot.querySelector("[data-cuc='overlay']").hidden = false;
+    cavemanModalOpen = true;
+    cavemanModalRoot.querySelector("[data-cuc='modal-text']").focus();
+  }
+
+  function closeCavemanPreview() {
+    if (cavemanModalRoot) cavemanModalRoot.querySelector("[data-cuc='overlay']").hidden = true;
+    cavemanModalOpen = false;
+  }
+
+  async function sendFromCavemanPreview(body) {
+    const text = String(body || "").trim();
+    if (!text) {
+      closeCavemanPreview();
+      return;
+    }
+    const conversationId = CUC.currentConversationId();
+    const prefix = cavemanPrefixForNextSend();
+    closeCavemanPreview();
+    const finalText = prefix ? `${prefix.text}\n\n${text}` : text;
+    if (prefix) {
+      responsesSinceInjection.set(conversationId, 0);
+      if (prefix.kind === "instruction") {
+        if (conversationId === "home-or-new-chat") {
+          // Real conversation id doesn't exist yet — mark it once the URL
+          // settles on /chat/<id> (see observeSpaNavigation).
+          cavemanPendingMark = true;
+        } else {
+          cavemanInjectedMap[conversationId] = Date.now();
+          claimCavemanInjection(conversationId); // fire-and-forget persist
+        }
+      }
+    }
+    const sent = await sendComposerMessage(finalText);
+    if (!sent && prefix?.kind === "instruction" && conversationId !== "home-or-new-chat") {
+      unclaimCavemanInjection(conversationId);
+    }
+  }
+
+  // Send interception: only active while Caveman Mode is on. Captures at the
+  // document level (capture phase runs before the page's own handlers),
+  // opens the preview, and lets the user decide. Nothing is ever auto-sent.
+  function interceptSendIfNeeded(event) {
+    if (!settings.cavemanMode || !CAVEMAN || cavemanModalOpen) return;
+    if (skipNextSendIntercept) {
+      skipNextSendIntercept = false;
+      return;
+    }
+    const text = getComposerText();
+    if (!text) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    openCavemanPreview(text);
+  }
+
+  function observeCavemanSends() {
+    document.addEventListener("keydown", event => {
+      // Enter that confirms an IME composition is not a send.
+      if (event.isComposing || event.keyCode === 229) return;
+      const isEnterSend = event.key === "Enter" && !event.shiftKey && !event.metaKey && !event.ctrlKey && !event.altKey;
+      if (!isEnterSend) return;
+      if (!isInsideComposer(document.activeElement)) return;
+      interceptSendIfNeeded(event);
+    }, true);
+
+    document.addEventListener("click", event => {
+      const button = event.target?.closest?.("button, [role='button']");
+      if (!button) return;
+      const label = `${button.getAttribute("aria-label") || ""} ${button.textContent || ""}`.toLowerCase();
+      if (!/send/.test(label)) return;
+      const anchor = findComposerAnchor();
+      const nearComposer = Boolean(button.closest("form, [data-testid*='composer']"))
+        || Boolean(anchor && (anchor.contains(button) || anchor.parentElement?.contains(button)));
+      if (!nearComposer) return;
+      interceptSendIfNeeded(event);
+    }, true);
+  }
+
+  // ---- File → Markdown drop zone --------------------------------------------
+
+  const DROPZONE_DEFAULT_LABEL = "Drop a file here → Markdown (fewer tokens than raw files)";
+  const CONVERTIBLE_EXTENSIONS = new Set(["pdf", "docx", "pptx", "xlsx", "odt", "odp", "ods", "rtf", "csv", "html", "htm", "md", "txt"]);
+  let dropzoneResetTimer = null;
+
+  function setDropzoneLabel(text, revert = false) {
+    const label = widgetRoot?.querySelector("[data-cuc='dropzone-label']");
+    if (!label) return;
+    label.textContent = text;
+    clearTimeout(dropzoneResetTimer);
+    if (revert) {
+      dropzoneResetTimer = setTimeout(() => {
+        const el = widgetRoot?.querySelector("[data-cuc='dropzone-label']");
+        if (el) el.textContent = DROPZONE_DEFAULT_LABEL;
+      }, 12000);
+    }
+  }
+
+  async function convertDroppedFile(file) {
+    const ext = (file.name.split(".").pop() || "").toLowerCase();
+    if (!CONVERTIBLE_EXTENSIONS.has(ext)) {
+      setDropzoneLabel(`Can't convert .${ext} — supported: pdf, docx, pptx, xlsx, csv, html, txt…`, true);
+      return;
+    }
+    if (file.size > 20 * 1024 * 1024) {
+      setDropzoneLabel("File too large (max 20 MB).", true);
+      return;
+    }
+    try {
+      let markdown;
+      if (ext === "txt" || ext === "md") {
+        markdown = await file.text();
+      } else {
+        setDropzoneLabel(`Converting ${file.name}…`);
+        const dataUrl = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = () => reject(reader.error || new Error("read failed"));
+          reader.readAsDataURL(file);
+        });
+        const response = await chrome.runtime.sendMessage({ type: "cuc:convert-file", dataUrl, ext });
+        if (!response?.ok || !String(response.markdown || "").trim()) {
+          throw new Error(response?.error || "no text found");
+        }
+        markdown = response.markdown;
+      }
+      const text = `Converted from ${file.name}:\n\n${String(markdown).trim()}`;
+      const approxTokens = CUC.formatTokens(Math.round(text.length / 3.8));
+      try {
+        await navigator.clipboard.writeText(text);
+        setDropzoneLabel(`✓ ${file.name} → Markdown copied (≈${approxTokens} tokens). Paste it into the chat (Ctrl+V).`, true);
+      } catch {
+        if (setComposerText(text)) setDropzoneLabel(`✓ ${file.name} → Markdown inserted into the chat box (≈${approxTokens} tokens).`, true);
+        else setDropzoneLabel("Converted, but couldn't reach the clipboard or chat box — try again.", true);
+      }
+    } catch (error) {
+      setDropzoneLabel(`Couldn't convert ${file.name}: ${String(error?.message || error).slice(0, 120)}`, true);
+    }
+  }
+
+  function wireDropzone(container) {
+    const dropzone = container.querySelector("[data-cuc='dropzone']");
+    if (!dropzone) return;
+    dropzone.addEventListener("dragover", event => {
+      event.preventDefault();
+      dropzone.classList.add("drag");
+    });
+    dropzone.addEventListener("dragleave", () => dropzone.classList.remove("drag"));
+    dropzone.addEventListener("drop", event => {
+      event.preventDefault();
+      event.stopPropagation();
+      dropzone.classList.remove("drag");
+      const file = event.dataTransfer?.files?.[0];
+      if (file) convertDroppedFile(file);
+    });
+  }
 
   // Guard against docking to something enormous — a real composer wrapper is
   // a small strip near the bottom of the viewport, not most of the page. Used
@@ -523,6 +940,15 @@
       ? `${model?.label || "Model"} · ${effort} effort`
       : (model?.label || "Model");
 
+    // Caveman Mode switch + drop zone visibility.
+    const cavemanSwitch = widgetRoot.querySelector("[data-cuc-action='caveman-toggle']");
+    if (cavemanSwitch) {
+      cavemanSwitch.classList.toggle("on", Boolean(settings.cavemanMode));
+      cavemanSwitch.setAttribute("aria-checked", String(Boolean(settings.cavemanMode)));
+    }
+    const dropzone = widgetRoot.querySelector("[data-cuc='dropzone']");
+    if (dropzone) dropzone.hidden = !settings.cavemanMode;
+
     renderNativeLimits();
     renderTip();
   }
@@ -676,8 +1102,6 @@
 
     if (spendLimit.outOfCredits) {
       setNote("Monthly usage-credit limit reached");
-    } else if (spendLimit.capAdvisory) {
-      setNote(`Cap differs from expected ${CUC.formatUsd(spendLimit.capAdvisory.expectedLimitUsd)} — update Settings if this changed.`);
     } else {
       setNote(mostUrgentNativeWarning(nativeUsage));
     }
@@ -719,6 +1143,10 @@
       }
 
       if (detail.kind === "generation-complete") {
+        // Count responses per conversation for the Caveman reminder cadence.
+        const convoKey = detail.conversationId || CUC.currentConversationId();
+        responsesSinceInjection.set(convoKey, (responsesSinceInjection.get(convoKey) || 0) + 1);
+
         // A response just finished — Claude's counter updates shortly after.
         // Force a live re-read (bypassing the shared cross-tab cache) so the
         // session number moves right after each exchange, which is the whole
@@ -808,6 +1236,20 @@
     const onPathChange = () => {
       if (location.pathname === lastPath) return;
       lastPath = location.pathname;
+      const conversationId = CUC.currentConversationId();
+      if (conversationId !== "home-or-new-chat") {
+        // A new chat's first message carried the Caveman instruction; now
+        // that the real conversation id exists, persist the injected mark.
+        if (cavemanPendingMark) {
+          cavemanPendingMark = false;
+          cavemanInjectedMap[conversationId] = Date.now();
+          responsesSinceInjection.set(conversationId, 0);
+          claimCavemanInjection(conversationId);
+        } else if (settings.cavemanMode) {
+          // Switched into a chat that hasn't been instructed yet.
+          maybeInjectCavemanInstruction();
+        }
+      }
       placeWidget();
       renderWidget();
     };
@@ -1051,6 +1493,9 @@
       updateAvailableVersion = changes["cuc:update-available"].newValue?.latestVersion || null;
       renderWidget();
     }
+    if (changes["cuc:caveman-injected"]) {
+      cavemanInjectedMap = changes["cuc:caveman-injected"].newValue || {};
+    }
   });
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
@@ -1075,6 +1520,7 @@
   loadState().then(() => {
     observeSpaNavigation();
     observeNativeUsageRefresh();
+    observeCavemanSends();
     bootWhenReady();
   });
 })();
