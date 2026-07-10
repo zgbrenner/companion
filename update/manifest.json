@@ -1,5 +1,5 @@
 {
-  "version": "0.8.2",
+  "version": "0.9.0",
   "files": [
     {
       "path": "icons/icon128.png",
@@ -19,11 +19,15 @@
     },
     {
       "path": "manifest.json",
-      "sha256": "e594ed32cb34cda356421b740dc6d97f7cfa97bf2b653177b54d3a0513b86027"
+      "sha256": "ca174575a644965647d60e9799ae30acf4cd223a95255e0b8aee9caa462a96a6"
     },
     {
       "path": "src/background.js",
-      "sha256": "dab35c54108a3e7322a828adee70a6ec9aa361f0891af170b16bc4209022f790"
+      "sha256": "c6ebcf43c22bf5790127006bf89720c5ed189cfe8dc6a55504c7b7908eedf147"
+    },
+    {
+      "path": "src/caveman.js",
+      "sha256": "8a1776aa8e2b89a0c32ab49cb3a99e5662ffebed4f839a8847cceb0ebd1633ab"
     },
     {
       "path": "src/content.css",
@@ -31,7 +35,7 @@
     },
     {
       "path": "src/content.js",
-      "sha256": "af0f8c15be9e95937d7dda61494ecae412210dfc8ef81a4cbaf6f0a8edf4d92c"
+      "sha256": "f3aaf64fa84cf70c3b2a023af748d27b4a45e8a8a50bc7742781b11e4b80ca45"
     },
     {
       "path": "src/injected.js",
@@ -40,6 +44,14 @@
     {
       "path": "src/native-usage.js",
       "sha256": "b8849506dabc148c50eafc111f79c7fee86491395f8f74ae1430447d39a335e9"
+    },
+    {
+      "path": "src/offscreen.html",
+      "sha256": "5eb05247493441c64cb0efa0d1756879d9e0a34f3219a2d62bf2320b94c591af"
+    },
+    {
+      "path": "src/offscreen.js",
+      "sha256": "01e73e3961e1ee2077ec16c154b214633a766bd66d8d3ab7703e959a2d88ca6a"
     },
     {
       "path": "src/options.css",
@@ -67,15 +79,23 @@
     },
     {
       "path": "src/shared.js",
-      "sha256": "ba353dfcaabd7784b410a476574f7d4429ebd612722d46b5aec7e303a5b088a4"
+      "sha256": "e22d35610b8ea2c1e13e270c0cb04ea73cab494e2101f6c2852b53697c506594"
     },
     {
       "path": "src/updater.js",
       "sha256": "9e0d171bd67165709ca63e2ebb55c95fe8d50a480911938ae253aeaef3e5d306"
     },
     {
+      "path": "src/vendor/officeparser.browser.slim.iife.js",
+      "sha256": "6d6a02c2733fea5d8affb33133ee2b300969a9c11dd1917dc1d19c398dc67bd6"
+    },
+    {
+      "path": "src/vendor/pdf.worker.min.mjs",
+      "sha256": "2ab9e09667296dab1a618868b3ce6e6c23d5b8f48120ae7c5b34e7e335ed01fa"
+    },
+    {
       "path": "src/widget.css",
-      "sha256": "065cf0bd8c2e3e42bcda618a8c2fac7b7111e655c8c6a4eb4d69256bab344046"
+      "sha256": "922350facca9dc0d5a4f83520e40db241c1b84241d718228e03222e2b9a32a3d"
     }
   ]
 }
