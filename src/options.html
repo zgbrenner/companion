@@ -3,100 +3,235 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Vistage Claude Usage Companion</title>
+  <title>Claude Companion — Settings</title>
   <link rel="stylesheet" href="options.css" />
 </head>
 <body>
-  <main>
-    <header>
-      <h1>Claude Usage</h1>
-      <p class="org-tag">Vistage Worldwide, Inc. — internal tool</p>
-      <p>Choose how chat usage should be shown.</p>
-    </header>
-
-    <section class="card">
-      <h2>Display</h2>
-      <label>
-        Show usage as
-        <select id="displayMode">
-          <option value="dollars">Dollars only</option>
-          <option value="tokens">Tokens only</option>
-          <option value="both">Dollars and tokens</option>
-        </select>
-      </label>
-      <label>
-        Model for token conversion
-        <select id="defaultModel"></select>
-      </label>
-      <p class="hint">Only used to translate real dollar spend into an approximate token range when the active model can't be detected. Dollar figures never depend on this.</p>
-    </section>
-
-    <section class="card">
-      <h2>Enterprise limit (from Claude.ai)</h2>
-      <p class="hint">The extension automatically discovers the active Claude organization from the <code>lastActiveOrg</code> cookie, then falls back to <code>/api/organizations</code>. The monthly cap comes directly from Claude's usage response or <code>overage_spend_limit</code>; neither value is hardcoded.</p>
-      <label class="checkbox">
-        <input id="showNativeLimits" type="checkbox" />
-        Show enterprise usage limit
-      </label>
-      <div class="account-detail">
-        <strong>Detected organization:</strong>
-        <span id="detected-organization" class="monospace-value">Not detected yet</span>
-        <div class="inline-actions">
-          <button id="toggle-organization" type="button" class="secondary compact" disabled>Reveal</button>
-          <button id="copy-organization" type="button" class="secondary compact" disabled>Copy full ID</button>
-        </div>
+  <div class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">◆</span>
+        <span class="brand-name">Claude Companion</span>
+        <span class="brand-sub">Settings</span>
       </div>
-      <p><strong>Cached monthly cap:</strong> <span id="detected-cap">Not detected yet</span></p>
-      <button id="clear-org-cache" type="button" class="secondary">Clear detected account cache</button>
-      <p class="hint">Detected values are cached in <code>chrome.storage.local</code> for up to 48 hours. Claude's live response remains the source of truth.</p>
-      <p class="hint" id="account-action-status" aria-live="polite"></p>
-    </section>
+      <div class="save-bar">
+        <span class="save-status" id="save-status" aria-live="polite">All changes saved</span>
+        <button type="button" class="btn btn-ghost btn-sm" id="reset-defaults">Restore defaults</button>
+      </div>
+    </div>
+  </div>
 
-    <section class="card">
-      <h2>Warnings</h2>
-      <label class="checkbox">
-        <input id="desktopNotifications" type="checkbox" />
-        Desktop notification when a limit runs hot
-      </label>
-      <p class="hint">A gentle heads-up when any Claude limit crosses 85% or 95% — once per threshold per reset window, never repeated nagging. The toolbar icon badge stays on either way.</p>
-    </section>
+  <div class="layout">
+    <nav class="section-nav" aria-label="Settings sections">
+      <a href="#display" data-nav="display" class="active">Display</a>
+      <a href="#alerts" data-nav="alerts">Alerts</a>
+      <a href="#connection" data-nav="connection">Claude connection</a>
+      <a href="#privacy" data-nav="privacy">Data &amp; privacy</a>
+      <a href="#updates" data-nav="updates">Updates</a>
+    </nav>
 
-    <section class="card">
-      <h2>Usage history</h2>
-      <p class="hint">Download your daily spend history (one row per day: real dollars from Claude's usage counter, plus an approximate token range — never any chat text). Handy for expense notes or a quick month-over-month look.</p>
-      <button id="export-csv" type="button" class="secondary">Download CSV</button>
-      <p class="hint" id="export-status"></p>
-    </section>
+    <main class="content">
+      <!-- ============ Display ============ -->
+      <section class="card" id="display">
+        <div class="card-header">
+          <h2>Display</h2>
+          <p>How usage appears in the widget.</p>
+        </div>
+        <div class="card-body">
+          <div class="row">
+            <div class="row-text">
+              <div class="row-label">Show usage as</div>
+              <div class="row-desc">Dollars are real spend from Claude's counter; tokens are an approximate range derived from it.</div>
+            </div>
+            <div class="segmented" role="group" aria-label="Display mode" data-setting="displayMode">
+              <button type="button" class="segment" data-value="dollars">Dollars</button>
+              <button type="button" class="segment" data-value="tokens">Tokens</button>
+              <button type="button" class="segment" data-value="both">Both</button>
+            </div>
+          </div>
 
-    <section class="card danger-zone">
-      <h2>Local data</h2>
-      <p class="hint">Clears settings, spend history, session baselines, detected account details, learned endpoints, notification state, update status, and the saved extension-folder handle. Claude account data is not changed.</p>
-      <button id="clear-all-data" type="button" class="danger">Clear all local data</button>
-      <p class="hint" id="clear-data-status" aria-live="polite"></p>
-    </section>
+          <div class="row">
+            <div class="row-text">
+              <div class="row-label">Show the usage widget on Claude</div>
+              <div class="row-desc">The meter pinned under the chat box. You can also hide it with its ✕ button.</div>
+            </div>
+            <button type="button" class="switch" role="switch" aria-checked="true" data-setting="showWidget" aria-label="Show the usage widget"><span class="switch-knob"></span></button>
+          </div>
 
-    <section class="card">
-      <h2>Updates</h2>
-      <p class="hint">Updates install straight from GitHub — no uninstall or reinstall, and your settings are kept. One-time setup: click "Connect extension folder" and pick the folder this extension was loaded from (the one chosen at chrome://extensions → Load unpacked). After that, updating is a single click.</p>
-      <p class="hint" id="update-status">Checking for updates…</p>
-      <button id="apply-update" type="button" hidden>Install update</button>
-      <button id="check-updates" type="button" class="secondary">Check for updates</button>
-      <button id="setup-folder" type="button" class="secondary">Connect extension folder</button>
-      <button id="open-github" type="button" class="secondary">Open GitHub</button>
-      <p class="hint" id="update-detail"></p>
-    </section>
+          <div class="row">
+            <div class="row-text">
+              <div class="row-label">Show Caveman Mode in the widget</div>
+              <div class="row-desc">The quota-stretching controls: ultra-brief replies, prompt trimming, and file&nbsp;→&nbsp;Markdown. Turn off to hide them entirely.</div>
+            </div>
+            <button type="button" class="switch" role="switch" aria-checked="true" data-setting="showCavemanMode" aria-label="Show Caveman Mode in the widget"><span class="switch-knob"></span></button>
+          </div>
 
-    <section class="card note">
-      <h2>About these numbers</h2>
-      <p>Every dollar figure is read from Claude's own usage-credit counter — real account data, accurate to the cent, never an estimate. Session and daily spend cover all of your Claude activity in that window (any tab or device), not one specific chat. Token figures are the only derived numbers: a range computed from real dollars using current Anthropic pricing and a documented input/output/caching mix.</p>
-    </section>
+          <div class="row row-stack">
+            <div class="row-text">
+              <div class="row-label">Model for token estimates</div>
+              <div class="row-desc">Only used to turn real dollars into an approximate token range when the active model can't be detected. Dollar figures never depend on this.</div>
+            </div>
+            <select id="defaultModel" data-setting="defaultModel"></select>
+          </div>
+        </div>
+      </section>
 
-    <footer>
-      <button id="save">Save settings</button>
-      <button id="reset-defaults" class="secondary">Reset defaults</button>
-      <span id="status"></span>
-    </footer>
-  </main>
+      <!-- ============ Alerts ============ -->
+      <section class="card" id="alerts">
+        <div class="card-header">
+          <h2>Alerts</h2>
+          <p>Heads-up before you hit a limit.</p>
+        </div>
+        <div class="card-body">
+          <div class="row">
+            <div class="row-text">
+              <div class="row-label">Desktop notification when a limit runs hot</div>
+              <div class="row-desc">A gentle nudge when any Claude limit crosses 85% or 95% — once per threshold per reset window, never repeated. The toolbar badge stays on regardless.</div>
+            </div>
+            <button type="button" class="switch" role="switch" aria-checked="true" data-setting="desktopNotifications" aria-label="Desktop notifications"><span class="switch-knob"></span></button>
+          </div>
+
+          <div class="row">
+            <div class="row-text">
+              <div class="row-label">Plain-English pace warnings</div>
+              <div class="row-desc">An in-widget line like "at this pace you'll hit your session limit around 3:40 PM" when you're burning quota fast.</div>
+            </div>
+            <button type="button" class="switch" role="switch" aria-checked="true" data-setting="showPlainEnglishTips" aria-label="Plain-English pace warnings"><span class="switch-knob"></span></button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ Claude connection ============ -->
+      <section class="card" id="connection">
+        <div class="card-header">
+          <h2>Claude connection</h2>
+          <p>The extension reads Claude's own usage numbers directly — never an estimate.</p>
+        </div>
+        <div class="card-body">
+          <div class="row">
+            <div class="row-text">
+              <div class="row-label">Show Claude's real limits</div>
+              <div class="row-desc">Session (5-hour), weekly, and Opus limits, each with a reset countdown.</div>
+            </div>
+            <button type="button" class="switch" role="switch" aria-checked="true" data-setting="showNativeLimits" aria-label="Show Claude's real limits"><span class="switch-knob"></span></button>
+          </div>
+
+          <div class="row">
+            <div class="row-text">
+              <div class="row-label">Show monthly usage credits</div>
+              <div class="row-desc">The monthly usage-credit allowance ("$X of $Y") in the widget and the "This month" figure in the popup. Turn off if you don't want a monthly-credit view.</div>
+            </div>
+            <button type="button" class="switch" role="switch" aria-checked="true" data-setting="showMonthlyCredits" aria-label="Show monthly usage credits"><span class="switch-knob"></span></button>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head">
+              <span class="panel-title">Connection status</span>
+              <span class="badge badge-muted" id="connection-badge">Checking…</span>
+            </div>
+            <dl class="panel-grid">
+              <dt>Organization</dt>
+              <dd>
+                <span id="detected-organization" class="mono">Not detected yet</span>
+                <span class="mini-actions">
+                  <button type="button" class="btn btn-secondary btn-xs" id="toggle-organization" disabled>Reveal</button>
+                  <button type="button" class="btn btn-secondary btn-xs" id="copy-organization" disabled>Copy</button>
+                </span>
+              </dd>
+              <dt>Monthly cap</dt>
+              <dd id="detected-cap">Not detected yet</dd>
+              <dt>Last detected</dt>
+              <dd id="cache-age">—</dd>
+            </dl>
+            <div class="panel-foot">
+              <button type="button" class="btn btn-secondary btn-sm" id="clear-org-cache">Re-detect account</button>
+              <span class="mini-status" id="account-action-status" aria-live="polite"></span>
+            </div>
+          </div>
+
+          <details class="disclosure">
+            <summary>How the connection works</summary>
+            <div class="disclosure-body">
+              <p>The active organization is discovered from Claude's own <code>lastActiveOrg</code> cookie, falling back to <code>/api/organizations</code>. The monthly cap comes straight from Claude's usage response (<code>/usage</code> or <code>overage_spend_limit</code>) — nothing is hardcoded.</p>
+              <p>Only the non-secret organization identifier is cached locally (up to 48 hours) so limits load instantly. The extension never reads, stores, or transmits your session cookie, and makes only read requests — it can't change your account.</p>
+            </div>
+          </details>
+        </div>
+      </section>
+
+      <!-- ============ Data & privacy ============ -->
+      <section class="card" id="privacy">
+        <div class="card-header">
+          <h2>Data &amp; privacy</h2>
+          <p>Everything stays on this device.</p>
+        </div>
+        <div class="card-body">
+          <div class="notice notice-privacy">
+            <div class="notice-title">What's stored</div>
+            <ul>
+              <li><strong>Stored locally:</strong> your settings, and daily spend totals (dollar amounts and derived token ranges).</li>
+              <li><strong>Never stored:</strong> the text of your prompts or Claude's replies, file contents, or your login — none of it is saved, and nothing is ever sent to any server but Claude's own.</li>
+            </ul>
+          </div>
+
+          <div class="row row-stack">
+            <div class="row-text">
+              <div class="row-label">Export usage history</div>
+              <div class="row-desc">One CSV row per day: real dollars plus an approximate token range. Handy for expense notes. No chat text is included.</div>
+            </div>
+            <div class="row-actions">
+              <button type="button" class="btn btn-secondary" id="export-csv">Download CSV</button>
+              <span class="mini-status" id="export-status" aria-live="polite"></span>
+            </div>
+          </div>
+
+          <div class="danger">
+            <div class="danger-head">
+              <div class="row-label">Clear all local data</div>
+              <div class="row-desc">Removes settings, spend history, caches, learned endpoints, and the connected update folder. Your Claude account is not touched.</div>
+            </div>
+            <div class="row-actions">
+              <button type="button" class="btn btn-danger" id="clear-all-data">Clear all local data</button>
+              <span class="mini-status" id="clear-data-status" aria-live="polite"></span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ Updates ============ -->
+      <section class="card" id="updates">
+        <div class="card-header">
+          <h2>Updates</h2>
+          <p>Installs straight from GitHub — no reinstall, settings kept.</p>
+        </div>
+        <div class="card-body">
+          <div class="panel">
+            <div class="panel-head">
+              <span class="panel-title" id="update-status">Checking for updates…</span>
+              <span class="badge badge-muted" id="update-badge" hidden></span>
+            </div>
+            <div class="panel-foot">
+              <button type="button" class="btn btn-primary" id="apply-update" hidden>Install update</button>
+              <button type="button" class="btn btn-secondary btn-sm" id="check-updates">Check now</button>
+              <span class="mini-status" id="update-detail" aria-live="polite"></span>
+            </div>
+          </div>
+
+          <details class="disclosure">
+            <summary>One-time setup for one-click updates</summary>
+            <div class="disclosure-body">
+              <p>To let updates install with a single click, connect the extension's folder once — pick the folder you chose at <code>chrome://extensions → Load unpacked</code>. After that the extension can refresh its own files.</p>
+              <div class="row-actions">
+                <button type="button" class="btn btn-secondary btn-sm" id="setup-folder">Connect extension folder</button>
+                <button type="button" class="btn btn-ghost btn-sm" id="open-github">Open GitHub</button>
+              </div>
+            </div>
+          </details>
+        </div>
+      </section>
+    </main>
+  </div>
+
   <script src="shared.js"></script>
   <script src="native-usage.js"></script>
   <script src="updater.js"></script>

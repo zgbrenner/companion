@@ -3,14 +3,13 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Vistage Claude Usage Companion</title>
+  <title>Claude Companion</title>
   <link rel="stylesheet" href="popup.css" />
 </head>
 <body>
   <main class="popup">
     <header>
       <h1>Claude Companion</h1>
-      <p class="org-tag">Vistage Worldwide, Inc. — internal tool</p>
     </header>
 
     <section class="meter">
@@ -21,7 +20,7 @@
 
     <section class="summary">
       <div class="summary-row"><span title="Counter samples observed today; spend while the browser was closed lands on the first day it's seen again.">Today</span><span id="today-value">—</span></div>
-      <div class="summary-row"><span title="Claude's own monthly usage-credit counter — real, to the cent.">This month</span><span id="month-value">—</span></div>
+      <div class="summary-row" id="month-row"><span title="Claude's own monthly usage-credit counter — real, to the cent.">This month</span><span id="month-value">—</span></div>
       <div class="trend" id="trend" role="img" aria-label="Daily spend, last 14 days"></div>
       <p class="trend-caption" id="trend-caption" hidden>Last 14 days · real spend</p>
     </section>

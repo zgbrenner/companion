@@ -239,7 +239,7 @@
     container.innerHTML = `
       <div class="cuc-card" role="complementary" aria-label="Claude usage meter">
         <div class="cuc-header">
-          <span class="cuc-title">Vistage · Claude Companion</span>
+          <span class="cuc-title">Claude Companion</span>
           <div class="cuc-controls">
             <button class="cuc-button" data-cuc-action="cycle" title="Switch between dollars/tokens" aria-label="Switch display between dollars, tokens, and both">$</button>
             <button class="cuc-button" data-cuc-action="options" title="Settings" aria-label="Open settings">⚙</button>
@@ -277,12 +277,13 @@
 
           <div class="cuc-tip" data-cuc="tip" hidden></div>
 
-          <div class="cuc-caveman-row">
+          <div class="cuc-caveman-row" data-cuc="caveman-row">
             <span class="cuc-caveman-label" title="Caveman Mode saves your Claude quota: Claude answers ultra-brief, your prompts get trimmed (you approve a preview first), and dropped files convert to lean Markdown.">🪨 Caveman Mode — stretch your quota</span>
             <button class="cuc-switch" data-cuc-action="caveman-toggle" role="switch" aria-checked="false" aria-label="Toggle Caveman Mode"><span class="cuc-switch-knob"></span></button>
           </div>
-          <div class="cuc-dropzone" data-cuc="dropzone" hidden>
-            <span data-cuc="dropzone-label">Drop a file here → Markdown (fewer tokens than raw files)</span>
+          <div class="cuc-dropzone" data-cuc="dropzone" role="button" tabindex="0" hidden>
+            <span data-cuc="dropzone-label">Click to pick a file → Markdown (fewer tokens than raw files)</span>
+            <input type="file" data-cuc="dropzone-input" accept=".pdf,.docx,.pptx,.xlsx,.odt,.odp,.ods,.rtf,.csv,.html,.htm,.md,.txt" hidden />
           </div>
 
           <div class="cuc-footer">
@@ -351,15 +352,29 @@
   // per conversation, intercepting sends for the trim-preview, and the
   // file → Markdown drop zone.
 
-  function findComposerEditable() {
+  const COMPOSER_EDITABLE_SELECTOR = "div[contenteditable='true'], textarea, [role='textbox']";
+
+  // preferActive: when the user is mid-send, the element they typed into is
+  // the focused one — read THAT, not whatever the anchor search finds first.
+  // The old search-only path could return a different (empty) editable, so
+  // getComposerText() came back "" and the send interceptor let the message
+  // through untrimmed. This is the primary fix for "trimming never happens".
+  function findComposerEditable(preferActive = false) {
+    if (preferActive) {
+      const active = document.activeElement;
+      const activeEditable = active?.matches?.(COMPOSER_EDITABLE_SELECTOR)
+        ? active
+        : (active?.isContentEditable ? active : active?.closest?.(COMPOSER_EDITABLE_SELECTOR));
+      if (activeEditable) return activeEditable;
+    }
     const anchor = findComposerAnchor();
     const scope = anchor?.closest?.("form, [data-testid*='composer']") || anchor || document.body;
-    return scope?.querySelector?.("div[contenteditable='true'], textarea, [role='textbox']")
+    return scope?.querySelector?.(COMPOSER_EDITABLE_SELECTOR)
       || document.querySelector("div[contenteditable='true'], textarea");
   }
 
   function getComposerText() {
-    const el = findComposerEditable();
+    const el = findComposerEditable(true);
     return String(el?.value ?? el?.innerText ?? "").trim();
   }
 
@@ -459,7 +474,7 @@
   // Brand-new chats are handled by the send interceptor instead (the
   // instruction is prepended to the first message, avoiding a wasted turn).
   async function maybeInjectCavemanInstruction() {
-    if (!settings.cavemanMode || !CAVEMAN) return;
+    if (settings.showCavemanMode === false || !settings.cavemanMode || !CAVEMAN) return;
     const conversationId = CUC.currentConversationId();
     if (conversationId === "home-or-new-chat") return;
     if (!cavemanNeedsInstruction(conversationId)) return;
@@ -619,7 +634,7 @@
   // document level (capture phase runs before the page's own handlers),
   // opens the preview, and lets the user decide. Nothing is ever auto-sent.
   function interceptSendIfNeeded(event) {
-    if (!settings.cavemanMode || !CAVEMAN || cavemanModalOpen) return;
+    if (settings.showCavemanMode === false || !settings.cavemanMode || !CAVEMAN || cavemanModalOpen) return;
     if (skipNextSendIntercept) {
       skipNextSendIntercept = false;
       return;
@@ -632,22 +647,32 @@
   }
 
   function observeCavemanSends() {
-    document.addEventListener("keydown", event => {
+    // Listen on window in the capture phase — the earliest point in event
+    // dispatch, so we run before claude.ai's own Enter/submit handlers
+    // (ProseMirror keymap, React root) and can block the send to show the
+    // preview. document-level capture worked in most cases, but window is
+    // strictly earlier and avoids losing the race to a page window-listener.
+    window.addEventListener("keydown", event => {
       // Enter that confirms an IME composition is not a send.
       if (event.isComposing || event.keyCode === 229) return;
       const isEnterSend = event.key === "Enter" && !event.shiftKey && !event.metaKey && !event.ctrlKey && !event.altKey;
       if (!isEnterSend) return;
-      if (!isInsideComposer(document.activeElement)) return;
+      // Accept focus OR the event target being inside the composer — some
+      // editors momentarily move focus during key handling.
+      if (!isInsideComposer(document.activeElement) && !isInsideComposer(event.target)) return;
       interceptSendIfNeeded(event);
     }, true);
 
-    document.addEventListener("click", event => {
+    window.addEventListener("click", event => {
       const button = event.target?.closest?.("button, [role='button']");
       if (!button) return;
       const label = `${button.getAttribute("aria-label") || ""} ${button.textContent || ""}`.toLowerCase();
-      if (!/send/.test(label)) return;
+      // Icon-only send buttons expose their purpose via aria-label ("Send
+      // message"); match that or a submit button sitting in the composer.
+      const looksLikeSend = /\bsend\b/.test(label) || button.matches("button[type='submit']");
+      if (!looksLikeSend) return;
       const anchor = findComposerAnchor();
-      const nearComposer = Boolean(button.closest("form, [data-testid*='composer']"))
+      const nearComposer = Boolean(button.closest("form, [data-testid*='composer'], [data-testid*='chat-input']"))
         || Boolean(anchor && (anchor.contains(button) || anchor.parentElement?.contains(button)));
       if (!nearComposer) return;
       interceptSendIfNeeded(event);
@@ -656,7 +681,7 @@
 
   // ---- File → Markdown drop zone --------------------------------------------
 
-  const DROPZONE_DEFAULT_LABEL = "Drop a file here → Markdown (fewer tokens than raw files)";
+  const DROPZONE_DEFAULT_LABEL = "Click to pick a file → Markdown (fewer tokens than raw files)";
   const CONVERTIBLE_EXTENSIONS = new Set(["pdf", "docx", "pptx", "xlsx", "odt", "odp", "ods", "rtf", "csv", "html", "htm", "md", "txt"]);
   let dropzoneResetTimer = null;
 
@@ -703,23 +728,56 @@
       }
       const text = `Converted from ${file.name}:\n\n${String(markdown).trim()}`;
       const approxTokens = CUC.formatTokens(Math.round(text.length / 3.8));
+      // Prefer dropping the Markdown straight into the chat box — that's the
+      // most direct outcome. Clipboard is the fallback (and can fail anyway
+      // if the conversion outran the click's transient activation).
+      if (setComposerText(text)) {
+        setDropzoneLabel(`✓ ${file.name} → Markdown added to the chat box (≈${approxTokens} tokens).`, true);
+        return;
+      }
       try {
         await navigator.clipboard.writeText(text);
-        setDropzoneLabel(`✓ ${file.name} → Markdown copied (≈${approxTokens} tokens). Paste it into the chat (Ctrl+V).`, true);
+        setDropzoneLabel(`✓ ${file.name} → Markdown copied (≈${approxTokens} tokens). Paste it with Ctrl+V.`, true);
       } catch {
-        if (setComposerText(text)) setDropzoneLabel(`✓ ${file.name} → Markdown inserted into the chat box (≈${approxTokens} tokens).`, true);
-        else setDropzoneLabel("Converted, but couldn't reach the clipboard or chat box — try again.", true);
+        setDropzoneLabel("Converted, but couldn't reach the chat box or clipboard — try again.", true);
       }
     } catch (error) {
       setDropzoneLabel(`Couldn't convert ${file.name}: ${String(error?.message || error).slice(0, 120)}`, true);
     }
   }
 
+  // Primary interaction is CLICK-to-pick: claude.ai shows a full-viewport
+  // drag-and-drop overlay the moment a file is dragged over the page, so a
+  // real drop never reaches this zone. A file picker sidesteps that overlay
+  // entirely. Drag-and-drop is kept as a best-effort bonus for the rare case
+  // the drop does land here.
   function wireDropzone(container) {
     const dropzone = container.querySelector("[data-cuc='dropzone']");
-    if (!dropzone) return;
+    const input = container.querySelector("[data-cuc='dropzone-input']");
+    if (!dropzone || !input) return;
+
+    const openPicker = () => input.click();
+    dropzone.addEventListener("click", event => {
+      // Don't recurse when the click is the <input> itself bubbling up.
+      if (event.target === input) return;
+      openPicker();
+    });
+    dropzone.addEventListener("keydown", event => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        openPicker();
+      }
+    });
+    input.addEventListener("change", () => {
+      const file = input.files?.[0];
+      // Reset so picking the same file twice still fires change.
+      input.value = "";
+      if (file) convertDroppedFile(file);
+    });
+
     dropzone.addEventListener("dragover", event => {
       event.preventDefault();
+      event.stopPropagation();
       dropzone.classList.add("drag");
     });
     dropzone.addEventListener("dragleave", () => dropzone.classList.remove("drag"));
@@ -940,14 +998,18 @@
       ? `${model?.label || "Model"} · ${effort} effort`
       : (model?.label || "Model");
 
-    // Caveman Mode switch + drop zone visibility.
+    // Caveman Mode row + switch + drop zone visibility. The whole row hides
+    // when the user has turned the feature off in Settings (showCavemanMode).
+    const cavemanRow = widgetRoot.querySelector("[data-cuc='caveman-row']");
+    const cavemanVisible = settings.showCavemanMode !== false;
+    if (cavemanRow) cavemanRow.hidden = !cavemanVisible;
     const cavemanSwitch = widgetRoot.querySelector("[data-cuc-action='caveman-toggle']");
     if (cavemanSwitch) {
       cavemanSwitch.classList.toggle("on", Boolean(settings.cavemanMode));
       cavemanSwitch.setAttribute("aria-checked", String(Boolean(settings.cavemanMode)));
     }
     const dropzone = widgetRoot.querySelector("[data-cuc='dropzone']");
-    if (dropzone) dropzone.hidden = !settings.cavemanMode;
+    if (dropzone) dropzone.hidden = !(cavemanVisible && settings.cavemanMode);
 
     renderNativeLimits();
     renderTip();
@@ -984,8 +1046,10 @@
   }
 
   // Returns the most urgent plain-English warning across all native buckets,
-  // or null when everything is comfortably below the warning threshold.
-  function mostUrgentNativeWarning(native) {
+  // or null when everything is comfortably below the warning threshold. When
+  // the monthly-credit view is hidden, its bucket is excluded so a warning
+  // can't leak the number the user chose not to show.
+  function mostUrgentNativeWarning(native, { includeMonthly = true } = {}) {
     if (!native) return null;
     const candidates = [];
     for (const { prop, label } of NATIVE_BUCKETS) {
@@ -995,7 +1059,7 @@
       }
     }
     const spend = native.monthlySpendLimit;
-    if (spend) candidates.push({ pct: spend.utilizationPct, label: "Monthly allowance", resetsAt: null });
+    if (spend && includeMonthly) candidates.push({ pct: spend.utilizationPct, label: "Monthly allowance", resetsAt: null });
 
     const worst = candidates.filter(c => c.pct >= 80).sort((a, b) => b.pct - a.pct)[0];
     if (!worst) return null;
@@ -1085,11 +1149,14 @@
       setBar(widgetRoot.querySelector(`[data-cuc='${key}-bar']`), bucket.utilizationPct);
     }
 
-    // Monthly usage-credit allowance.
+    // Monthly usage-credit allowance — individually hideable (personal-plan
+    // users may not want a monthly-credit view). When hidden, the row is
+    // suppressed and the monthly bucket is excluded from the warning line too.
     const spendLimit = nativeUsage.monthlySpendLimit;
-    if (!spendLimit) {
+    const showMonthly = settings.showMonthlyCredits !== false;
+    if (!showMonthly || !spendLimit) {
       if (enterpriseRow) enterpriseRow.hidden = true;
-      setNote(mostUrgentNativeWarning(nativeUsage));
+      setNote(mostUrgentNativeWarning(nativeUsage, { includeMonthly: showMonthly }));
       return;
     }
     if (enterpriseRow) enterpriseRow.hidden = false;

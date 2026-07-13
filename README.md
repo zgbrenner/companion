@@ -1,6 +1,6 @@
-# Vistage Claude Usage Companion
+# Claude Companion
 
-An internal tool for **Vistage Worldwide, Inc.** — a privacy-first Chrome/Edge browser extension that shows Vistage staff how much Claude they are using while they work, pinned right under the chat box.
+A privacy-first Chrome/Edge browser extension that shows you how much Claude you are using while you work, pinned right under the chat box.
 
 The extension can display usage as:
 
@@ -33,7 +33,7 @@ Caveats, stated plainly:
 
 ## Target users
 
-Built for Vistage Worldwide, Inc. staff using Claude.ai — not aimed at developers, so the widget stays simple: current chat usage and the enterprise limit.
+Built for people using Claude.ai who think in budgets, not tokens — not aimed at developers, so the widget stays simple: real spend and Claude's own limits.
 
 ## Install locally
 
@@ -89,6 +89,22 @@ How it works:
 
 To publish an update: bump `version` in `manifest.json`, merge to `main`, and the Action does the rest. (You can also run `node tools/build-update-manifest.mjs` locally and commit the result.)
 
+### Signing updates (strongly recommended)
+
+The self-updater writes downloaded code into the extension and reloads it, so the update channel is the most security-sensitive part of the tool. Per-file SHA-256 hashes protect against corruption, but the hashes ride in the same manifest as the files — a compromise of the repo, the jsDelivr mirror, or a custom `updateBaseUrl` could serve malicious code *and* matching hashes. To close that, the manifest can be **cryptographically signed** (ECDSA P-256), and the extension refuses any update whose signature doesn't verify. Because the manifest lists every file's hash, one signature authenticates the whole update — and changing any file invalidates it.
+
+Enable it once:
+
+1. `node tools/gen-signing-key.mjs` — prints a public and a private key.
+2. Paste the **public** key into `UPDATE_PUBLIC_KEY_SPKI_B64` in `src/updater.js` and commit. From then on, every client on that version enforces signatures.
+3. Store the **private** key as the GitHub Actions secret `CUC_UPDATE_SIGNING_KEY` (repo → Settings → Secrets and variables → Actions). Never commit it. The `publish-update-manifest` workflow signs every release with it.
+
+Until a public key is set, updates fall back to hash-only integrity (current behavior). After it's set, publish at least one signed release before older clients update, so the signing secret is in place when the workflow next runs. Lost private key → generate a new pair and ship a new public key.
+
+Only `https` custom update URLs are honored; an `http` base is ignored.
+
+**Commit pinning.** The manifest is fetched from `main` (so new versions are discoverable), but it records the exact commit it was built from, and every file download is pinned to that immutable commit (`raw.githubusercontent.com/.../<commit>/…`, `jsdelivr@<commit>`). Combined with signing — the commit is part of the signed payload — code is only ever pulled from one unchangeable commit the signature vouches for, so a force-pushed or compromised branch can't swap files under a valid manifest, and there's no read-manifest-then-fetch race against `main` advancing.
+
 Optional: to serve updates from Cloudflare Pages instead of GitHub raw/jsDelivr (e.g. if the repo goes private), connect the repo to a Cloudflare Pages project (no build step; output directory = repo root) and set `updateBaseUrl` in the extension settings (`cuc:settings.updateBaseUrl`) to the Pages URL.
 
 Caveat: an update that adds new manifest permissions may require a one-time manual reload (or in rare cases remove/re-add) at `chrome://extensions` — Chrome doesn't always apply permission changes from a self-reload. Ordinary code updates apply cleanly.
@@ -104,7 +120,7 @@ A red switch at the bottom of the widget for when quota is running low and every
 **Decisions and why (researched July 2026, details in `src/caveman.js` comments):**
 - *Delivery = direct injection.* Styles are officially being deprecated into Skills, so automating them is a dead end. Skills trigger by model judgment — a trigger phrase can't guarantee activation — and a triggered skill loads its full definition into context anyway, costing at least as much as just sending the instruction. Direct injection costs ~100 tokens once, needs no per-user setup, and is fully verifiable.
 - *Compression = hardened rules, not an ML model (for now).* LLMLingua-2's browser port was benchmarked and rejected as a default: the port is experimental with no tests, the public checkpoints are trained solely on meeting transcripts (wrong register for legal/HR prose), it needs a 57–99MB download from huggingface.co — which corporate egress policies commonly block (demonstrated live during our own benchmark) — and WebGPU is often disabled on corporate machines. The rule-based trimmer costs nothing, works offline, measured 28–43% savings on filler-heavy professional prompts, and its known defect classes were fixed under test. An opt-in "deep compression" ML tier remains documented future work.
-- *Converter = officeparser slim.* One vendored ESM/IIFE bundle covers PDF/DOCX/PPTX/XLSX/CSV/HTML/RTF/ODT with direct Markdown output (verified at 2.7MB — bigger than its docs suggest, still smaller than stitching four single-format libraries without PDF). Runs in an offscreen document because a content script on claude.ai can't spawn chrome-extension:// PDF workers.
+- *Converter = officeparser slim, sandboxed.* One vendored ESM/IIFE bundle covers PDF/DOCX/PPTX/XLSX/CSV/HTML/RTF/ODT with direct Markdown output (verified at 2.7MB — bigger than its docs suggest, still smaller than stitching four single-format libraries without PDF). The parser runs inside a **manifest-declared sandbox page** (`src/sandbox.html`, opaque origin, no `chrome.*` access, `connect-src` blocks all network egress), hosted by an offscreen document that relays file bytes in and Markdown out over `postMessage`. So even a hypothetical exploit in the third-party parser can't reach extension storage, the network, or your Claude session. PDFs need a pdfjs worker, which a sandboxed opaque origin can't load cross-origin — the offscreen side reads the bundled worker and hands its source to the sandbox to run from a same-origin blob. Verified end-to-end in real Chromium (DOCX/CSV/PDF).
 
 ## Design principles
 
@@ -142,13 +158,30 @@ The defaults use public Anthropic API-equivalent model pricing in USD per millio
 
 ## Changelog
 
+### 0.9.1 (security)
+
+- **Sandboxed file converter.** The third-party `officeparser` now runs in a manifest-declared sandbox page (opaque origin, no `chrome.*`, no network egress) instead of the privileged offscreen document — a parser exploit can no longer reach storage, the network, or Claude's session. The offscreen document relays bytes/Markdown over `postMessage` and passes the pdfjs worker in as a same-origin blob. Verified end-to-end in Chromium.
+- **Signed update manifests (opt-in, ECDSA P-256).** The self-updater can now verify a signature over the update manifest before applying anything, so a compromised repo/CDN/mirror can't push code that becomes the extension. Off until a public key is set in `src/updater.js` (see "Signing updates"); until then, hash-only integrity as before. Tamper/wrong-key rejection and the sign→verify round-trip are tested in real Chromium.
+- **Commit-pinned downloads.** The manifest names the immutable commit it was built from (part of the signed payload), and file downloads pin to that commit instead of the moving `main` branch.
+- Custom `updateBaseUrl` is now restricted to `https`.
+- New tooling: `tools/gen-signing-key.mjs`; `build-update-manifest.mjs` signs when `CUC_UPDATE_SIGNING_KEY` is present and records the source commit; the publish workflow passes the secret through.
+
+### 0.9.1
+
+- Fixed Caveman send interception (prompts sent untrimmed) and the unusable drop zone (click-to-pick file instead of drag, which claude.ai's overlay ate).
+- **Firmer Caveman instruction** — more emphatic about persistence and leading with the answer, while still guarding substance/accuracy.
+- **New setting: "Show Caveman Mode in the widget"** — hide the whole feature (row, drop zone, send-interception) from the widget if you don't want it.
+- **New setting: "Show monthly usage credits"** — hide the monthly usage-credit allowance (the "$X of $Y" row in the widget and the "This month" figure in the popup) for a cleaner personal-plan view; warnings exclude it too when hidden.
+- **Removed all remaining branding** — the extension, popup, Settings, and widget are now simply "Claude Companion".
+- **Settings overhaul:** renamed to "Claude Companion" and removed the internal-tool framing; reorganized into five sections (Display, Alerts, Claude connection, Data & privacy, Updates) with a responsive section navigator and active-section highlighting. Dependency-free shadcn-style components (cards with bordered headers, switches, a Dollars/Tokens/Both segmented control, badges, notices, disclosures, buttons, a separated destructive action) matching the widget's visual language in both light and dark. Settings auto-save with a persistent save-status bar; the model selector dropped its pricing jargon; the account details became a connection-status panel with cache age and masked-ID controls; a privacy summary spells out what is and isn't stored.
+
 ### 0.9.0
 
 - **Caveman Mode** (red switch at the bottom of the widget): one-time per-conversation terse-reply instruction (direct injection — Styles are deprecated and Skills trigger unreliably; see README), send-intercepting prompt trimmer with mandatory preview/approve (local, deletion-only, 28–43% measured savings on filler-heavy prompts), periodic brevity re-pin for long chats (claude.ai compacts old context), and a file→Markdown drop zone (officeparser slim in an offscreen document; DOCX/PPTX/CSV/PDF verified in real Chromium).
 - New files: `src/caveman.js` (instruction + compressor + decision docs), `src/offscreen.{html,js}` (conversion service), `src/vendor/` (officeparser slim + matching pdf worker).
 ### 0.8.1
 
-- Removed the hardcoded Vistage organization UUID and `$100` expected employee cap.
+- Removed the hardcoded organization UUID and `$100` expected cap.
 - The active organization is discovered from Claude.ai's `lastActiveOrg` cookie, with `/api/organizations` as the fallback, and cached locally for 24 hours.
 - The monthly cap is accepted only from Claude's live `/usage` or `/overage_spend_limit` response and cached locally for display; there is no configured cap comparison.
 - Settings now shows the detected organization and cached Claude-reported cap instead of editable organization/cap fields.
@@ -167,7 +200,7 @@ The defaults use public Anthropic API-equivalent model pricing in USD per millio
 - Generation detection no longer depends on a hardcoded URL pattern: any claude.ai POST answered with an event-stream response counts, with a `console.debug` breadcrumb when the path doesn't match known patterns (visible drift instead of silent breakage).
 - `message_limit` frames in generation streams are now parsed (sanitized utilization + reset only) and merged live into the native-limits display — fresher than the 60s poll.
 - **Self-updates from GitHub:** blue in-widget banner when a newer version is on `main`; one-time "Connect extension folder" setup in Settings, then updates are one click — hash-verified downloads, nothing written unless every file verifies, automatic extension reload. CI regenerates `update/manifest.json` on every push to main.
-- Widget docks below the visual chat box (not inside it) and always matches its width; follows Claude's own light/dark theme instead of the OS; condensed layout; renamed to "Vistage · Claude Companion".
+- Widget docks below the visual chat box (not inside it) and always matches its width; follows Claude's own light/dark theme instead of the OS; condensed layout; renamed to "Claude Companion".
 
 ### 0.6.0
 
@@ -279,13 +312,13 @@ The headline: the extension already fetched Claude's real 5-hour/weekly limit da
 - Toolbar popup asks the active claude.ai tab for its conversation id/state so "this chat" does not accidentally render as a popup-local page.
 - Docked widget re-checks that it is still directly under the composer after Claude.ai React rerenders.
 - Enterprise limit now means the organization's monthly usage-credit spend cap, not Claude's rolling weekly utilization meter.
-- Added an explicit organization id setting; Vistage's org id defaults to `1e16048b-a724-40fd-b78b-bcf3c7f9af9a`.
+- Added an explicit organization id setting (later removed in favor of auto-detection).
 - Removed daily self-limit tracking and all widget dragging/floating behavior.
 - Reset local usage storage to version 2 so old overestimated chat totals do not carry forward.
 
 ### 0.4.0
 
-**Branding:** This is now explicitly labeled throughout as an internal Vistage Worldwide, Inc. tool — extension name, popup, options page, and widget header.
+**Branding:** Labeled consistently as Claude Companion — extension name, popup, options page, and widget header.
 
 **Widget positioning:**
 - The widget now docks in the page itself, right under the chat composer, by default — not a floating overlay. Verified against `[data-testid="chat-input-grid-container"]`.

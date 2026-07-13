@@ -25,7 +25,14 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - run: node tools/build-update-manifest.mjs
+      - name: Build (and sign, if the key secret is set) the update manifest
+        env:
+          # Store the ECDSA P-256 private key (base64 PKCS8 from
+          # tools/gen-signing-key.mjs) as this repo secret to sign releases.
+          # Absent → manifest ships unsigned (clients with a public key baked
+          # in will then refuse the update — fail closed).
+          CUC_UPDATE_SIGNING_KEY: ${{ secrets.CUC_UPDATE_SIGNING_KEY }}
+        run: node tools/build-update-manifest.mjs
       - name: Commit manifest if changed
         run: |
           if [ -n "$(git status --porcelain update/manifest.json)" ]; then

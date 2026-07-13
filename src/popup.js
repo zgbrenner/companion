@@ -65,11 +65,16 @@ function render(state) {
       : "All your Claude activity this browser session — real spend, not an estimate.";
   }
 
-  // Today / This month — both real numbers.
+  // Today / This month — both real numbers. "This month" is hideable.
   const todayUsd = CUC.daySpendUsd(spendDays);
   document.getElementById("today-value").textContent = todayUsd == null ? "—" : CUC.formatUsd(todayUsd);
-  const monthUsd = nativeUsage?.monthlySpendLimit?.usedUsd;
-  document.getElementById("month-value").textContent = typeof monthUsd === "number" ? CUC.formatUsd(monthUsd) : "—";
+  const monthRow = document.getElementById("month-row");
+  const showMonthly = settings.showMonthlyCredits !== false;
+  if (monthRow) monthRow.hidden = !showMonthly;
+  if (showMonthly) {
+    const monthUsd = nativeUsage?.monthlySpendLimit?.usedUsd;
+    document.getElementById("month-value").textContent = typeof monthUsd === "number" ? CUC.formatUsd(monthUsd) : "—";
+  }
 
   renderTrend(spendDays);
 }
@@ -192,7 +197,8 @@ function renderNative(nativeUsage, nativeUsageError, settings) {
 
   const enterpriseRow = document.getElementById("row-enterprise");
   const spendLimit = nativeUsage?.monthlySpendLimit;
-  if (!spendLimit) {
+  // The monthly usage-credit view is individually hideable in Settings.
+  if (settings.showMonthlyCredits === false || !spendLimit) {
     if (enterpriseRow) enterpriseRow.hidden = true;
     note.textContent = "Live limits from Claude.ai — not an estimate.";
     return;

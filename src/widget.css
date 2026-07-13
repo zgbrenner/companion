@@ -366,17 +366,31 @@
   font-size: 11px;
   color: #6b7684;
   text-align: center;
-  transition: border-color 150ms ease, background 150ms ease;
+  cursor: pointer;
+  transition: border-color 150ms ease, background 150ms ease, color 150ms ease;
 }
 
 .cuc-dropzone[hidden] {
   display: none;
 }
 
+.cuc-dropzone:hover,
+.cuc-dropzone:focus-visible {
+  border-color: #9aa4b2;
+  color: #4a5568;
+  outline: none;
+}
+
 .cuc-dropzone.drag {
   border-color: #b23b3b;
   background: rgba(178, 59, 59, 0.06);
   color: #b23b3b;
+}
+
+:host(.cuc-dark) .cuc-dropzone:hover,
+:host(.cuc-dark) .cuc-dropzone:focus-visible {
+  border-color: #6b6a66;
+  color: #c8c4be;
 }
 
 :host(.cuc-dark) .cuc-dropzone {

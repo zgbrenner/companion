@@ -4,29 +4,121 @@ const CUCUpdater = globalThis.ClaudeUsageCompanionUpdater;
 const REPO_URL = "https://github.com/zgbrenner/claudecompanion";
 const UPDATER_DB_NAME = "cuc-updater";
 
-// Settings simplified to the two visible bars: chat usage and enterprise limit.
-const fields = [
-  "displayMode",
-  "defaultModel",
-  "showNativeLimits",
-  "desktopNotifications"
-];
+// Every persisted setting keyed by the control's data-setting attribute.
+const BOOLEAN_SETTINGS = new Set([
+  "showWidget", "showCavemanMode", "showNativeLimits", "showMonthlyCredits", "desktopNotifications", "showPlainEnglishTips"
+]);
 
 let detectedOrganizationId = null;
 let organizationRevealed = false;
 
+// ---- Save-status bar -------------------------------------------------------
+
+let saveStatusTimer = null;
+function flashSaved() {
+  const el = document.getElementById("save-status");
+  if (!el) return;
+  el.classList.remove("saving");
+  el.textContent = "All changes saved";
+}
+function flashSaving() {
+  const el = document.getElementById("save-status");
+  if (!el) return;
+  el.classList.add("saving");
+  el.textContent = "Saving…";
+}
+
+async function updateSetting(key, value) {
+  flashSaving();
+  try {
+    const stored = await chrome.storage.local.get(["cuc:settings"]);
+    // Merge onto CURRENT stored settings so keys not shown here are preserved.
+    const settings = { ...CUC.DEFAULT_SETTINGS, ...(stored["cuc:settings"] || {}), [key]: value };
+    await chrome.storage.local.set({ "cuc:settings": settings });
+    clearTimeout(saveStatusTimer);
+    saveStatusTimer = setTimeout(flashSaved, 220);
+  } catch {
+    const el = document.getElementById("save-status");
+    if (el) { el.classList.remove("saving"); el.textContent = "Couldn't save — try again"; }
+  }
+}
+
+// ---- Model selector (no pricing jargon) ------------------------------------
+
+function cleanModelName(label) {
+  return String(label || "").split(" — ")[0].trim();
+}
+
 function populateModels() {
   const select = document.getElementById("defaultModel");
   select.innerHTML = "";
-  Object.entries(CUC.MODEL_PRICES).forEach(([key, model]) => {
+  const seen = new Set();
+  for (const [key, model] of Object.entries(CUC.MODEL_PRICES)) {
+    const name = cleanModelName(model.label);
+    if (seen.has(name)) continue; // collapse intro/standard duplicates
+    seen.add(name);
     const option = document.createElement("option");
     option.value = key;
-    const expired = key === "claude-sonnet-5-intro" && CUC.resolveModelKey(key) !== key;
-    const suffix = expired ? " (expired — using standard pricing)" : "";
-    option.textContent = `${model.label} — $${model.inputPerMTok}/$${model.outputPerMTok} per MTok${suffix}`;
+    option.textContent = name;
+    option.dataset.clean = name;
     select.appendChild(option);
-  });
+  }
 }
+
+function setModelValue(select, value) {
+  const wanted = String(value || "");
+  if ([...select.options].some(o => o.value === wanted)) {
+    select.value = wanted;
+    return;
+  }
+  // Stored key isn't a listed option (e.g. the -standard twin) — match by name.
+  const targetName = cleanModelName(CUC.MODEL_PRICES[wanted]?.label || CUC.MODEL_PRICES[CUC.resolveModelKey(wanted)]?.label);
+  const match = [...select.options].find(o => o.dataset.clean === targetName);
+  if (match) select.value = match.value;
+}
+
+// ---- Render controls from settings -----------------------------------------
+
+function renderControls(settings) {
+  document.querySelectorAll(".switch[data-setting]").forEach(sw => {
+    sw.setAttribute("aria-checked", String(Boolean(settings[sw.dataset.setting])));
+  });
+  document.querySelectorAll(".segmented[data-setting]").forEach(group => {
+    const value = settings[group.dataset.setting];
+    group.querySelectorAll(".segment").forEach(seg => {
+      seg.classList.toggle("active", seg.dataset.value === value);
+      seg.setAttribute("aria-pressed", String(seg.dataset.value === value));
+    });
+  });
+  const model = document.getElementById("defaultModel");
+  if (model) setModelValue(model, settings.defaultModel);
+}
+
+function wireControls() {
+  document.querySelectorAll(".switch[data-setting]").forEach(sw => {
+    sw.addEventListener("click", () => {
+      const next = sw.getAttribute("aria-checked") !== "true";
+      sw.setAttribute("aria-checked", String(next));
+      updateSetting(sw.dataset.setting, next);
+    });
+  });
+  document.querySelectorAll(".segmented[data-setting]").forEach(group => {
+    group.querySelectorAll(".segment").forEach(seg => {
+      seg.addEventListener("click", () => {
+        group.querySelectorAll(".segment").forEach(s => {
+          const active = s === seg;
+          s.classList.toggle("active", active);
+          s.setAttribute("aria-pressed", String(active));
+        });
+        updateSetting(group.dataset.setting, seg.dataset.value);
+      });
+    });
+  });
+  const model = document.getElementById("defaultModel");
+  model?.addEventListener("change", () => updateSetting("defaultModel", model.value));
+}
+
+// ---- Connection status panel -----------------------------------------------
 
 function maskOrganizationId(value) {
   const id = String(value || "");
@@ -36,8 +128,19 @@ function maskOrganizationId(value) {
 
 function setAccountActionStatus(message) {
   const status = document.getElementById("account-action-status");
-  if (!status) return;
-  status.textContent = message || "";
+  if (status) status.textContent = message || "";
+}
+
+function formatAge(ms) {
+  if (!ms) return "—";
+  const seconds = Math.max(0, (Date.now() - ms) / 1000);
+  if (seconds < 60) return "just now";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+  const days = Math.floor(hours / 24);
+  return `${days} day${days === 1 ? "" : "s"} ago`;
 }
 
 function renderOrganizationId() {
@@ -45,27 +148,33 @@ function renderOrganizationId() {
   const revealButton = document.getElementById("toggle-organization");
   const copyButton = document.getElementById("copy-organization");
   if (!orgEl || !revealButton || !copyButton) return;
-
-  const hasOrganization = Boolean(detectedOrganizationId);
-  orgEl.textContent = hasOrganization
+  const has = Boolean(detectedOrganizationId);
+  orgEl.textContent = has
     ? (organizationRevealed ? detectedOrganizationId : maskOrganizationId(detectedOrganizationId))
     : "Not detected yet";
-  revealButton.disabled = !hasOrganization;
-  copyButton.disabled = !hasOrganization;
+  revealButton.disabled = !has;
+  copyButton.disabled = !has;
   revealButton.textContent = organizationRevealed ? "Hide" : "Reveal";
 }
 
 async function renderDetectedAccount() {
   const capEl = document.getElementById("detected-cap");
+  const ageEl = document.getElementById("cache-age");
+  const badge = document.getElementById("connection-badge");
   if (!capEl) return;
   const detected = await CUCNative?.getCachedAccountConfig?.();
-  const nextOrganizationId = detected?.orgId || null;
-  if (nextOrganizationId !== detectedOrganizationId) organizationRevealed = false;
-  detectedOrganizationId = nextOrganizationId;
+  const nextOrg = detected?.orgId || null;
+  if (nextOrg !== detectedOrganizationId) organizationRevealed = false;
+  detectedOrganizationId = nextOrg;
   renderOrganizationId();
   capEl.textContent = detected?.limitUsd > 0
     ? `${CUC.formatUsd(detected.limitUsd)} (${detected.currency || "USD"})`
     : "Not detected yet";
+  if (ageEl) ageEl.textContent = detected?.cachedAt ? formatAge(detected.cachedAt) : "—";
+  if (badge) {
+    if (nextOrg) { badge.className = "badge badge-ok"; badge.textContent = "Connected"; }
+    else { badge.className = "badge badge-muted"; badge.textContent = "Not detected yet"; }
+  }
 }
 
 async function copyOrganizationId() {
@@ -85,15 +194,21 @@ function toggleOrganizationVisibility() {
   setAccountActionStatus(organizationRevealed ? "Full organization ID revealed." : "Organization ID masked.");
 }
 
-async function openUrl(url) {
-  await chrome.tabs.create({ url });
-}
-
-// ---- Self-update UI (see updater.js for the mechanism) ---------------------
+// ---- Updates ---------------------------------------------------------------
 
 function updateStatusEl() { return document.getElementById("update-status"); }
 function updateDetailEl() { return document.getElementById("update-detail"); }
 function applyUpdateButton() { return document.getElementById("apply-update"); }
+function updateBadgeEl() { return document.getElementById("update-badge"); }
+
+function setUpdateBadge(kind, text) {
+  const badge = updateBadgeEl();
+  if (!badge) return;
+  if (!kind) { badge.hidden = true; return; }
+  badge.hidden = false;
+  badge.className = `badge badge-${kind}`;
+  badge.textContent = text;
+}
 
 async function renderUpdateSection(check) {
   const status = updateStatusEl();
@@ -101,33 +216,37 @@ async function renderUpdateSection(check) {
   const current = CUCUpdater.currentVersion();
   const folder = await CUCUpdater.folderStatus().catch(() => "unset");
   const folderNote = folder === "unset"
-    ? " One-click install needs the extension folder connected below."
-    : (folder === "needs-permission" ? " Chrome will ask to confirm folder access when you install." : "");
+    ? " Connect the extension folder below for one-click install."
+    : (folder === "needs-permission" ? " Chrome will confirm folder access when you install." : "");
 
   if (!check) {
-    status.textContent = `Current version: ${current}.`;
+    status.textContent = `You're on v${current}.`;
     applyButton.hidden = true;
+    setUpdateBadge(null);
     return;
   }
   if (check.updateAvailable) {
-    status.textContent = `Update available: v${check.latestVersion} (you have v${current}).${folderNote}`;
+    status.textContent = `v${check.latestVersion} is available (you're on v${current}).${folderNote}`;
     applyButton.hidden = false;
     applyButton.textContent = `Install v${check.latestVersion}`;
+    setUpdateBadge("warn", "Update available");
   } else {
-    status.textContent = `You're up to date (v${current}).`;
+    status.textContent = `You're on the latest version (v${current}).`;
     applyButton.hidden = true;
+    setUpdateBadge("ok", "Up to date");
   }
 }
 
 async function checkForUpdates() {
   const status = updateStatusEl();
-  status.textContent = `Current version: ${CUCUpdater.currentVersion()}. Checking GitHub…`;
+  status.textContent = "Checking GitHub for updates…";
+  setUpdateBadge("muted", "Checking…");
   try {
-    const check = await CUCUpdater.checkForUpdate();
-    await renderUpdateSection(check);
+    await renderUpdateSection(await CUCUpdater.checkForUpdate());
   } catch (error) {
-    status.textContent = `Could not check for updates: ${error?.message || error}`;
+    status.textContent = `Couldn't check for updates: ${error?.message || error}`;
     applyUpdateButton().hidden = true;
+    setUpdateBadge(null);
   }
 }
 
@@ -135,10 +254,10 @@ async function setupUpdateFolder() {
   const detail = updateDetailEl();
   try {
     await CUCUpdater.chooseExtensionFolder();
-    detail.textContent = "Extension folder connected — updates are now one click.";
+    detail.textContent = "Extension folder connected — updates are one click now.";
     await renderUpdateSection(await CUCUpdater.checkForUpdate().catch(() => null));
   } catch (error) {
-    if (error?.name === "AbortError") return; // user closed the picker
+    if (error?.name === "AbortError") return;
     detail.textContent = `Couldn't connect that folder: ${error?.message || error}`;
   }
 }
@@ -149,18 +268,19 @@ async function applyUpdateNow() {
   applyButton.disabled = true;
   try {
     const result = await CUCUpdater.applyUpdate(message => { detail.textContent = message; });
-    detail.textContent = `Updated to v${result.version} — reloading the extension…`;
-    // Give the message a beat to render; reload() tears this page down.
+    detail.textContent = `Updated to v${result.version} — reloading…`;
     setTimeout(() => chrome.runtime.reload(), 1200);
   } catch (error) {
     applyButton.disabled = false;
     if (error?.code === "no-folder") {
-      detail.textContent = "First connect the extension folder (button below), then install.";
+      detail.textContent = "Connect the extension folder first (below), then install.";
       return;
     }
     detail.textContent = `Update failed: ${error?.message || error}`;
   }
 }
+
+// ---- Export / destructive reset --------------------------------------------
 
 async function exportCsv() {
   const status = document.getElementById("export-status");
@@ -179,57 +299,11 @@ async function exportCsv() {
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 5000);
     status.textContent = rowCount === 0
-      ? "No spend recorded yet — the file has headers only."
-      : `Exported ${rowCount} day${rowCount === 1 ? "" : "s"} of real spend.`;
+      ? "No spend recorded yet — headers only."
+      : `Exported ${rowCount} day${rowCount === 1 ? "" : "s"}.`;
   } catch (error) {
     status.textContent = `Export failed: ${error?.message || error}`;
   }
-}
-
-async function loadSettings() {
-  populateModels();
-  const stored = await chrome.storage.local.get(["cuc:settings"]);
-  const settings = { ...CUC.DEFAULT_SETTINGS, ...(stored["cuc:settings"] || {}) };
-
-  for (const field of fields) {
-    const el = document.getElementById(field);
-    if (!el) continue;
-    if (el.type === "checkbox") el.checked = Boolean(settings[field]);
-    else el.value = settings[field];
-  }
-  await renderDetectedAccount();
-}
-
-async function readSettings() {
-  const stored = await chrome.storage.local.get(["cuc:settings"]);
-  // Merge onto the CURRENT stored settings, not DEFAULT_SETTINGS — otherwise
-  // saving from this trimmed-down page would silently wipe fields that aren't
-  // shown here.
-  const settings = { ...CUC.DEFAULT_SETTINGS, ...(stored["cuc:settings"] || {}) };
-  for (const field of fields) {
-    const el = document.getElementById(field);
-    if (!el) continue;
-    if (el.type === "checkbox") settings[field] = el.checked;
-    else if (el.type === "number") settings[field] = Number(el.value);
-    else settings[field] = el.value;
-  }
-  return settings;
-}
-
-async function saveSettings() {
-  const settings = await readSettings();
-  await chrome.storage.local.set({ "cuc:settings": settings });
-  const status = document.getElementById("status");
-  status.textContent = "Saved";
-  setTimeout(() => { status.textContent = ""; }, 1800);
-}
-
-async function resetDefaults() {
-  await chrome.storage.local.set({ "cuc:settings": CUC.DEFAULT_SETTINGS });
-  await loadSettings();
-  const status = document.getElementById("status");
-  status.textContent = "Defaults restored";
-  setTimeout(() => { status.textContent = ""; }, 1800);
 }
 
 function deleteUpdaterDatabase() {
@@ -237,7 +311,7 @@ function deleteUpdaterDatabase() {
     const request = indexedDB.deleteDatabase(UPDATER_DB_NAME);
     request.onsuccess = () => resolve();
     request.onerror = () => reject(request.error || new Error("Could not clear updater database."));
-    request.onblocked = () => reject(new Error("Updater database is still in use. Close and reopen Settings, then try again."));
+    request.onblocked = () => reject(new Error("Updater database is still in use. Reopen Settings and try again."));
   });
 }
 
@@ -252,14 +326,13 @@ async function clearAllLocalData() {
   button.disabled = true;
   status.textContent = "Clearing local data…";
 
-  const operations = [
+  const results = await Promise.allSettled([
     chrome.storage.local.clear(),
     chrome.storage.session?.clear?.() || Promise.resolve(),
     deleteUpdaterDatabase(),
     chrome.action?.setBadgeText?.({ text: "" }) || Promise.resolve()
-  ];
-  const results = await Promise.allSettled(operations);
-  const failed = results.filter(result => result.status === "rejected");
+  ]);
+  const failed = results.filter(r => r.status === "rejected");
 
   detectedOrganizationId = null;
   organizationRevealed = false;
@@ -269,30 +342,68 @@ async function clearAllLocalData() {
   await renderUpdateSection(null);
 
   status.textContent = failed.length
-    ? "Browser storage was cleared, but one local item could not be removed. Close and reopen Settings, then try again."
+    ? "Storage cleared, but one item couldn't be removed. Reopen Settings and try again."
     : "All local Claude Companion data has been cleared.";
   button.disabled = false;
 }
 
-document.getElementById("save").addEventListener("click", saveSettings);
-document.getElementById("reset-defaults").addEventListener("click", resetDefaults);
+// ---- Section navigator -----------------------------------------------------
+
+function wireSectionNav() {
+  const links = [...document.querySelectorAll(".section-nav a")];
+  const byId = new Map(links.map(a => [a.dataset.nav, a]));
+  const setActive = id => {
+    links.forEach(a => a.classList.toggle("active", a.dataset.nav === id));
+  };
+  const observer = new IntersectionObserver(entries => {
+    // The section whose top is nearest the viewport top wins.
+    const visible = entries.filter(e => e.isIntersecting)
+      .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+    if (visible[0] && byId.has(visible[0].target.id)) setActive(visible[0].target.id);
+  }, { rootMargin: "-70px 0px -55% 0px", threshold: 0 });
+  document.querySelectorAll(".card[id]").forEach(section => observer.observe(section));
+  // Clicking a link updates the highlight immediately (before scroll settles).
+  links.forEach(a => a.addEventListener("click", () => setActive(a.dataset.nav)));
+}
+
+// ---- Load / defaults -------------------------------------------------------
+
+async function loadSettings() {
+  populateModels();
+  const stored = await chrome.storage.local.get(["cuc:settings"]);
+  const settings = { ...CUC.DEFAULT_SETTINGS, ...(stored["cuc:settings"] || {}) };
+  renderControls(settings);
+  await renderDetectedAccount();
+}
+
+async function resetDefaults() {
+  flashSaving();
+  await chrome.storage.local.set({ "cuc:settings": CUC.DEFAULT_SETTINGS });
+  await loadSettings();
+  clearTimeout(saveStatusTimer);
+  saveStatusTimer = setTimeout(flashSaved, 220);
+}
+
+// ---- Boot ------------------------------------------------------------------
+
+document.getElementById("reset-defaults")?.addEventListener("click", resetDefaults);
 document.getElementById("toggle-organization")?.addEventListener("click", toggleOrganizationVisibility);
 document.getElementById("copy-organization")?.addEventListener("click", copyOrganizationId);
 document.getElementById("clear-org-cache")?.addEventListener("click", async () => {
   if (CUCNative?.clearCachedOrgId) await CUCNative.clearCachedOrgId();
-  const status = document.getElementById("status");
   detectedOrganizationId = null;
   organizationRevealed = false;
-  setAccountActionStatus("");
   await renderDetectedAccount();
-  status.textContent = "Cleared. Refresh a claude.ai tab to re-detect.";
-  setTimeout(() => { status.textContent = ""; }, 2400);
+  setAccountActionStatus("Cleared. Refresh a claude.ai tab to re-detect.");
 });
 document.getElementById("clear-all-data")?.addEventListener("click", clearAllLocalData);
 document.getElementById("export-csv")?.addEventListener("click", exportCsv);
 document.getElementById("check-updates")?.addEventListener("click", checkForUpdates);
 document.getElementById("setup-folder")?.addEventListener("click", setupUpdateFolder);
 document.getElementById("apply-update")?.addEventListener("click", applyUpdateNow);
-document.getElementById("open-github")?.addEventListener("click", () => openUrl(REPO_URL));
+document.getElementById("open-github")?.addEventListener("click", () => chrome.tabs.create({ url: REPO_URL }));
+
+wireControls();
+wireSectionNav();
 loadSettings();
 checkForUpdates();
