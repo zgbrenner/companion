@@ -7,6 +7,7 @@
 // identical file, so the Action's "commit only if changed" check stays quiet
 // on pushes that don't touch shipped files.
 import { createHash, webcrypto } from "node:crypto";
+import { execSync } from "node:child_process";
 import { readFile, writeFile, readdir, mkdir } from "node:fs/promises";
 import { join, relative, sep } from "node:path";
 
@@ -16,7 +17,18 @@ function canonicalUpdatePayload(manifest) {
   const files = manifest.files
     .map(file => `${file.path}\t${String(file.sha256).toLowerCase()}`)
     .join("\n");
-  return `cuc-update-v1\nversion:${manifest.version}\n${files}\n`;
+  return `cuc-update-v1\nversion:${manifest.version}\ncommit:${manifest.commit || ""}\n${files}\n`;
+}
+
+// The commit the client pins file downloads to. In CI this is the source
+// commit that triggered the workflow (GITHUB_SHA); locally it's HEAD.
+function detectCommit() {
+  if (process.env.GITHUB_SHA) return process.env.GITHUB_SHA.trim();
+  try {
+    return execSync("git rev-parse HEAD", { cwd: ROOT }).toString().trim();
+  } catch {
+    return "";
+  }
 }
 
 // Sign the manifest with the ECDSA P-256 private key from the environment
@@ -78,10 +90,10 @@ for (const path of paths.sort()) {
   files.push({ path: repoPath, sha256: await hashFile(path) });
 }
 
-const output = { version: manifest.version, files };
-// Sign BEFORE serializing; the signature covers version + file hashes only
-// (canonicalUpdatePayload ignores the signature field itself).
+const output = { version: manifest.version, commit: detectCommit(), files };
+// Sign BEFORE serializing; the signature covers version + commit + file
+// hashes (canonicalUpdatePayload ignores the signature field itself).
 await signManifest(output);
 await mkdir(join(ROOT, "update"), { recursive: true });
 await writeFile(join(ROOT, "update", "manifest.json"), `${JSON.stringify(output, null, 2)}\n`);
-console.log(`update/manifest.json written: v${output.version}, ${files.length} files`);
+console.log(`update/manifest.json written: v${output.version}, commit ${(output.commit || "none").slice(0, 12)}, ${files.length} files`);

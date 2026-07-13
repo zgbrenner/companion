@@ -103,6 +103,8 @@ Until a public key is set, updates fall back to hash-only integrity (current beh
 
 Only `https` custom update URLs are honored; an `http` base is ignored.
 
+**Commit pinning.** The manifest is fetched from `main` (so new versions are discoverable), but it records the exact commit it was built from, and every file download is pinned to that immutable commit (`raw.githubusercontent.com/.../<commit>/…`, `jsdelivr@<commit>`). Combined with signing — the commit is part of the signed payload — code is only ever pulled from one unchangeable commit the signature vouches for, so a force-pushed or compromised branch can't swap files under a valid manifest, and there's no read-manifest-then-fetch race against `main` advancing.
+
 Optional: to serve updates from Cloudflare Pages instead of GitHub raw/jsDelivr (e.g. if the repo goes private), connect the repo to a Cloudflare Pages project (no build step; output directory = repo root) and set `updateBaseUrl` in the extension settings (`cuc:settings.updateBaseUrl`) to the Pages URL.
 
 Caveat: an update that adds new manifest permissions may require a one-time manual reload (or in rare cases remove/re-add) at `chrome://extensions` — Chrome doesn't always apply permission changes from a self-reload. Ordinary code updates apply cleanly.
@@ -118,7 +120,7 @@ A red switch at the bottom of the widget for when quota is running low and every
 **Decisions and why (researched July 2026, details in `src/caveman.js` comments):**
 - *Delivery = direct injection.* Styles are officially being deprecated into Skills, so automating them is a dead end. Skills trigger by model judgment — a trigger phrase can't guarantee activation — and a triggered skill loads its full definition into context anyway, costing at least as much as just sending the instruction. Direct injection costs ~100 tokens once, needs no per-user setup, and is fully verifiable.
 - *Compression = hardened rules, not an ML model (for now).* LLMLingua-2's browser port was benchmarked and rejected as a default: the port is experimental with no tests, the public checkpoints are trained solely on meeting transcripts (wrong register for legal/HR prose), it needs a 57–99MB download from huggingface.co — which corporate egress policies commonly block (demonstrated live during our own benchmark) — and WebGPU is often disabled on corporate machines. The rule-based trimmer costs nothing, works offline, measured 28–43% savings on filler-heavy professional prompts, and its known defect classes were fixed under test. An opt-in "deep compression" ML tier remains documented future work.
-- *Converter = officeparser slim.* One vendored ESM/IIFE bundle covers PDF/DOCX/PPTX/XLSX/CSV/HTML/RTF/ODT with direct Markdown output (verified at 2.7MB — bigger than its docs suggest, still smaller than stitching four single-format libraries without PDF). Runs in an offscreen document because a content script on claude.ai can't spawn chrome-extension:// PDF workers.
+- *Converter = officeparser slim, sandboxed.* One vendored ESM/IIFE bundle covers PDF/DOCX/PPTX/XLSX/CSV/HTML/RTF/ODT with direct Markdown output (verified at 2.7MB — bigger than its docs suggest, still smaller than stitching four single-format libraries without PDF). The parser runs inside a **manifest-declared sandbox page** (`src/sandbox.html`, opaque origin, no `chrome.*` access, `connect-src` blocks all network egress), hosted by an offscreen document that relays file bytes in and Markdown out over `postMessage`. So even a hypothetical exploit in the third-party parser can't reach extension storage, the network, or your Claude session. PDFs need a pdfjs worker, which a sandboxed opaque origin can't load cross-origin — the offscreen side reads the bundled worker and hands its source to the sandbox to run from a same-origin blob. Verified end-to-end in real Chromium (DOCX/CSV/PDF).
 
 ## Design principles
 
@@ -158,9 +160,11 @@ The defaults use public Anthropic API-equivalent model pricing in USD per millio
 
 ### 0.9.1 (security)
 
+- **Sandboxed file converter.** The third-party `officeparser` now runs in a manifest-declared sandbox page (opaque origin, no `chrome.*`, no network egress) instead of the privileged offscreen document — a parser exploit can no longer reach storage, the network, or Claude's session. The offscreen document relays bytes/Markdown over `postMessage` and passes the pdfjs worker in as a same-origin blob. Verified end-to-end in Chromium.
 - **Signed update manifests (opt-in, ECDSA P-256).** The self-updater can now verify a signature over the update manifest before applying anything, so a compromised repo/CDN/mirror can't push code that becomes the extension. Off until a public key is set in `src/updater.js` (see "Signing updates"); until then, hash-only integrity as before. Tamper/wrong-key rejection and the sign→verify round-trip are tested in real Chromium.
+- **Commit-pinned downloads.** The manifest names the immutable commit it was built from (part of the signed payload), and file downloads pin to that commit instead of the moving `main` branch.
 - Custom `updateBaseUrl` is now restricted to `https`.
-- New tooling: `tools/gen-signing-key.mjs`; `build-update-manifest.mjs` signs when `CUC_UPDATE_SIGNING_KEY` is present; the publish workflow passes the secret through.
+- New tooling: `tools/gen-signing-key.mjs`; `build-update-manifest.mjs` signs when `CUC_UPDATE_SIGNING_KEY` is present and records the source commit; the publish workflow passes the secret through.
 
 ### 0.9.1
 

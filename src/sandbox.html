@@ -1,0 +1,15 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Claude Companion — conversion sandbox</title>
+</head>
+<body>
+  <!-- Manifest-sandboxed page (see manifest.json "sandbox.pages"): opaque
+       origin, no chrome.* APIs, connect-src 'none'. The vendored officeparser
+       slim bundle (MV3-safe: no remote code, no OCR) parses file bytes here,
+       fully isolated from the extension. See src/sandbox.js. -->
+  <script src="vendor/officeparser.browser.slim.iife.js"></script>
+  <script src="sandbox.js"></script>
+</body>
+</html>

@@ -74,11 +74,32 @@
 
   // Deterministic bytes that get signed/verified. MUST stay byte-for-byte in
   // sync with canonicalUpdatePayload() in tools/build-update-manifest.mjs.
+  // Includes the commit so a signature also authenticates WHICH immutable
+  // commit the files are pulled from.
   function canonicalUpdatePayload(manifest) {
     const files = (manifest.files || [])
       .map(file => `${file.path}\t${String(file.sha256).toLowerCase()}`)
       .join("\n");
-    return `cuc-update-v1\nversion:${manifest.version}\n${files}\n`;
+    return `cuc-update-v1\nversion:${manifest.version}\ncommit:${manifest.commit || ""}\n${files}\n`;
+  }
+
+  // The manifest is fetched from a moving ref (main) so new versions are
+  // discoverable, but the actual FILE downloads are pinned to the immutable
+  // commit the manifest names. Combined with signing (which authenticates
+  // that commit), this means code is only ever pulled from one exact,
+  // unchangeable commit — a compromised or force-pushed branch can't swap the
+  // files under a valid manifest, and there's no read-manifest-then-fetch
+  // race against main advancing. Custom bases (e.g. Cloudflare Pages) have no
+  // commit concept, so they're left as-is.
+  function pinnedDownloadBase(base, commit) {
+    if (!commit || !/^[0-9a-f]{7,40}$/i.test(commit)) return base;
+    if (base.includes("raw.githubusercontent.com")) {
+      return base.replace(/\/main\/$/i, `/${commit}/`);
+    }
+    if (base.includes("cdn.jsdelivr.net/gh/")) {
+      return base.replace(/@main\/$/i, `@${commit}/`);
+    }
+    return base;
   }
 
   function base64ToBytes(b64) {
@@ -336,6 +357,10 @@
     }
     await validateExtensionFolder(dirHandle);
 
+    // Pull files from the immutable commit the (already signature-checked)
+    // manifest names, not from the moving branch the manifest was fetched from.
+    const downloadBase = pinnedDownloadBase(base, manifest.commit);
+
     // Download and verify EVERYTHING in memory before writing a single byte,
     // so a failed download or hash mismatch can never leave a half-updated
     // (torn) folder behind.
@@ -343,7 +368,7 @@
     for (let i = 0; i < manifest.files.length; i += 1) {
       const { path, sha256 } = manifest.files[i];
       onProgress(`Downloading ${i + 1}/${manifest.files.length}: ${path}`);
-      const response = await fetch(`${base}${path}`, { cache: "no-store" });
+      const response = await fetch(`${downloadBase}${path}`, { cache: "no-store" });
       if (!response.ok) throw new Error(`Download failed for ${path} (${response.status}).`);
       const buffer = await response.arrayBuffer();
       const hash = await sha256Hex(buffer);

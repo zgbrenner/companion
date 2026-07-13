@@ -1,5 +1,6 @@
 {
   "version": "0.9.1",
+  "commit": "2f6c5219ba097b8a06da6a394d00aa4992f1f015",
   "files": [
     {
       "path": "icons/icon128.png",
@@ -19,7 +20,7 @@
     },
     {
       "path": "manifest.json",
-      "sha256": "94c934a56b2f637c72f10c2c3c81baf893e30f2c65356840e2e89671bc9aeaf0"
+      "sha256": "edb1b243246b20b003ab8a7e1068a5b45ed5d896102df8c91dc20dd1fe0c467d"
     },
     {
       "path": "src/background.js",
@@ -47,11 +48,11 @@
     },
     {
       "path": "src/offscreen.html",
-      "sha256": "5eb05247493441c64cb0efa0d1756879d9e0a34f3219a2d62bf2320b94c591af"
+      "sha256": "657b32f7d1440d1000ebf16d575584d5788e0707170ffff5c16d453a558d901b"
     },
     {
       "path": "src/offscreen.js",
-      "sha256": "01e73e3961e1ee2077ec16c154b214633a766bd66d8d3ab7703e959a2d88ca6a"
+      "sha256": "bf2cbb640a98d1d95fdfa74db015d534070b38ab36300892d7725682091bedc4"
     },
     {
       "path": "src/options.css",
@@ -78,12 +79,20 @@
       "sha256": "baa2491b7fe8aa0abd979ac68b620a2e6bb44ddd7e3cd1cffaae9c33dbbb8b41"
     },
     {
+      "path": "src/sandbox.html",
+      "sha256": "05ee77ecc0835661580d08768a857604c638375958b92c5f42257b1125102e5b"
+    },
+    {
+      "path": "src/sandbox.js",
+      "sha256": "97dc2785c276da4047f5e10673ae94f540ffe727dfff632283e1963f0161f4fc"
+    },
+    {
       "path": "src/shared.js",
       "sha256": "15d4a45112dcded6dcc505b0a92a7413622ab75e1220133795a0a8d2c9c60e1a"
     },
     {
       "path": "src/updater.js",
-      "sha256": "03188f05ef314309da9631d6b83faabe6fbfc3d6a062be1bd21827e1d59a08cc"
+      "sha256": "aafee66e954df31d1a5789377144eefe7a169ab3bc3c43aef61aa333d98fa803"
     },
     {
       "path": "src/vendor/officeparser.browser.slim.iife.js",
