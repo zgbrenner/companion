@@ -1,6 +1,6 @@
 <div align="center">
 
-<h1>🎯 Claude Companion</h1>
+<h1>Claude Companion</h1>
 
 <h3>Know exactly how much Claude you're using — in <em>real dollars</em> — right under the chat box.</h3>
 
@@ -38,11 +38,11 @@
 > [!NOTE]
 > **Every dollar figure is real.** It's read straight from Claude's own usage-credit counter — accurate to the cent, never estimated from text. Tokens are the only derived number, and they're shown as an honest range instead of fake precision.
 
-## 😖 The problem
+## The Problem
 
 Claude.ai tells you *almost* nothing about your usage until you slam into a limit mid-thought. Existing "token counter" extensions just **guess** — they scrape your text, estimate tokens, and multiply by a price they hope is right. The number is fiction, and it never matches reality.
 
-## 💡 The fix
+## The Fix
 
 Claude Companion reads the **same numbers Claude's own settings page uses** and pins them under the chat box while you work:
 
@@ -52,21 +52,21 @@ Claude Companion reads the **same numbers Claude's own settings page uses** and 
 
 ---
 
-## ✨ Features
+## Features
 
 | | |
 |---|---|
-| 💵 **Real-dollar tracking** | Session spend and daily spend sampled straight from Claude's own counter — not a token estimate. |
-| 📊 **Claude's real limits** | Session (5-hour), weekly, Opus, and monthly-credit bars with reset countdowns, exactly as Claude reports them. |
-| 🚦 **Before-the-wall alerts** | Toolbar badge + optional desktop nudge when any limit runs hot, plus "at this pace you'll hit your limit around 3:40 PM". |
-| 🪨 **Caveman Mode** | Stretch your quota when it's running low — ultra-brief replies, local prompt-trimming, and file→Markdown. |
-| 🌗 **Looks native** | Docks under the chat box, matches its width, and follows Claude's own light/dark theme. |
-| 🔒 **Private by design** | Your prompts and replies are never stored or sent anywhere. Read-only. No telemetry. |
-| 🔄 **Updates itself** | One-click, signed, hash-verified updates from GitHub — no uninstall/reinstall dance. |
+| **Real-dollar tracking** | Session spend and daily spend sampled straight from Claude's own counter — not a token estimate. |
+| **Claude's real limits** | Session (5-hour), weekly, Opus, and monthly-credit bars with reset countdowns, exactly as Claude reports them. |
+| **Before-the-wall alerts** | Toolbar badge + optional desktop nudge when any limit runs hot, plus "at this pace you'll hit your limit around 3:40 PM". |
+| **Caveman Mode** | Stretch your quota when it's running low — ultra-brief replies, local prompt-trimming, and file→Markdown. |
+| **Looks native** | Docks under the chat box, matches its width, and follows Claude's own light/dark theme. |
+| **Private by design** | Your prompts and replies are never stored or sent anywhere. Read-only. No telemetry. |
+| **Updates itself** | One-click, signed, hash-verified updates from GitHub — no uninstall/reinstall dance. |
 
 ---
 
-## 📸 See it
+## 📸 See It
 
 <table>
 <tr>
@@ -89,19 +89,19 @@ Claude Companion reads the **same numbers Claude's own settings page uses** and 
 
 ---
 
-## 🪨 Caveman Mode — stretch your quota
+## Caveman Mode — stretch your quota
 
 Running low and need to squeeze out more work before the reset? Flip the red switch:
 
-- **🗿 Brief replies** — Claude answers in the fewest words that fully resolve your request. Filler-free, never at the cost of substance.
-- **✂️ Prompt trimming** — on send, a preview shows a *locally*-trimmed version of your prompt with the savings. Send it, edit it, or send the original — nothing is ever auto-sent, and it never rewrites your meaning.
-- **📄 File → Markdown** — drop in a PDF/DOCX/PPTX/XLSX/CSV and it's converted to lean Markdown *locally* (Claude ingests Markdown far more efficiently than a raw file).
+- **Brief replies** — Claude answers in the fewest words that fully resolve your request. Filler-free, never at the cost of substance.
+- **Prompt trimming** — on send, a preview shows a *locally*-trimmed version of your prompt with the savings. Send it, edit it, or send the original — nothing is ever auto-sent, and it never rewrites your meaning.
+- **File → Markdown** — drop in a PDF/DOCX/PPTX/XLSX/CSV and it's converted to lean Markdown *locally* (Claude ingests Markdown far more efficiently than a raw file).
 
 Don't want it? One switch hides the whole feature.
 
 ---
 
-## 🧠 How it works
+## How it works
 
 ```
 Claude's usage counter ──sample every ~60s──►  Session spend = now − when you opened your browser
@@ -112,7 +112,7 @@ Real dollars ──÷ blended price──►  ≈ token range   (shown as a rang
 
 Dollars are ground truth. Tokens are the *only* derived value — and they're shown as `≈2.1–4.7M` rather than a single fake-precise number. The rolling limits come from Claude's own endpoint, unchanged.
 
-## 🔒 Security & privacy
+## Security & privacy
 
 Built to survive an IT/infosec review — the full write-up is in **[docs/SECURITY.md](docs/SECURITY.md)**. The short version:
 
@@ -134,14 +134,14 @@ Built to survive an IT/infosec review — the full write-up is in **[docs/SECURI
 
 ---
 
-## 🚀 Quick start
+## Quick start
 
 1. `chrome://extensions` → enable **Developer mode** → **Load unpacked** → pick this folder.
 2. Open **[claude.ai](https://claude.ai)** and sign in. The widget appears under the chat box. That's it.
 
 Full walkthrough (settings tour, Caveman Mode, one-click updates, troubleshooting): **[docs/QUICKSTART.md](docs/QUICKSTART.md)**.
 
-## 📚 Documentation
+## Documentation
 
 | | |
 | --- | --- |
@@ -149,7 +149,7 @@ Full walkthrough (settings tour, Caveman Mode, one-click updates, troubleshootin
 | 🔒 **[Security & Privacy](docs/SECURITY.md)** | Architecture, data handling, permissions, threat model, audit steps. |
 | 📝 **[Changelog](CHANGELOG.md)** | Version history. |
 
-## ❓ FAQ
+## FAQ
 
 <details>
 <summary><strong>Does it work on Free / Pro / Max / Team / Enterprise?</strong></summary>
