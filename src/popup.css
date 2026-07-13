@@ -34,18 +34,6 @@ p {
   margin: 0;
 }
 
-.org-tag {
-  margin-top: 3px;
-  font-size: 11px;
-  color: #6b7684;
-}
-
-@media (prefers-color-scheme: dark) {
-  .org-tag {
-    color: #a09c98;
-  }
-}
-
 .meter {
   margin-top: 14px;
 }

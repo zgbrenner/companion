@@ -1,6 +1,6 @@
-# Vistage Claude Usage Companion
+# Claude Companion
 
-An internal tool for **Vistage Worldwide, Inc.** — a privacy-first Chrome/Edge browser extension that shows Vistage staff how much Claude they are using while they work, pinned right under the chat box.
+A privacy-first Chrome/Edge browser extension that shows you how much Claude you are using while you work, pinned right under the chat box.
 
 The extension can display usage as:
 
@@ -33,7 +33,7 @@ Caveats, stated plainly:
 
 ## Target users
 
-Built for Vistage Worldwide, Inc. staff using Claude.ai — not aimed at developers, so the widget stays simple: current chat usage and the enterprise limit.
+Built for people using Claude.ai who think in budgets, not tokens — not aimed at developers, so the widget stays simple: real spend and Claude's own limits.
 
 ## Install locally
 
@@ -171,7 +171,9 @@ The defaults use public Anthropic API-equivalent model pricing in USD per millio
 - Fixed Caveman send interception (prompts sent untrimmed) and the unusable drop zone (click-to-pick file instead of drag, which claude.ai's overlay ate).
 - **Firmer Caveman instruction** — more emphatic about persistence and leading with the answer, while still guarding substance/accuracy.
 - **New setting: "Show Caveman Mode in the widget"** — hide the whole feature (row, drop zone, send-interception) from the widget if you don't want it.
-- **Settings overhaul:** renamed to "Claude Companion" and removed the Vistage/internal-tool framing; reorganized into five sections (Display, Alerts, Claude connection, Data & privacy, Updates) with a responsive section navigator and active-section highlighting. Dependency-free shadcn-style components (cards with bordered headers, switches, a Dollars/Tokens/Both segmented control, badges, notices, disclosures, buttons, a separated destructive action) matching the widget's visual language in both light and dark. Settings auto-save with a persistent save-status bar; the model selector dropped its pricing jargon; the account details became a connection-status panel with cache age and masked-ID controls; a privacy summary spells out what is and isn't stored.
+- **New setting: "Show monthly usage credits"** — hide the monthly usage-credit allowance (the "$X of $Y" row in the widget and the "This month" figure in the popup) for a cleaner personal-plan view; warnings exclude it too when hidden.
+- **Removed all remaining branding** — the extension, popup, Settings, and widget are now simply "Claude Companion".
+- **Settings overhaul:** renamed to "Claude Companion" and removed the internal-tool framing; reorganized into five sections (Display, Alerts, Claude connection, Data & privacy, Updates) with a responsive section navigator and active-section highlighting. Dependency-free shadcn-style components (cards with bordered headers, switches, a Dollars/Tokens/Both segmented control, badges, notices, disclosures, buttons, a separated destructive action) matching the widget's visual language in both light and dark. Settings auto-save with a persistent save-status bar; the model selector dropped its pricing jargon; the account details became a connection-status panel with cache age and masked-ID controls; a privacy summary spells out what is and isn't stored.
 
 ### 0.9.0
 
@@ -179,7 +181,7 @@ The defaults use public Anthropic API-equivalent model pricing in USD per millio
 - New files: `src/caveman.js` (instruction + compressor + decision docs), `src/offscreen.{html,js}` (conversion service), `src/vendor/` (officeparser slim + matching pdf worker).
 ### 0.8.1
 
-- Removed the hardcoded Vistage organization UUID and `$100` expected employee cap.
+- Removed the hardcoded organization UUID and `$100` expected cap.
 - The active organization is discovered from Claude.ai's `lastActiveOrg` cookie, with `/api/organizations` as the fallback, and cached locally for 24 hours.
 - The monthly cap is accepted only from Claude's live `/usage` or `/overage_spend_limit` response and cached locally for display; there is no configured cap comparison.
 - Settings now shows the detected organization and cached Claude-reported cap instead of editable organization/cap fields.
@@ -198,7 +200,7 @@ The defaults use public Anthropic API-equivalent model pricing in USD per millio
 - Generation detection no longer depends on a hardcoded URL pattern: any claude.ai POST answered with an event-stream response counts, with a `console.debug` breadcrumb when the path doesn't match known patterns (visible drift instead of silent breakage).
 - `message_limit` frames in generation streams are now parsed (sanitized utilization + reset only) and merged live into the native-limits display — fresher than the 60s poll.
 - **Self-updates from GitHub:** blue in-widget banner when a newer version is on `main`; one-time "Connect extension folder" setup in Settings, then updates are one click — hash-verified downloads, nothing written unless every file verifies, automatic extension reload. CI regenerates `update/manifest.json` on every push to main.
-- Widget docks below the visual chat box (not inside it) and always matches its width; follows Claude's own light/dark theme instead of the OS; condensed layout; renamed to "Vistage · Claude Companion".
+- Widget docks below the visual chat box (not inside it) and always matches its width; follows Claude's own light/dark theme instead of the OS; condensed layout; renamed to "Claude Companion".
 
 ### 0.6.0
 
@@ -310,13 +312,13 @@ The headline: the extension already fetched Claude's real 5-hour/weekly limit da
 - Toolbar popup asks the active claude.ai tab for its conversation id/state so "this chat" does not accidentally render as a popup-local page.
 - Docked widget re-checks that it is still directly under the composer after Claude.ai React rerenders.
 - Enterprise limit now means the organization's monthly usage-credit spend cap, not Claude's rolling weekly utilization meter.
-- Added an explicit organization id setting; Vistage's org id defaults to `1e16048b-a724-40fd-b78b-bcf3c7f9af9a`.
+- Added an explicit organization id setting (later removed in favor of auto-detection).
 - Removed daily self-limit tracking and all widget dragging/floating behavior.
 - Reset local usage storage to version 2 so old overestimated chat totals do not carry forward.
 
 ### 0.4.0
 
-**Branding:** This is now explicitly labeled throughout as an internal Vistage Worldwide, Inc. tool — extension name, popup, options page, and widget header.
+**Branding:** Labeled consistently as Claude Companion — extension name, popup, options page, and widget header.
 
 **Widget positioning:**
 - The widget now docks in the page itself, right under the chat composer, by default — not a floating overlay. Verified against `[data-testid="chat-input-grid-container"]`.

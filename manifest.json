@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
-  "name": "Vistage Claude Usage Companion",
+  "name": "Claude Companion",
   "version": "0.9.1",
   "minimum_chrome_version": "111",
-  "description": "Internal Vistage Worldwide, Inc. tool. Shows Claude.ai usage in dollars, tokens, or both, pinned under the chat box while you work.",
+  "description": "Shows your real Claude.ai usage in dollars, tokens, or both, pinned under the chat box while you work.",
   "permissions": [
     "storage",
     "activeTab",
@@ -77,7 +77,7 @@
     "128": "icons/icon128.png"
   },
   "action": {
-    "default_title": "Vistage Claude Usage",
+    "default_title": "Claude Companion",
     "default_icon": {
       "16": "icons/icon16.png",
       "32": "icons/icon32.png",

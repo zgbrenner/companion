@@ -6,7 +6,7 @@ const UPDATER_DB_NAME = "cuc-updater";
 
 // Every persisted setting keyed by the control's data-setting attribute.
 const BOOLEAN_SETTINGS = new Set([
-  "showWidget", "showCavemanMode", "showNativeLimits", "desktopNotifications", "showPlainEnglishTips"
+  "showWidget", "showCavemanMode", "showNativeLimits", "showMonthlyCredits", "desktopNotifications", "showPlainEnglishTips"
 ]);
 
 let detectedOrganizationId = null;

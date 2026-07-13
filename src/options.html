@@ -111,9 +111,17 @@
           <div class="row">
             <div class="row-text">
               <div class="row-label">Show Claude's real limits</div>
-              <div class="row-desc">Session (5-hour), weekly, Opus, and the monthly usage-credit allowance, each with a reset countdown.</div>
+              <div class="row-desc">Session (5-hour), weekly, and Opus limits, each with a reset countdown.</div>
             </div>
             <button type="button" class="switch" role="switch" aria-checked="true" data-setting="showNativeLimits" aria-label="Show Claude's real limits"><span class="switch-knob"></span></button>
+          </div>
+
+          <div class="row">
+            <div class="row-text">
+              <div class="row-label">Show monthly usage credits</div>
+              <div class="row-desc">The monthly usage-credit allowance ("$X of $Y") in the widget and the "This month" figure in the popup. Turn off if you don't want a monthly-credit view.</div>
+            </div>
+            <button type="button" class="switch" role="switch" aria-checked="true" data-setting="showMonthlyCredits" aria-label="Show monthly usage credits"><span class="switch-knob"></span></button>
           </div>
 
           <div class="panel">

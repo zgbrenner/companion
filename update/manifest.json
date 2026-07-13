@@ -1,6 +1,6 @@
 {
   "version": "0.9.1",
-  "commit": "2f6c5219ba097b8a06da6a394d00aa4992f1f015",
+  "commit": "af05f5e29eb639cad2b6215b7cea140ce5a4b7ce",
   "files": [
     {
       "path": "icons/icon128.png",
@@ -20,7 +20,7 @@
     },
     {
       "path": "manifest.json",
-      "sha256": "edb1b243246b20b003ab8a7e1068a5b45ed5d896102df8c91dc20dd1fe0c467d"
+      "sha256": "9f06ba71b98bbb6aba35efbf11d1f8dbd2b756402df4803edd18bc88d42cba83"
     },
     {
       "path": "src/background.js",
@@ -36,7 +36,7 @@
     },
     {
       "path": "src/content.js",
-      "sha256": "92796e886621b68f9e8f84e948f85ae98d731b887a1af3c05ee787a5db4c3d8c"
+      "sha256": "f0e38615c816730bb2a90c210e91f00129b4bce205b079025ae66c29340f7b56"
     },
     {
       "path": "src/injected.js",
@@ -60,23 +60,23 @@
     },
     {
       "path": "src/options.html",
-      "sha256": "60d70d4242bca9bf453ee14d5c4ac8692b855eef0aaf20ac8a0ba5d0b78a8119"
+      "sha256": "02176769fb0aa27703af72a7e1b9608135a76ee2a9107a75730b945db3cc03a4"
     },
     {
       "path": "src/options.js",
-      "sha256": "0e12433bb52f3750c6dea0cc18e50ab54fe6d93e6f378fae85d08ae36103d666"
+      "sha256": "11b52f4d8400f6a7ee5cf089c3b3333da85e2c78dbc5af237b6891da260fd44f"
     },
     {
       "path": "src/popup.css",
-      "sha256": "2d4bb15009d6af218f72bff3d02f5674e9c960efe7219a226b5817772f83bc3a"
+      "sha256": "77cf72d12b4e175724ae257a86a7c731aa663ec7153c3ec6bdc911ace2c1d63c"
     },
     {
       "path": "src/popup.html",
-      "sha256": "9cbcda538a3ef84f8af4ab42b4d5dd3f57b7141908616420bf5f32186a82a097"
+      "sha256": "591ce82b5f2e340fa85081157a1f96ba18a9da0e26c88ace0f9848d8de38ac88"
     },
     {
       "path": "src/popup.js",
-      "sha256": "baa2491b7fe8aa0abd979ac68b620a2e6bb44ddd7e3cd1cffaae9c33dbbb8b41"
+      "sha256": "7c01ccda872f6505e66d8a04356633b8cc9be10be2ecf6c6ff49f837cc52a212"
     },
     {
       "path": "src/sandbox.html",
@@ -88,7 +88,7 @@
     },
     {
       "path": "src/shared.js",
-      "sha256": "15d4a45112dcded6dcc505b0a92a7413622ab75e1220133795a0a8d2c9c60e1a"
+      "sha256": "4d4291e654c804a8c31bcbb7bd3a7ec634c096d31d8d8df8d2dcf1d07c97c743"
     },
     {
       "path": "src/updater.js",

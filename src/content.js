@@ -239,7 +239,7 @@
     container.innerHTML = `
       <div class="cuc-card" role="complementary" aria-label="Claude usage meter">
         <div class="cuc-header">
-          <span class="cuc-title">Vistage · Claude Companion</span>
+          <span class="cuc-title">Claude Companion</span>
           <div class="cuc-controls">
             <button class="cuc-button" data-cuc-action="cycle" title="Switch between dollars/tokens" aria-label="Switch display between dollars, tokens, and both">$</button>
             <button class="cuc-button" data-cuc-action="options" title="Settings" aria-label="Open settings">⚙</button>
@@ -1046,8 +1046,10 @@
   }
 
   // Returns the most urgent plain-English warning across all native buckets,
-  // or null when everything is comfortably below the warning threshold.
-  function mostUrgentNativeWarning(native) {
+  // or null when everything is comfortably below the warning threshold. When
+  // the monthly-credit view is hidden, its bucket is excluded so a warning
+  // can't leak the number the user chose not to show.
+  function mostUrgentNativeWarning(native, { includeMonthly = true } = {}) {
     if (!native) return null;
     const candidates = [];
     for (const { prop, label } of NATIVE_BUCKETS) {
@@ -1057,7 +1059,7 @@
       }
     }
     const spend = native.monthlySpendLimit;
-    if (spend) candidates.push({ pct: spend.utilizationPct, label: "Monthly allowance", resetsAt: null });
+    if (spend && includeMonthly) candidates.push({ pct: spend.utilizationPct, label: "Monthly allowance", resetsAt: null });
 
     const worst = candidates.filter(c => c.pct >= 80).sort((a, b) => b.pct - a.pct)[0];
     if (!worst) return null;
@@ -1147,11 +1149,14 @@
       setBar(widgetRoot.querySelector(`[data-cuc='${key}-bar']`), bucket.utilizationPct);
     }
 
-    // Monthly usage-credit allowance.
+    // Monthly usage-credit allowance — individually hideable (personal-plan
+    // users may not want a monthly-credit view). When hidden, the row is
+    // suppressed and the monthly bucket is excluded from the warning line too.
     const spendLimit = nativeUsage.monthlySpendLimit;
-    if (!spendLimit) {
+    const showMonthly = settings.showMonthlyCredits !== false;
+    if (!showMonthly || !spendLimit) {
       if (enterpriseRow) enterpriseRow.hidden = true;
-      setNote(mostUrgentNativeWarning(nativeUsage));
+      setNote(mostUrgentNativeWarning(nativeUsage, { includeMonthly: showMonthly }));
       return;
     }
     if (enterpriseRow) enterpriseRow.hidden = false;
