@@ -43,11 +43,89 @@
     try {
       const stored = await chrome.storage.local.get(["cuc:settings"]);
       const custom = String(stored["cuc:settings"]?.updateBaseUrl || "").trim();
-      if (custom) return [custom.endsWith("/") ? custom : `${custom}/`];
+      // Only honor an https custom base — an http (or otherwise non-TLS) base
+      // would let a network attacker feed update files. Signature verification
+      // below is the real backstop, but this is cheap defense-in-depth.
+      if (custom && /^https:\/\//i.test(custom)) {
+        return [custom.endsWith("/") ? custom : `${custom}/`];
+      }
     } catch {
       // Fall through to defaults.
     }
     return DEFAULT_BASES;
+  }
+
+  // ---- Update authenticity (signed manifest) -------------------------------
+  //
+  // The per-file SHA-256 hashes prove integrity, but the hashes travel in the
+  // SAME manifest as the files — a compromised repo, CDN mirror (jsDelivr),
+  // or custom base URL could serve malicious code AND matching hashes. A
+  // signature the mirror can't forge closes that hole: because the manifest
+  // lists every file's hash, one valid signature over the manifest
+  // transitively authenticates every downloaded file.
+  //
+  // Base64 SPKI of the ECDSA P-256 public key whose private half signs
+  // update/manifest.json (kept only as the CUC_UPDATE_SIGNING_KEY GitHub
+  // Actions secret). EMPTY = signing not enabled yet: updates fall back to
+  // hash-only integrity, exactly as before. Paste your public key here to
+  // turn on enforcement — after that, any manifest without a valid signature
+  // is refused. Generate a keypair with tools/gen-signing-key.mjs; see README.
+  const UPDATE_PUBLIC_KEY_SPKI_B64 = "";
+
+  // Deterministic bytes that get signed/verified. MUST stay byte-for-byte in
+  // sync with canonicalUpdatePayload() in tools/build-update-manifest.mjs.
+  function canonicalUpdatePayload(manifest) {
+    const files = (manifest.files || [])
+      .map(file => `${file.path}\t${String(file.sha256).toLowerCase()}`)
+      .join("\n");
+    return `cuc-update-v1\nversion:${manifest.version}\n${files}\n`;
+  }
+
+  function base64ToBytes(b64) {
+    const binary = atob(String(b64 || ""));
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+    return bytes;
+  }
+
+  let cachedVerifyKey = null;
+  async function updateVerifyKey() {
+    if (!UPDATE_PUBLIC_KEY_SPKI_B64) return null;
+    if (cachedVerifyKey) return cachedVerifyKey;
+    cachedVerifyKey = await crypto.subtle.importKey(
+      "spki",
+      base64ToBytes(UPDATE_PUBLIC_KEY_SPKI_B64),
+      { name: "ECDSA", namedCurve: "P-256" },
+      false,
+      ["verify"]
+    );
+    return cachedVerifyKey;
+  }
+
+  // Returns true when the manifest is authentic (or when signing isn't
+  // enabled). Returns false only when a key IS configured and the signature
+  // is missing or doesn't verify — in which case the update is rejected.
+  async function updateSignatureIsValid(manifest) {
+    let key;
+    try {
+      key = await updateVerifyKey();
+    } catch {
+      return false; // a configured-but-unimportable key must fail closed
+    }
+    if (!key) return true; // signing not enabled; hash-only integrity
+    const signature = manifest?.signature;
+    if (typeof signature !== "string" || !signature) return false;
+    try {
+      const payload = new TextEncoder().encode(canonicalUpdatePayload(manifest));
+      return await crypto.subtle.verify(
+        { name: "ECDSA", hash: "SHA-256" },
+        key,
+        base64ToBytes(signature),
+        payload
+      );
+    } catch {
+      return false;
+    }
   }
 
   function currentVersion() {
@@ -93,6 +171,10 @@
         if (!response.ok) throw new Error(`manifest fetch failed: ${response.status}`);
         const manifest = await response.json();
         if (!validUpdateManifest(manifest)) throw new Error("unexpected update manifest shape");
+        // Reject an unauthentic manifest before it can drive a version check
+        // or a file download — this gate covers both checkForUpdate (no more
+        // spoofed "update available" nags) and applyUpdate (no malicious code).
+        if (!(await updateSignatureIsValid(manifest))) throw new Error("update signature invalid");
         return { manifest, base };
       } catch (error) {
         lastError = error;

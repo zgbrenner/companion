@@ -83,7 +83,7 @@
     },
     {
       "path": "src/updater.js",
-      "sha256": "9e0d171bd67165709ca63e2ebb55c95fe8d50a480911938ae253aeaef3e5d306"
+      "sha256": "03188f05ef314309da9631d6b83faabe6fbfc3d6a062be1bd21827e1d59a08cc"
     },
     {
       "path": "src/vendor/officeparser.browser.slim.iife.js",

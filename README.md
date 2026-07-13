@@ -89,6 +89,20 @@ How it works:
 
 To publish an update: bump `version` in `manifest.json`, merge to `main`, and the Action does the rest. (You can also run `node tools/build-update-manifest.mjs` locally and commit the result.)
 
+### Signing updates (strongly recommended)
+
+The self-updater writes downloaded code into the extension and reloads it, so the update channel is the most security-sensitive part of the tool. Per-file SHA-256 hashes protect against corruption, but the hashes ride in the same manifest as the files — a compromise of the repo, the jsDelivr mirror, or a custom `updateBaseUrl` could serve malicious code *and* matching hashes. To close that, the manifest can be **cryptographically signed** (ECDSA P-256), and the extension refuses any update whose signature doesn't verify. Because the manifest lists every file's hash, one signature authenticates the whole update — and changing any file invalidates it.
+
+Enable it once:
+
+1. `node tools/gen-signing-key.mjs` — prints a public and a private key.
+2. Paste the **public** key into `UPDATE_PUBLIC_KEY_SPKI_B64` in `src/updater.js` and commit. From then on, every client on that version enforces signatures.
+3. Store the **private** key as the GitHub Actions secret `CUC_UPDATE_SIGNING_KEY` (repo → Settings → Secrets and variables → Actions). Never commit it. The `publish-update-manifest` workflow signs every release with it.
+
+Until a public key is set, updates fall back to hash-only integrity (current behavior). After it's set, publish at least one signed release before older clients update, so the signing secret is in place when the workflow next runs. Lost private key → generate a new pair and ship a new public key.
+
+Only `https` custom update URLs are honored; an `http` base is ignored.
+
 Optional: to serve updates from Cloudflare Pages instead of GitHub raw/jsDelivr (e.g. if the repo goes private), connect the repo to a Cloudflare Pages project (no build step; output directory = repo root) and set `updateBaseUrl` in the extension settings (`cuc:settings.updateBaseUrl`) to the Pages URL.
 
 Caveat: an update that adds new manifest permissions may require a one-time manual reload (or in rare cases remove/re-add) at `chrome://extensions` — Chrome doesn't always apply permission changes from a self-reload. Ordinary code updates apply cleanly.
@@ -141,6 +155,12 @@ The defaults use public Anthropic API-equivalent model pricing in USD per millio
 - A replayable “what do these numbers mean?” first-run walkthrough.
 
 ## Changelog
+
+### 0.9.1 (security)
+
+- **Signed update manifests (opt-in, ECDSA P-256).** The self-updater can now verify a signature over the update manifest before applying anything, so a compromised repo/CDN/mirror can't push code that becomes the extension. Off until a public key is set in `src/updater.js` (see "Signing updates"); until then, hash-only integrity as before. Tamper/wrong-key rejection and the sign→verify round-trip are tested in real Chromium.
+- Custom `updateBaseUrl` is now restricted to `https`.
+- New tooling: `tools/gen-signing-key.mjs`; `build-update-manifest.mjs` signs when `CUC_UPDATE_SIGNING_KEY` is present; the publish workflow passes the secret through.
 
 ### 0.9.1
 
