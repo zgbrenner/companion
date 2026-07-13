@@ -66,16 +66,16 @@
 
 (() => {
   const CAVEMAN_INSTRUCTION = [
-    "For this entire conversation, including later turns: reply in the fewest words that fully answer.",
-    "No preamble, no restating my question, no filler, no closing offers or sign-offs.",
-    "Plain, grammatical, professional prose; compact lists or tables when clearer.",
-    "Never cut substance, accuracy, or necessary caveats — trim style only.",
-    "This applies to your responses, not to my messages."
+    "Maximum-brevity mode is ON for this entire conversation — every turn, no exceptions, even as it gets long.",
+    "Answer in the fewest words that fully and accurately resolve my request. Lead with the answer; cut all preamble, question-restatement, filler, hedging, praise, and closing offers or sign-offs.",
+    "Plain, grammatical, professional prose. Prefer tight lists or tables over paragraphs when they carry the same information in less space.",
+    "Brevity never overrides correctness: keep every fact, number, step, and caveat that matters — trim words, not substance.",
+    "This governs only your replies, never my messages."
   ].join(" ");
 
   // Re-pinned into every Nth outgoing message (long chats get compacted and
   // early instructions lose salience — see persistence caveat above).
-  const CAVEMAN_REMINDER = "(Reminder: maximum-brevity mode — fewest words that fully answer.)";
+  const CAVEMAN_REMINDER = "(Still in maximum-brevity mode: fewest words that fully and accurately resolve this — no preamble, filler, or sign-off.)";
   const CAVEMAN_REMINDER_EVERY_N_RESPONSES = 12;
 
   // ---- Prompt compression (rule-based, extractive-only) -------------------

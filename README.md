@@ -142,6 +142,13 @@ The defaults use public Anthropic API-equivalent model pricing in USD per millio
 
 ## Changelog
 
+### 0.9.1
+
+- Fixed Caveman send interception (prompts sent untrimmed) and the unusable drop zone (click-to-pick file instead of drag, which claude.ai's overlay ate).
+- **Firmer Caveman instruction** — more emphatic about persistence and leading with the answer, while still guarding substance/accuracy.
+- **New setting: "Show Caveman Mode in the widget"** — hide the whole feature (row, drop zone, send-interception) from the widget if you don't want it.
+- **Settings overhaul:** renamed to "Claude Companion" and removed the Vistage/internal-tool framing; reorganized into five sections (Display, Alerts, Claude connection, Data & privacy, Updates) with a responsive section navigator and active-section highlighting. Dependency-free shadcn-style components (cards with bordered headers, switches, a Dollars/Tokens/Both segmented control, badges, notices, disclosures, buttons, a separated destructive action) matching the widget's visual language in both light and dark. Settings auto-save with a persistent save-status bar; the model selector dropped its pricing jargon; the account details became a connection-status panel with cache age and masked-ID controls; a privacy summary spells out what is and isn't stored.
+
 ### 0.9.0
 
 - **Caveman Mode** (red switch at the bottom of the widget): one-time per-conversation terse-reply instruction (direct injection — Styles are deprecated and Skills trigger unreliably; see README), send-intercepting prompt trimmer with mandatory preview/approve (local, deletion-only, 28–43% measured savings on filler-heavy prompts), periodic brevity re-pin for long chats (claude.ai compacts old context), and a file→Markdown drop zone (officeparser slim in an offscreen document; DOCX/PPTX/CSV/PDF verified in real Chromium).

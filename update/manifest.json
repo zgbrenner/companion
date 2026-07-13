@@ -27,7 +27,7 @@
     },
     {
       "path": "src/caveman.js",
-      "sha256": "8a1776aa8e2b89a0c32ab49cb3a99e5662ffebed4f839a8847cceb0ebd1633ab"
+      "sha256": "cf51b3b26036c999547ef61d0929d4aa531195af0081f997b7a73bb5294dc867"
     },
     {
       "path": "src/content.css",
@@ -35,7 +35,7 @@
     },
     {
       "path": "src/content.js",
-      "sha256": "210c8e1e6ad9bfb28892c5e6c1157e81c17d01a6d37e1583345ff2e3452551d4"
+      "sha256": "92796e886621b68f9e8f84e948f85ae98d731b887a1af3c05ee787a5db4c3d8c"
     },
     {
       "path": "src/injected.js",
@@ -55,15 +55,15 @@
     },
     {
       "path": "src/options.css",
-      "sha256": "cc5f461ed153b0f8013822db02eeccd88fa0dada74e8c75523e800f9e4fa12bd"
+      "sha256": "25752625dd938992ed28081cbdfa9be8d0ae06a708a950c7c54a10e5e2456040"
     },
     {
       "path": "src/options.html",
-      "sha256": "094da31731f368ddab8478320eb3c833d01c5455c6849b0e52c51ee666922bbb"
+      "sha256": "60d70d4242bca9bf453ee14d5c4ac8692b855eef0aaf20ac8a0ba5d0b78a8119"
     },
     {
       "path": "src/options.js",
-      "sha256": "be1bff567524ae4f5c4f1182f38d589ef22e06fe812c16f4bb2f6a751a2b0897"
+      "sha256": "0e12433bb52f3750c6dea0cc18e50ab54fe6d93e6f378fae85d08ae36103d666"
     },
     {
       "path": "src/popup.css",
@@ -79,7 +79,7 @@
     },
     {
       "path": "src/shared.js",
-      "sha256": "e22d35610b8ea2c1e13e270c0cb04ea73cab494e2101f6c2852b53697c506594"
+      "sha256": "15d4a45112dcded6dcc505b0a92a7413622ab75e1220133795a0a8d2c9c60e1a"
     },
     {
       "path": "src/updater.js",

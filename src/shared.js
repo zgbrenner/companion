@@ -59,6 +59,10 @@
     showPlainEnglishTips: true,
     // Caveman Mode: terse-reply instruction + prompt trimming + file→Markdown.
     cavemanMode: false,
+    // Whether the Caveman Mode control appears in the widget at all. When
+    // false the row, drop zone, and send-interception are all suppressed —
+    // users who don't want the feature can hide it entirely from Settings.
+    showCavemanMode: true,
     showNativeLimits: true,
     desktopNotifications: true,
     // Optional custom base URL for self-updates (e.g. a Cloudflare Pages

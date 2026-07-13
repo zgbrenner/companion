@@ -277,7 +277,7 @@
 
           <div class="cuc-tip" data-cuc="tip" hidden></div>
 
-          <div class="cuc-caveman-row">
+          <div class="cuc-caveman-row" data-cuc="caveman-row">
             <span class="cuc-caveman-label" title="Caveman Mode saves your Claude quota: Claude answers ultra-brief, your prompts get trimmed (you approve a preview first), and dropped files convert to lean Markdown.">🪨 Caveman Mode — stretch your quota</span>
             <button class="cuc-switch" data-cuc-action="caveman-toggle" role="switch" aria-checked="false" aria-label="Toggle Caveman Mode"><span class="cuc-switch-knob"></span></button>
           </div>
@@ -474,7 +474,7 @@
   // Brand-new chats are handled by the send interceptor instead (the
   // instruction is prepended to the first message, avoiding a wasted turn).
   async function maybeInjectCavemanInstruction() {
-    if (!settings.cavemanMode || !CAVEMAN) return;
+    if (settings.showCavemanMode === false || !settings.cavemanMode || !CAVEMAN) return;
     const conversationId = CUC.currentConversationId();
     if (conversationId === "home-or-new-chat") return;
     if (!cavemanNeedsInstruction(conversationId)) return;
@@ -634,7 +634,7 @@
   // document level (capture phase runs before the page's own handlers),
   // opens the preview, and lets the user decide. Nothing is ever auto-sent.
   function interceptSendIfNeeded(event) {
-    if (!settings.cavemanMode || !CAVEMAN || cavemanModalOpen) return;
+    if (settings.showCavemanMode === false || !settings.cavemanMode || !CAVEMAN || cavemanModalOpen) return;
     if (skipNextSendIntercept) {
       skipNextSendIntercept = false;
       return;
@@ -998,14 +998,18 @@
       ? `${model?.label || "Model"} · ${effort} effort`
       : (model?.label || "Model");
 
-    // Caveman Mode switch + drop zone visibility.
+    // Caveman Mode row + switch + drop zone visibility. The whole row hides
+    // when the user has turned the feature off in Settings (showCavemanMode).
+    const cavemanRow = widgetRoot.querySelector("[data-cuc='caveman-row']");
+    const cavemanVisible = settings.showCavemanMode !== false;
+    if (cavemanRow) cavemanRow.hidden = !cavemanVisible;
     const cavemanSwitch = widgetRoot.querySelector("[data-cuc-action='caveman-toggle']");
     if (cavemanSwitch) {
       cavemanSwitch.classList.toggle("on", Boolean(settings.cavemanMode));
       cavemanSwitch.setAttribute("aria-checked", String(Boolean(settings.cavemanMode)));
     }
     const dropzone = widgetRoot.querySelector("[data-cuc='dropzone']");
-    if (dropzone) dropzone.hidden = !settings.cavemanMode;
+    if (dropzone) dropzone.hidden = !(cavemanVisible && settings.cavemanMode);
 
     renderNativeLimits();
     renderTip();
