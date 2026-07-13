@@ -1,5 +1,5 @@
 {
-  "version": "0.9.0",
+  "version": "0.9.1",
   "files": [
     {
       "path": "icons/icon128.png",
@@ -19,7 +19,7 @@
     },
     {
       "path": "manifest.json",
-      "sha256": "ca174575a644965647d60e9799ae30acf4cd223a95255e0b8aee9caa462a96a6"
+      "sha256": "94c934a56b2f637c72f10c2c3c81baf893e30f2c65356840e2e89671bc9aeaf0"
     },
     {
       "path": "src/background.js",
@@ -35,7 +35,7 @@
     },
     {
       "path": "src/content.js",
-      "sha256": "f3aaf64fa84cf70c3b2a023af748d27b4a45e8a8a50bc7742781b11e4b80ca45"
+      "sha256": "210c8e1e6ad9bfb28892c5e6c1157e81c17d01a6d37e1583345ff2e3452551d4"
     },
     {
       "path": "src/injected.js",
@@ -95,7 +95,7 @@
     },
     {
       "path": "src/widget.css",
-      "sha256": "922350facca9dc0d5a4f83520e40db241c1b84241d718228e03222e2b9a32a3d"
+      "sha256": "96d1e58ef3736cb3b1c2300323c2e2a540fec11b8e59b5efc577aa785346ff2e"
     }
   ]
 }

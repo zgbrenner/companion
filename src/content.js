@@ -281,8 +281,9 @@
             <span class="cuc-caveman-label" title="Caveman Mode saves your Claude quota: Claude answers ultra-brief, your prompts get trimmed (you approve a preview first), and dropped files convert to lean Markdown.">🪨 Caveman Mode — stretch your quota</span>
             <button class="cuc-switch" data-cuc-action="caveman-toggle" role="switch" aria-checked="false" aria-label="Toggle Caveman Mode"><span class="cuc-switch-knob"></span></button>
           </div>
-          <div class="cuc-dropzone" data-cuc="dropzone" hidden>
-            <span data-cuc="dropzone-label">Drop a file here → Markdown (fewer tokens than raw files)</span>
+          <div class="cuc-dropzone" data-cuc="dropzone" role="button" tabindex="0" hidden>
+            <span data-cuc="dropzone-label">Click to pick a file → Markdown (fewer tokens than raw files)</span>
+            <input type="file" data-cuc="dropzone-input" accept=".pdf,.docx,.pptx,.xlsx,.odt,.odp,.ods,.rtf,.csv,.html,.htm,.md,.txt" hidden />
           </div>
 
           <div class="cuc-footer">
@@ -351,15 +352,29 @@
   // per conversation, intercepting sends for the trim-preview, and the
   // file → Markdown drop zone.
 
-  function findComposerEditable() {
+  const COMPOSER_EDITABLE_SELECTOR = "div[contenteditable='true'], textarea, [role='textbox']";
+
+  // preferActive: when the user is mid-send, the element they typed into is
+  // the focused one — read THAT, not whatever the anchor search finds first.
+  // The old search-only path could return a different (empty) editable, so
+  // getComposerText() came back "" and the send interceptor let the message
+  // through untrimmed. This is the primary fix for "trimming never happens".
+  function findComposerEditable(preferActive = false) {
+    if (preferActive) {
+      const active = document.activeElement;
+      const activeEditable = active?.matches?.(COMPOSER_EDITABLE_SELECTOR)
+        ? active
+        : (active?.isContentEditable ? active : active?.closest?.(COMPOSER_EDITABLE_SELECTOR));
+      if (activeEditable) return activeEditable;
+    }
     const anchor = findComposerAnchor();
     const scope = anchor?.closest?.("form, [data-testid*='composer']") || anchor || document.body;
-    return scope?.querySelector?.("div[contenteditable='true'], textarea, [role='textbox']")
+    return scope?.querySelector?.(COMPOSER_EDITABLE_SELECTOR)
       || document.querySelector("div[contenteditable='true'], textarea");
   }
 
   function getComposerText() {
-    const el = findComposerEditable();
+    const el = findComposerEditable(true);
     return String(el?.value ?? el?.innerText ?? "").trim();
   }
 
@@ -632,22 +647,32 @@
   }
 
   function observeCavemanSends() {
-    document.addEventListener("keydown", event => {
+    // Listen on window in the capture phase — the earliest point in event
+    // dispatch, so we run before claude.ai's own Enter/submit handlers
+    // (ProseMirror keymap, React root) and can block the send to show the
+    // preview. document-level capture worked in most cases, but window is
+    // strictly earlier and avoids losing the race to a page window-listener.
+    window.addEventListener("keydown", event => {
       // Enter that confirms an IME composition is not a send.
       if (event.isComposing || event.keyCode === 229) return;
       const isEnterSend = event.key === "Enter" && !event.shiftKey && !event.metaKey && !event.ctrlKey && !event.altKey;
       if (!isEnterSend) return;
-      if (!isInsideComposer(document.activeElement)) return;
+      // Accept focus OR the event target being inside the composer — some
+      // editors momentarily move focus during key handling.
+      if (!isInsideComposer(document.activeElement) && !isInsideComposer(event.target)) return;
       interceptSendIfNeeded(event);
     }, true);
 
-    document.addEventListener("click", event => {
+    window.addEventListener("click", event => {
       const button = event.target?.closest?.("button, [role='button']");
       if (!button) return;
       const label = `${button.getAttribute("aria-label") || ""} ${button.textContent || ""}`.toLowerCase();
-      if (!/send/.test(label)) return;
+      // Icon-only send buttons expose their purpose via aria-label ("Send
+      // message"); match that or a submit button sitting in the composer.
+      const looksLikeSend = /\bsend\b/.test(label) || button.matches("button[type='submit']");
+      if (!looksLikeSend) return;
       const anchor = findComposerAnchor();
-      const nearComposer = Boolean(button.closest("form, [data-testid*='composer']"))
+      const nearComposer = Boolean(button.closest("form, [data-testid*='composer'], [data-testid*='chat-input']"))
         || Boolean(anchor && (anchor.contains(button) || anchor.parentElement?.contains(button)));
       if (!nearComposer) return;
       interceptSendIfNeeded(event);
@@ -656,7 +681,7 @@
 
   // ---- File → Markdown drop zone --------------------------------------------
 
-  const DROPZONE_DEFAULT_LABEL = "Drop a file here → Markdown (fewer tokens than raw files)";
+  const DROPZONE_DEFAULT_LABEL = "Click to pick a file → Markdown (fewer tokens than raw files)";
   const CONVERTIBLE_EXTENSIONS = new Set(["pdf", "docx", "pptx", "xlsx", "odt", "odp", "ods", "rtf", "csv", "html", "htm", "md", "txt"]);
   let dropzoneResetTimer = null;
 
@@ -703,23 +728,56 @@
       }
       const text = `Converted from ${file.name}:\n\n${String(markdown).trim()}`;
       const approxTokens = CUC.formatTokens(Math.round(text.length / 3.8));
+      // Prefer dropping the Markdown straight into the chat box — that's the
+      // most direct outcome. Clipboard is the fallback (and can fail anyway
+      // if the conversion outran the click's transient activation).
+      if (setComposerText(text)) {
+        setDropzoneLabel(`✓ ${file.name} → Markdown added to the chat box (≈${approxTokens} tokens).`, true);
+        return;
+      }
       try {
         await navigator.clipboard.writeText(text);
-        setDropzoneLabel(`✓ ${file.name} → Markdown copied (≈${approxTokens} tokens). Paste it into the chat (Ctrl+V).`, true);
+        setDropzoneLabel(`✓ ${file.name} → Markdown copied (≈${approxTokens} tokens). Paste it with Ctrl+V.`, true);
       } catch {
-        if (setComposerText(text)) setDropzoneLabel(`✓ ${file.name} → Markdown inserted into the chat box (≈${approxTokens} tokens).`, true);
-        else setDropzoneLabel("Converted, but couldn't reach the clipboard or chat box — try again.", true);
+        setDropzoneLabel("Converted, but couldn't reach the chat box or clipboard — try again.", true);
       }
     } catch (error) {
       setDropzoneLabel(`Couldn't convert ${file.name}: ${String(error?.message || error).slice(0, 120)}`, true);
     }
   }
 
+  // Primary interaction is CLICK-to-pick: claude.ai shows a full-viewport
+  // drag-and-drop overlay the moment a file is dragged over the page, so a
+  // real drop never reaches this zone. A file picker sidesteps that overlay
+  // entirely. Drag-and-drop is kept as a best-effort bonus for the rare case
+  // the drop does land here.
   function wireDropzone(container) {
     const dropzone = container.querySelector("[data-cuc='dropzone']");
-    if (!dropzone) return;
+    const input = container.querySelector("[data-cuc='dropzone-input']");
+    if (!dropzone || !input) return;
+
+    const openPicker = () => input.click();
+    dropzone.addEventListener("click", event => {
+      // Don't recurse when the click is the <input> itself bubbling up.
+      if (event.target === input) return;
+      openPicker();
+    });
+    dropzone.addEventListener("keydown", event => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        openPicker();
+      }
+    });
+    input.addEventListener("change", () => {
+      const file = input.files?.[0];
+      // Reset so picking the same file twice still fires change.
+      input.value = "";
+      if (file) convertDroppedFile(file);
+    });
+
     dropzone.addEventListener("dragover", event => {
       event.preventDefault();
+      event.stopPropagation();
       dropzone.classList.add("drag");
     });
     dropzone.addEventListener("dragleave", () => dropzone.classList.remove("drag"));
