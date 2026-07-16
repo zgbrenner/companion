@@ -41,6 +41,7 @@ WHAT YOU SEE
 ▪ Pace projections, like "at this pace you'll hit your limit around 3:40 PM," so you can plan ahead instead of getting cut off.
 ▪ Early warnings — a toolbar badge plus an optional desktop notification at 85% and 95% of any limit.
 ▪ Token counts alongside the dollar figures, for anyone who thinks in tokens too.
+▪ Only the meters you want — every metric is individually toggleable in Settings, so the widget shows exactly what matters to you (works for flat plans and enterprise usage-credit accounts alike).
 ▪ A native look that matches claude.ai's own light and dark theme.
 
 CAVEMAN MODE — stretch your quota when it's running low

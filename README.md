@@ -59,6 +59,7 @@ Companion reads the **same numbers Claude's own settings page uses** and pins th
 | **Claude's real limits** | Session (5-hour), weekly, Opus, and monthly-credit bars with reset countdowns, exactly as Claude reports them. |
 | **Before-the-wall alerts** | Toolbar badge + optional desktop nudge when any limit runs hot, plus "at this pace you'll hit your limit around 3:40 PM". |
 | **Caveman Mode** | Stretch your quota when it's running low — ultra-brief replies, local prompt-trimming, and file→Markdown. |
+| **Only what you want** | Every meter is individually toggleable — session spend, each limit, monthly allowance, Caveman Mode — so the widget shows exactly the metrics you care about. |
 | **Looks native** | Docks under the chat box, matches its width, and follows Claude's own light/dark theme. |
 | **Private by design** | Your prompts and replies are never stored or sent anywhere. Read-only. No telemetry. |
 

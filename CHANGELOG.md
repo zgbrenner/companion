@@ -7,6 +7,12 @@ All notable changes to Companion. The most recent release is at the top.
 - **Chrome Web Store release preparation:** removed the built-in self-update mechanism (updates now ship through the Chrome Web Store), dropped the now-unneeded `alarms` permission and GitHub/CDN host permissions and CSP entries — the extension now connects only to claude.ai.
 - Added store submission documents under `store/` and a packaging script `tools/package-webstore.sh`.
 - **Renamed to "Companion"** — the product no longer uses "Claude" in its name, avoiding any trademark concern; all user-facing copy updated.
+- **Per-metric visibility toggles.** Every meter is now individually hideable from Settings → Widget metrics: session spend, session limit (5-hour), weekly limit, weekly Opus limit, and monthly allowance — applied consistently across the widget, the popup, the toolbar badge, and desktop notifications (a hidden metric never resurfaces through a more intrusive channel). The old all-or-nothing "Show Claude's real limits" switch migrates automatically.
+- **Fixed the Caveman file converter**, which failed for every format: the offscreen document fetched the file's `data:` URL, which the extension CSP blocks. Bytes now decode directly (with a native fast path). Also: `.htm` files parse as HTML, sheet frontmatter becomes a real heading instead of YAML noise pasted into the chat, empty sheets error cleanly, and a hung sandbox can no longer stall conversions forever. Verified end-to-end in Chromium for DOCX/PPTX/XLSX/CSV/PDF/HTML.
+- **Firmer Caveman instruction** — now also blocks alternatives-enumeration, re-explaining covered ground, and emoji/decorative formatting.
+- **Typography refresh.** Bundled Space Grotesk (22 KB, OFL) carries titles, section labels, and metric values — with tabular numerals so numbers don't jiggle as they tick; body text stays on the system stack.
+- **Accessibility pass.** Progress bars announce human-readable values (aria-valuetext), the display-cycle button describes its current action, visible focus outlines everywhere in both themes, `prefers-reduced-motion` support, WCAG AA contrast fixes, and consistent polite live regions for status messages.
+- Removed the widget's model footer — the detected model still powers token estimates, it just no longer takes up a row.
 
 ### 0.9.1 (security)
 
