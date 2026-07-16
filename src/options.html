@@ -27,7 +27,6 @@
       <a href="#alerts" data-nav="alerts">Alerts</a>
       <a href="#connection" data-nav="connection">Claude connection</a>
       <a href="#privacy" data-nav="privacy">Data &amp; privacy</a>
-      <a href="#updates" data-nav="updates">Updates</a>
     </nav>
 
     <main class="content">
@@ -188,7 +187,7 @@
           <div class="danger">
             <div class="danger-head">
               <div class="row-label">Clear all local data</div>
-              <div class="row-desc">Removes settings, spend history, caches, learned endpoints, and the connected update folder. Your Claude account is not touched.</div>
+              <div class="row-desc">Removes settings, spend history, and caches. Your Claude account is not touched.</div>
             </div>
             <div class="row-actions">
               <button type="button" class="btn btn-danger" id="clear-all-data">Clear all local data</button>
@@ -197,44 +196,11 @@
           </div>
         </div>
       </section>
-
-      <!-- ============ Updates ============ -->
-      <section class="card" id="updates">
-        <div class="card-header">
-          <h2>Updates</h2>
-          <p>Installs straight from GitHub — no reinstall, settings kept.</p>
-        </div>
-        <div class="card-body">
-          <div class="panel">
-            <div class="panel-head">
-              <span class="panel-title" id="update-status">Checking for updates…</span>
-              <span class="badge badge-muted" id="update-badge" hidden></span>
-            </div>
-            <div class="panel-foot">
-              <button type="button" class="btn btn-primary" id="apply-update" hidden>Install update</button>
-              <button type="button" class="btn btn-secondary btn-sm" id="check-updates">Check now</button>
-              <span class="mini-status" id="update-detail" aria-live="polite"></span>
-            </div>
-          </div>
-
-          <details class="disclosure">
-            <summary>One-time setup for one-click updates</summary>
-            <div class="disclosure-body">
-              <p>To let updates install with a single click, connect the extension's folder once — pick the folder you chose at <code>chrome://extensions → Load unpacked</code>. After that the extension can refresh its own files.</p>
-              <div class="row-actions">
-                <button type="button" class="btn btn-secondary btn-sm" id="setup-folder">Connect extension folder</button>
-                <button type="button" class="btn btn-ghost btn-sm" id="open-github">Open GitHub</button>
-              </div>
-            </div>
-          </details>
-        </div>
-      </section>
     </main>
   </div>
 
   <script src="shared.js"></script>
   <script src="native-usage.js"></script>
-  <script src="updater.js"></script>
   <script src="options.js"></script>
 </body>
 </html>

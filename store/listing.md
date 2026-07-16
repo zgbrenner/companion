@@ -82,4 +82,4 @@ English (United States) — en
 
 ## Store icon / screenshots
 
-Reference `store/screenshots/` for the converted PNGs (see `store/submission-checklist.md` for size requirements). Not created by this pass — source images live under `docs/images/` and need re-exporting to the exact CWS pixel dimensions.
+Upload the five 1280×800 PNGs in `store/screenshots/` (converted from the source images in `docs/images/`) and the promo tile at `store/promo-tile-440x280.png`. See `store/submission-checklist.md` for the full asset requirements.

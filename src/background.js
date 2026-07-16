@@ -1,8 +1,6 @@
 import "./shared.js";
-import "./updater.js";
 
 const CUC = globalThis.ClaudeUsageCompanion;
-const UPDATER = globalThis.ClaudeUsageCompanionUpdater;
 
 const SPEND_SESSION_KEY = "cuc:spend-session";
 const SPEND_DAYS_KEY = "cuc:spend-days";
@@ -224,24 +222,12 @@ async function maybeNotifyThresholds(buckets) {
 }
 
 chrome.runtime.onInstalled.addListener(async () => {
-  UPDATER?.scheduleUpdateChecks();
   const existing = await chrome.storage.local.get(["cuc:settings"]);
   if (!existing["cuc:settings"] && CUC?.DEFAULT_SETTINGS) {
     await chrome.storage.local.set({ "cuc:settings": CUC.DEFAULT_SETTINGS });
   }
   // v0.8.0 dropped the token-estimate event store; clear the orphaned blob.
   chrome.storage.local.remove(["cuc:usage"]).catch(() => {});
-});
-
-// Periodic GitHub update check. The alarm survives service-worker teardown;
-// onStartup re-arms it after a browser restart just in case.
-chrome.runtime.onStartup.addListener(() => UPDATER?.scheduleUpdateChecks());
-chrome.alarms?.onAlarm?.addListener(alarm => {
-  if (alarm?.name === UPDATER?.ALARM_NAME) {
-    UPDATER.checkForUpdate().catch(() => {
-      // Offline or GitHub unreachable — the next alarm retries.
-    });
-  }
 });
 
 // Treat every incoming message as untrusted, even when it appears to come from

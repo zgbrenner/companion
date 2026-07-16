@@ -19,9 +19,6 @@
   // ephemeral store; feeds the "at this pace…" projection.
   let paceSamples = [];
   let lastUsageSnapshotRefreshAt = 0;
-  // Newest version published on GitHub, recorded by the background's update
-  // checker; drives the "Update ready" banner at the top of the widget.
-  let updateAvailableVersion = null;
   // Real-spend state, written by the background single-writer from the
   // samples this (and every other) tab reports:
   //   spendSession — {baselineUsd, lastUsd, monthKey, startedAt} in
@@ -99,9 +96,8 @@
   }
 
   async function loadState() {
-    const stored = await chrome.storage.local.get(["cuc:settings", "cuc:update-available", "cuc:spend-days", "cuc:caveman-injected"]);
+    const stored = await chrome.storage.local.get(["cuc:settings", "cuc:spend-days", "cuc:caveman-injected"]);
     settings = { ...CUC.DEFAULT_SETTINGS, ...(stored["cuc:settings"] || {}) };
-    updateAvailableVersion = stored["cuc:update-available"]?.latestVersion || null;
     spendDays = stored["cuc:spend-days"] || null;
     cavemanInjectedMap = stored["cuc:caveman-injected"] || {};
     const ephemeral = await CUC.ephemeralGet(["cuc:spend-session", "cuc:spend-breakdown"]);
@@ -246,7 +242,6 @@
             <button class="cuc-button" data-cuc-action="hide" title="Hide" aria-label="Hide usage widget">✕</button>
           </div>
         </div>
-        <button class="cuc-update" data-cuc="update-banner" data-cuc-action="update" hidden></button>
         <div class="cuc-body" data-cuc="body">
           <div class="cuc-meter">
             <div class="cuc-meter-label">
@@ -312,9 +307,7 @@
         await chrome.storage.local.set({ "cuc:settings": settings });
         renderWidget();
       }
-      if (action === "options" || action === "update") {
-        // The update banner routes to the options page too — that's where the
-        // one-click installer lives.
+      if (action === "options") {
         chrome.runtime.sendMessage({ type: "cuc:open-options" });
       }
       if (action === "cycle") {
@@ -957,17 +950,6 @@
     const cycleButton = widgetRoot.querySelector("[data-cuc-action='cycle']");
     if (cycleButton) cycleButton.textContent = DISPLAY_MODE_GLYPHS[settings.displayMode] || "$";
 
-    // Update banner: shown while GitHub has a newer version than the one
-    // running. The inequality check auto-hides it once the update applies,
-    // even before the background clears the stored flag.
-    const updateBanner = widgetRoot.querySelector("[data-cuc='update-banner']");
-    if (updateBanner) {
-      const runningVersion = chrome.runtime.getManifest().version;
-      const showBanner = Boolean(updateAvailableVersion) && updateAvailableVersion !== runningVersion;
-      updateBanner.hidden = !showBanner;
-      if (showBanner) updateBanner.textContent = `Update v${updateAvailableVersion} is ready — click to install`;
-    }
-
     // "Spent this session" — Claude's own counter, sampled at session start
     // and on every poll/response since.
     const deltaUsd = CUC.sessionSpendDelta(spendSession);
@@ -1554,10 +1536,6 @@
     // isn't reachable yet — cover them here too.
     if (changes["cuc:spend-session"]) {
       spendSession = changes["cuc:spend-session"].newValue || null;
-      renderWidget();
-    }
-    if ("cuc:update-available" in changes) {
-      updateAvailableVersion = changes["cuc:update-available"].newValue?.latestVersion || null;
       renderWidget();
     }
     if (changes["cuc:caveman-injected"]) {

@@ -68,11 +68,7 @@
     // allowance" row in the widget and the "This month" figure in the popup).
     // Personal-plan users may not want a monthly-credit view at all.
     showMonthlyCredits: true,
-    desktopNotifications: true,
-    // Optional custom base URL for self-updates (e.g. a Cloudflare Pages
-    // deployment of this repo). Blank = raw.githubusercontent.com with a
-    // jsDelivr CDN fallback. See src/updater.js.
-    updateBaseUrl: ""
+    desktopNotifications: true
   };
 
   // ---- Real-spend accounting -----------------------------------------------

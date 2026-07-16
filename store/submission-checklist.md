@@ -17,7 +17,7 @@ Step-by-step for taking this extension from repo to a published CWS listing.
   ```
   tools/package-webstore.sh
   ```
-  This should produce `dist/claude-companion-1.0.0.zip`. (If `tools/package-webstore.sh` doesn't exist yet, it needs to be added — it should zip the extension root, excluding `store/`, `docs/`, `.git/`, `tools/`, `update/`, and any dev-only files, so the zip contains exactly `manifest.json`, `src/`, `icons/`.)
+  This produces `dist/claude-companion-1.0.0.zip`, containing exactly `manifest.json`, `src/`, and `icons/` at the zip root. The script refuses to package a manifest that still references the removed self-update subsystem.
 - [ ] Sanity-check the zip: unzip it to a scratch folder and `chrome://extensions` → Load unpacked from there, confirm it loads with no console errors and no references to the removed update mechanism.
 
 ## 3. Screenshots
@@ -31,7 +31,7 @@ Step-by-step for taking this extension from repo to a published CWS listing.
   4. Caveman Mode toggle / prompt-trim preview.
   5. Settings page.
 - [ ] Source images exist at `docs/images/*.png` (widget, popup, settings) — re-export/crop these to the exact store dimensions rather than reusing the README's arbitrary-width versions.
-- [ ] Save the converted, correctly-sized PNGs to `store/screenshots/` (not created by this pass — create this folder and populate it before uploading).
+- [ ] Upload the five 1280×800 PNGs already in `store/screenshots/` (widget, popup, and settings in light theme; widget and popup in dark theme).
 
 ## 4. Promotional tile (optional but recommended)
 
