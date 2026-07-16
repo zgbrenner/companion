@@ -1,4 +1,4 @@
-# Chrome Web Store Submission Checklist — Claude Companion v1.0.0
+# Chrome Web Store Submission Checklist — Companion v1.0.0
 
 Step-by-step for taking this extension from repo to a published CWS listing.
 
@@ -17,7 +17,7 @@ Step-by-step for taking this extension from repo to a published CWS listing.
   ```
   tools/package-webstore.sh
   ```
-  This produces `dist/claude-companion-1.0.0.zip`, containing exactly `manifest.json`, `src/`, and `icons/` at the zip root. The script refuses to package a manifest that still references the removed self-update subsystem.
+  This produces `dist/companion-1.0.0.zip`, containing exactly `manifest.json`, `src/`, and `icons/` at the zip root. The script refuses to package a manifest that still references the removed self-update subsystem.
 - [ ] Sanity-check the zip: unzip it to a scratch folder and `chrome://extensions` → Load unpacked from there, confirm it loads with no console errors and no references to the removed update mechanism.
 
 ## 3. Screenshots
@@ -56,12 +56,13 @@ Step-by-step for taking this extension from repo to a published CWS listing.
 
 ## 7. Trademark / naming risk
 
-- [ ] **Risk:** the extension name "Claude Companion" and the listing copy reference "Claude" throughout. CWS review may flag this under its **impersonation / trademark policy**, since "Claude" is a third-party trademark (Anthropic, PBC) and the name could be read as implying affiliation.
-- [ ] **Mitigations already in place:**
-  - Explicit non-affiliation disclaimer at the end of the detailed description ("Claude Companion is an independent, unofficial project... not affiliated with, endorsed by, or sponsored by Anthropic. 'Claude' is a trademark of Anthropic, PBC.").
+- [x] **Resolved proactively:** the extension's original name paired "Claude" with "Companion"; it was renamed to just **"Companion"** before submission specifically to avoid using Anthropic's "Claude" mark in the product name, heading off a CWS **impersonation / trademark policy** flag rather than waiting for one.
+- [ ] **Residual risk is low but not zero:** the listing copy (short/detailed description, privacy policy) still references "Claude.ai" descriptively, since the extension needs to be findable and its purpose needs to be clear. This is standard nominative fair use — identifying the compatible product, not branding the extension with the mark — but reviewers doing a fast pass could still flag it.
+- [ ] **Mitigations in place:**
+  - Explicit non-affiliation disclaimer at the end of the detailed description ("Companion is an independent, unofficial project... not affiliated with, endorsed by, or sponsored by Anthropic. 'Claude' is a trademark of Anthropic, PBC.") — still required and unchanged by the rename.
   - Same disclaimer duplicated in the privacy policy header.
   - No use of Anthropic/Claude logos or brand assets — icon is original.
-- [ ] **Fallback if flagged:** rename to **"Companion for Claude"** (listing copy in `store/listing.md` already calls this out) — the "X for Y" pattern combined with the disclaimer is the standard accepted mitigation for third-party companion tools. Do not pre-emptively rename; only do so if review issues a policy rejection citing the name.
+- [ ] If review still flags the listing, trim "Claude.ai" mentions to the minimum needed for clarity (e.g. keep it in the short description and the non-affiliation line, drop repeated uses elsewhere) rather than renaming again.
 
 ## 8. Trader / non-trader declaration (EU DSA)
 

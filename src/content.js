@@ -235,7 +235,7 @@
     container.innerHTML = `
       <div class="cuc-card" role="complementary" aria-label="Claude usage meter">
         <div class="cuc-header">
-          <span class="cuc-title">Claude Companion</span>
+          <span class="cuc-title">Companion</span>
           <div class="cuc-controls">
             <button class="cuc-button" data-cuc-action="cycle" title="Switch between dollars/tokens" aria-label="Switch display between dollars, tokens, and both">$</button>
             <button class="cuc-button" data-cuc-action="options" title="Settings" aria-label="Open settings">⚙</button>

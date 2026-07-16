@@ -16,7 +16,7 @@
 
   const EVENT_NAME = "cuc:network-event";
   const USAGE_EVENT_NAME = "cuc:usage-snapshot";
-  const DEBUG_PREFIX = "[Claude Companion]";
+  const DEBUG_PREFIX = "[Companion]";
 
   // Handshake token minted by the ISOLATED-world content script and offered
   // via a "cuc:token-offer" DOM event. Every event we emit carries it, and

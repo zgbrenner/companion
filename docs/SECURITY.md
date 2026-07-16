@@ -1,6 +1,6 @@
 # Security & Privacy Documentation
 
-This document describes the security architecture, data handling, permissions, network behavior, threat model, and audit steps for **Claude Companion**, a Chromium (Chrome/Edge) browser extension (Manifest V3). It is written for IT administrators and information-security reviewers evaluating the extension for use.
+This document describes the security architecture, data handling, permissions, network behavior, threat model, and audit steps for **Companion**, an unofficial usage meter for Claude.ai distributed as a Chromium (Chrome/Edge) browser extension (Manifest V3). It is written for IT administrators and information-security reviewers evaluating the extension for use.
 
 - **Type:** Manifest V3 browser extension, distributed via Chrome Web Store (updates handled by the browser).
 - **Source:** all first-party code ships **unminified and human-readable**. The only compiled/minified artifacts are two vendored third-party files (see [§8](#8-third-party-dependencies)).

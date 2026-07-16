@@ -1,11 +1,12 @@
 # Changelog
 
-All notable changes to Claude Companion. The most recent release is at the top.
+All notable changes to Companion. The most recent release is at the top.
 
 ### 1.0.0 (Chrome Web Store)
 
 - **Chrome Web Store release preparation:** removed the built-in self-update mechanism (updates now ship through the Chrome Web Store), dropped the now-unneeded `alarms` permission and GitHub/CDN host permissions and CSP entries — the extension now connects only to claude.ai.
 - Added store submission documents under `store/` and a packaging script `tools/package-webstore.sh`.
+- **Renamed to "Companion"** — the product no longer uses "Claude" in its name, avoiding any trademark concern; all user-facing copy updated.
 
 ### 0.9.1 (security)
 

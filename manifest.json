@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Claude Companion",
+  "name": "Companion",
   "version": "1.0.0",
   "minimum_chrome_version": "111",
   "description": "Shows your real Claude.ai usage in dollars, tokens, or both, pinned under the chat box while you work.",
@@ -74,7 +74,7 @@
     "128": "icons/icon128.png"
   },
   "action": {
-    "default_title": "Claude Companion",
+    "default_title": "Companion",
     "default_icon": {
       "16": "icons/icon16.png",
       "32": "icons/icon32.png",

@@ -1,8 +1,8 @@
 <div align="center">
 
-<h1>Claude Companion</h1>
+<h1>Companion</h1>
 
-<h3>Know exactly how much Claude you're using — in <em>real dollars</em> — right under the chat box.</h3>
+<h3>An unofficial usage meter for Claude.ai — know exactly how much you're using, in <em>real dollars</em>, right under the chat box.</h3>
 
 <p>No token-counting guesswork. No spreadsheets. No surprises when you hit a limit.</p>
 
@@ -24,7 +24,7 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/widget-dark.png">
-  <img alt="The Claude Companion widget docked under the Claude.ai chat box, showing real session spend and Claude's own limits" src="docs/images/widget.png" width="760">
+  <img alt="The Companion widget docked under the Claude.ai chat box, showing real session spend and Claude's own limits" src="docs/images/widget.png" width="760">
 </picture>
 
 <br/>
@@ -43,7 +43,7 @@ Claude.ai tells you *almost* nothing about your usage until you slam into a limi
 
 ## The Fix
 
-Claude Companion reads the **same numbers Claude's own settings page uses** and pins them under the chat box while you work:
+Companion reads the **same numbers Claude's own settings page uses** and pins them under the chat box while you work:
 
 - **Real spend**, to the cent — because it comes from Claude, not a guess.
 - **Claude's actual limits** — 5-hour session, weekly, Opus, and monthly credits, each with a live reset countdown.
@@ -121,7 +121,7 @@ Built to survive an IT/infosec review — the full write-up is in **[docs/SECURI
 
 ## ⚔️ vs. token-counting extensions
 
-| | Token counters | **Claude Companion** |
+| | Token counters | **Companion** |
 |---|:---:|:---:|
 | Dollar amounts | 🤷 estimated from scraped text | ✅ **real, from Claude's counter** |
 | Claude's actual limits | ❌ | ✅ session / weekly / Opus / monthly |

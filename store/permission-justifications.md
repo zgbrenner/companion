@@ -1,13 +1,13 @@
 # Chrome Web Store — Privacy Practices Tab
 
-Paste-ready answers for the "Privacy practices" tab of the CWS Developer Dashboard listing for **Claude Companion**.
+Paste-ready answers for the "Privacy practices" tab of the CWS Developer Dashboard listing for **Companion**.
 
 ---
 
 ## Single purpose description
 
 ```
-Claude Companion shows the signed-in user their own Claude.ai usage — spend in dollars, token
+Companion shows the signed-in user their own Claude.ai usage — spend in dollars, token
 estimates, and Claude's own rolling usage limits (session, weekly, Opus, and monthly credits) —
 in a widget under the claude.ai chat box and in a toolbar popup, with optional alerts as limits
 are approached. All functionality serves this single purpose of surfacing the user's existing

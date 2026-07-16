@@ -1,8 +1,8 @@
-# Privacy Policy — Claude Companion
+# Privacy Policy — Companion
 
 **Last updated: July 16, 2026**
 
-This policy describes how the **Claude Companion** browser extension (the "Extension") handles data. The Extension is an independent, unofficial project and is not affiliated with, endorsed by, or sponsored by Anthropic, PBC. "Claude" is a trademark of Anthropic, PBC.
+This policy describes how the **Companion** browser extension (the "Extension"), an unofficial usage meter for Claude.ai, handles data. The Extension is an independent, unofficial project and is not affiliated with, endorsed by, or sponsored by Anthropic, PBC. "Claude" is a trademark of Anthropic, PBC.
 
 This policy is hosted alongside the Extension's source code at:
 `https://github.com/zgbrenner/claudecompanion/blob/main/store/privacy-policy.md`
@@ -11,13 +11,13 @@ This policy is hosted alongside the Extension's source code at:
 
 ## 1. What the Extension does
 
-Claude Companion reads usage information that claude.ai already makes available to your own account — spend in dollars, token estimates, and Claude's own rolling usage limits (5-hour session, weekly, Opus, and monthly credits) — and displays it in a widget under the claude.ai chat box and in the toolbar popup. It also offers an optional "Caveman Mode" that locally trims prompts and converts uploaded files to Markdown to help you stretch your usage quota.
+Companion reads usage information that claude.ai already makes available to your own account — spend in dollars, token estimates, and Claude's own rolling usage limits (5-hour session, weekly, Opus, and monthly credits) — and displays it in a widget under the claude.ai chat box and in the toolbar popup. It also offers an optional "Caveman Mode" that locally trims prompts and converts uploaded files to Markdown to help you stretch your usage quota.
 
 The Extension does not modify your Claude account, conversations, or settings in any way. Every request it makes to claude.ai is a read-only `GET`.
 
 ## 2. Data collected by the developer
 
-**None.** The developer of Claude Companion does not operate any server that the Extension communicates with, and does not collect, receive, or have access to any data from your use of the Extension. There is no analytics, no crash reporting, no telemetry, and no tracking of any kind.
+**None.** The developer of Companion does not operate any server that the Extension communicates with, and does not collect, receive, or have access to any data from your use of the Extension. There is no analytics, no crash reporting, no telemetry, and no tracking of any kind.
 
 ## 3. Data stored locally on your device
 

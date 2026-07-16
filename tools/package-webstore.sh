@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds a Chrome Web Store upload zip at dist/claude-companion-<version>.zip
+# Builds a Chrome Web Store upload zip at dist/companion-<version>.zip
 # containing ONLY manifest.json, icons/, and src/ (paths relative to the zip
 # root, so unzipping produces a valid unpacked-extension layout).
 #
@@ -33,7 +33,7 @@ if [ -z "$VERSION" ]; then
 fi
 
 DIST_DIR="$ROOT_DIR/dist"
-ZIP_PATH="$DIST_DIR/claude-companion-${VERSION}.zip"
+ZIP_PATH="$DIST_DIR/companion-${VERSION}.zip"
 mkdir -p "$DIST_DIR"
 rm -f "$ZIP_PATH"
 

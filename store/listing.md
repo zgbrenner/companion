@@ -1,4 +1,4 @@
-# Chrome Web Store Listing — Claude Companion
+# Chrome Web Store Listing — Companion
 
 Ready-to-paste copy for the Chrome Web Store developer dashboard.
 
@@ -7,16 +7,10 @@ Ready-to-paste copy for the Chrome Web Store developer dashboard.
 ## Extension name
 
 ```
-Claude Companion
+Companion
 ```
 
-> **Trademark note:** the name contains "Claude." If Chrome Web Store review flags this under its impersonation/trademark policy, the fallback name is:
->
-> ```
-> Companion for Claude
-> ```
->
-> The listing already carries an explicit non-affiliation disclaimer (see below), which is the standard mitigation Google looks for on third-party "for X" tools. Keep "Companion for Claude" in your back pocket rather than pre-emptively using it — try the primary name first.
+> **Trademark note:** the name was chosen deliberately to avoid Anthropic's "Claude" mark — this was a proactive rename, done ahead of submission rather than in response to a review flag, specifically to head off any Chrome Web Store impersonation/trademark issue. The short and detailed descriptions below still reference "Claude.ai" — that's descriptive, nominative fair use (identifying the product this extension works with), not branding the extension itself with the mark. The explicit non-affiliation disclaimer at the end of the detailed description (and in the privacy policy) is still required and remains in place regardless of the name change.
 
 ---
 
@@ -37,7 +31,7 @@ Plain text — Chrome Web Store does not render Markdown. Bullets use ▪, parag
 ```
 Know exactly how much Claude you're using — in real dollars — right under the chat box.
 
-Claude Companion reads the same usage numbers Claude's own settings page uses and pins them where you're already looking: a compact widget docked under the claude.ai chat box, plus a toolbar popup for the bigger picture. No token-counting guesswork, no spreadsheets, no surprises when you hit a limit mid-thought.
+Companion (an unofficial usage meter for Claude.ai) reads the same usage numbers Claude's own settings page uses and pins them where you're already looking: a compact widget docked under the claude.ai chat box, plus a toolbar popup for the bigger picture. No token-counting guesswork, no spreadsheets, no surprises when you hit a limit mid-thought.
 
 WHAT YOU SEE
 
@@ -59,13 +53,13 @@ One switch turns the whole feature on or off.
 
 PRIVACY — nothing leaves your device
 
-Claude Companion only talks to claude.ai. It makes read-only requests to Claude's own usage endpoints, using your browser's existing session — it never reads your login/session cookie. Your prompts and Claude's replies are never read, stored, or transmitted; uploaded files are parsed entirely on your device and never leave it. Settings and local spend history are stored only in your browser. There is no analytics, no tracking, and no telemetry of any kind — nothing is ever sent to the developer or any third party.
+Companion only talks to claude.ai. It makes read-only requests to Claude's own usage endpoints, using your browser's existing session — it never reads your login/session cookie. Your prompts and Claude's replies are never read, stored, or transmitted; uploaded files are parsed entirely on your device and never leave it. Settings and local spend history are stored only in your browser. There is no analytics, no tracking, and no telemetry of any kind — nothing is ever sent to the developer or any third party.
 
 WORKS ON EVERY PLAN
 
 Free, Pro, Max, Team, and Enterprise are all supported — the widget shows whatever usage data your account exposes.
 
-Claude Companion is an independent, unofficial project. It is not affiliated with, endorsed by, or sponsored by Anthropic. "Claude" is a trademark of Anthropic, PBC.
+Companion is an independent, unofficial project. It is not affiliated with, endorsed by, or sponsored by Anthropic. "Claude" is a trademark of Anthropic, PBC.
 ```
 
 ---

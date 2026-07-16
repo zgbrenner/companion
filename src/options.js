@@ -219,7 +219,7 @@ async function exportCsv() {
 
 async function clearAllLocalData() {
   const confirmed = window.confirm(
-    "Clear all Claude Companion data stored in this browser? This removes settings, usage history, and caches. Claude itself is not changed."
+    "Clear all Companion data stored in this browser? This removes settings, usage history, and caches. Claude itself is not changed."
   );
   if (!confirmed) return;
 
@@ -242,7 +242,7 @@ async function clearAllLocalData() {
 
   status.textContent = failed.length
     ? "Storage cleared, but one item couldn't be removed. Reopen Settings and try again."
-    : "All local Claude Companion data has been cleared.";
+    : "All local Companion data has been cleared.";
   button.disabled = false;
 }
 

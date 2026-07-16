@@ -4,7 +4,7 @@ Build a browser extension for nontechnical knowledge workers who use Claude.ai h
 
 ## Working name
 
-Claude Usage Companion
+Companion
 
 ## Product promise
 
