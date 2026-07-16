@@ -16,7 +16,6 @@
 <p>
   <img alt="no telemetry" src="https://img.shields.io/badge/telemetry-none-3d7a5c?style=flat-square" />
   <img alt="no trackers" src="https://img.shields.io/badge/trackers-zero-3d7a5c?style=flat-square" />
-  <img alt="updates hash-verified & signable" src="https://img.shields.io/badge/updates-hash--verified%20%26%20signable-3d7a5c?style=flat-square" />
   <img alt="sandboxed file parser" src="https://img.shields.io/badge/file%20parser-sandboxed-3d7a5c?style=flat-square" />
   <img alt="PRs welcome" src="https://img.shields.io/badge/PRs-welcome-2b3648?style=flat-square" />
 </p>
@@ -62,7 +61,6 @@ Claude Companion reads the **same numbers Claude's own settings page uses** and 
 | **Caveman Mode** | Stretch your quota when it's running low — ultra-brief replies, local prompt-trimming, and file→Markdown. |
 | **Looks native** | Docks under the chat box, matches its width, and follows Claude's own light/dark theme. |
 | **Private by design** | Your prompts and replies are never stored or sent anywhere. Read-only. No telemetry. |
-| **Updates itself** | One-click, signed, hash-verified updates from GitHub — no uninstall/reinstall dance. |
 
 ---
 
@@ -117,9 +115,8 @@ Dollars are ground truth. Tokens are the *only* derived value — and they're sh
 Built to survive an IT/infosec review — the full write-up is in **[docs/SECURITY.md](docs/SECURITY.md)**. The short version:
 
 - **Read-only.** No request the extension makes can change your account, chats, or settings.
-- **Nothing leaves your device.** Prompts, replies, and file contents are never stored or transmitted. The only servers contacted are Claude's own (to read your usage) and GitHub (to check for updates). **Zero analytics or telemetry.**
-- **Least privilege.** Access is scoped to `claude.ai` and one GitHub repo — no `<all_urls>`. Your session cookie is never read.
-- **Hardened updates.** SHA-256 integrity + optional ECDSA signature + commit-pinned downloads + HTTPS-only, so a compromised repo or CDN can't push code.
+- **Nothing leaves your device.** Prompts, replies, and file contents are never stored or transmitted. The extension only contacts Claude's own servers to read your usage. **Zero analytics or telemetry.**
+- **Least privilege.** Access is scoped to `claude.ai` — no `<all_urls>`. Your session cookie is never read.
 - **Sandboxed file parsing.** The third-party document parser runs in an opaque-origin sandbox with no `chrome.*` access and no network.
 
 ## ⚔️ vs. token-counting extensions
@@ -130,7 +127,6 @@ Built to survive an IT/infosec review — the full write-up is in **[docs/SECURI
 | Claude's actual limits | ❌ | ✅ session / weekly / Opus / monthly |
 | Stores your prompts | ⚠️ often | ✅ **never** |
 | Sends data to a server | ⚠️ sometimes | ✅ **never** |
-| Updates without reinstalling | ❌ | ✅ signed, one-click |
 
 ---
 
@@ -139,7 +135,7 @@ Built to survive an IT/infosec review — the full write-up is in **[docs/SECURI
 1. `chrome://extensions` → enable **Developer mode** → **Load unpacked** → pick this folder.
 2. Open **[claude.ai](https://claude.ai)** and sign in. The widget appears under the chat box. That's it.
 
-Full walkthrough (settings tour, Caveman Mode, one-click updates, troubleshooting): **[docs/QUICKSTART.md](docs/QUICKSTART.md)**.
+Full walkthrough (settings tour, Caveman Mode, troubleshooting): **[docs/QUICKSTART.md](docs/QUICKSTART.md)**. Chrome Web Store availability is coming (submission in progress).
 
 ## Documentation
 
@@ -160,7 +156,7 @@ Yes. It reads whatever usage data your account exposes. Personal-plan users can 
 <details>
 <summary><strong>Does it send my prompts or chats anywhere?</strong></summary>
 <br/>
-No. Prompt and reply text is never stored or transmitted. The extension only reads numeric usage from Claude's own endpoint and checks GitHub for updates. There is no analytics or telemetry of any kind.
+No. Prompt and reply text is never stored or transmitted. The extension only reads numeric usage from Claude's own endpoint. There is no analytics or telemetry of any kind.
 </details>
 
 <details>

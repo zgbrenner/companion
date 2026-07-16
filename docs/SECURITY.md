@@ -2,9 +2,9 @@
 
 This document describes the security architecture, data handling, permissions, network behavior, threat model, and audit steps for **Claude Companion**, a Chromium (Chrome/Edge) browser extension (Manifest V3). It is written for IT administrators and information-security reviewers evaluating the extension for use.
 
-- **Type:** Manifest V3 browser extension, distributed as unpacked source (or self-hosted; see [§7](#7-update-mechanism-security)).
-- **Source:** all first-party code ships **unminified and human-readable**. The only compiled/minified artifacts are two vendored third-party files (see [§9](#9-third-party-dependencies)).
-- **External services contacted:** Claude.ai (to read your own usage) and GitHub (to check for and download updates). **No analytics, telemetry, tracking, or third-party servers.**
+- **Type:** Manifest V3 browser extension, distributed via Chrome Web Store (updates handled by the browser).
+- **Source:** all first-party code ships **unminified and human-readable**. The only compiled/minified artifacts are two vendored third-party files (see [§8](#8-third-party-dependencies)).
+- **External services contacted:** Claude.ai only (to read your own usage). **No analytics, telemetry, tracking, or third-party servers.**
 - **Account impact:** strictly **read-only** against your Claude account. No request the extension issues can modify conversations, settings, billing, or organization data.
 
 ---
@@ -17,14 +17,12 @@ This document describes the security architecture, data handling, permissions, n
 4. [Architecture & trust boundaries](#4-architecture--trust-boundaries)
 5. [Content Security Policy](#5-content-security-policy)
 6. [Claude session & credentials](#6-claude-session--credentials)
-7. [Update mechanism security](#7-update-mechanism-security)
-8. [File-conversion sandbox](#8-file-conversion-sandbox)
-9. [Third-party dependencies](#9-third-party-dependencies)
-10. [Prompt handling (Caveman Mode)](#10-prompt-handling-caveman-mode)
-11. [Threat model summary](#11-threat-model-summary)
-12. [How to audit / verify](#12-how-to-audit--verify)
-13. [Incident response & key rotation](#13-incident-response--key-rotation)
-14. [Known limitations & residual risks](#14-known-limitations--residual-risks)
+7. [File-conversion sandbox](#7-file-conversion-sandbox)
+8. [Third-party dependencies](#8-third-party-dependencies)
+9. [Prompt handling (Caveman Mode)](#9-prompt-handling-caveman-mode)
+10. [Threat model summary](#10-threat-model-summary)
+11. [How to audit / verify](#11-how-to-audit--verify)
+12. [Known limitations & residual risks](#12-known-limitations--residual-risks)
 
 ---
 
@@ -44,9 +42,8 @@ The extension's purpose is to display usage numbers that come from Claude itself
 
 **Where local data lives:**
 
-- `chrome.storage.local` — settings, daily spend totals (dollar amounts + derived token ranges), the detected organization UUID and monthly-cap cache, notification-dedupe state, and the "update available" flag.
+- `chrome.storage.local` — settings, daily spend totals (dollar amounts + derived token ranges), the detected organization UUID and monthly-cap cache, and notification-dedupe state.
 - `chrome.storage.session` — memory-backed, cleared when the browser closes: the current usage reading, the session-spend baseline, and pace samples.
-- `IndexedDB` (`cuc-updater`) — only if you opt into one-click updates: a File System Access API *directory handle* for the extension's own folder. No file contents are stored there.
 
 There is **no server-side component**. Nothing is uploaded. "Download CSV" (Settings → Data & privacy) writes a local file containing daily dollar totals and token ranges only — never chat text.
 
@@ -61,7 +58,6 @@ From `manifest.json`:
 | `storage` | Persist settings and spend history locally | Local only; no sync storage. |
 | `activeTab` | Read the active tab's URL to find a Claude tab from the popup | No broad `tabs` permission. |
 | `notifications` | Desktop alert when a Claude limit crosses 85% / 95% | Opt-out in Settings. |
-| `alarms` | Schedule the periodic update check (~6 h) | MV3 timer that survives service-worker teardown. |
 | `offscreen` | Host the file-conversion relay/sandbox | Only used while converting a dropped file. |
 
 **Host permissions** (the only origins the extension may script or fetch):
@@ -69,10 +65,8 @@ From `manifest.json`:
 | Host pattern | Purpose |
 | --- | --- |
 | `https://claude.ai/*`, `https://*.claude.ai/*` | Run the widget and read your usage from Claude's own endpoints. |
-| `https://api.github.com/repos/zgbrenner/claudecompanion/*` | Check for updates. |
-| `https://raw.githubusercontent.com/zgbrenner/claudecompanion/*` | Download update files. |
 
-There is **no `<all_urls>`** and no wildcard host access. The extension cannot read or act on any site other than Claude.ai and the specific GitHub repository above.
+There is **no `<all_urls>`** and no wildcard host access. The extension cannot read or act on any site other than Claude.ai.
 
 ---
 
@@ -85,13 +79,11 @@ Every network request the extension makes, and the only hosts it can reach (enfo
 | `claude.ai/api/organizations/{org}/usage` | GET | Read rolling limits + monthly credit spend | None (credentialed same-origin GET) |
 | `claude.ai/api/organizations/{org}/overage_spend_limit` | GET | Monthly credit cap fallback | None |
 | `claude.ai/api/organizations` | GET | Discover the org UUID when the cookie is absent | None |
-| `raw.githubusercontent.com/.../<commit>/…` | GET | Update manifest + files | None |
-| `cdn.jsdelivr.net/gh/...@<commit>/…` | GET | Update mirror (rate-limit fallback) | None |
-| optional `*.pages.dev` (Cloudflare Pages) | GET | Optional self-hosted update mirror, only if configured | None |
 
 - No request carries a body of your data. Usage reads are plain GETs; the browser attaches your existing Claude session automatically because they originate same-origin from a Claude.ai page.
-- **No analytics/telemetry endpoint exists anywhere in the code.** You can confirm this by searching the source for `fetch(`/`XMLHttpRequest` — every hit targets one of the hosts above.
+- **No analytics/telemetry endpoint exists anywhere in the code.** You can confirm this by searching the source for `fetch(`/`XMLHttpRequest` — every hit targets claude.ai only.
 - The MAIN-world network observer (`injected.js`) *reads* Claude's own responses in place to detect the active model and notice when a reply finishes; it never originates a new request and never forwards response bodies or account payloads across the extension boundary.
+- **Updates are delivered via the Chrome Web Store.** The extension no longer checks for or applies its own updates.
 
 ---
 
@@ -140,8 +132,7 @@ Two policies are declared in `manifest.json`.
 
 ```
 script-src 'self'; object-src 'none'; base-uri 'none';
-connect-src 'self' https://claude.ai https://*.claude.ai https://api.github.com
-            https://raw.githubusercontent.com https://cdn.jsdelivr.net https://*.pages.dev;
+connect-src 'self' https://claude.ai https://*.claude.ai;
 img-src 'self' data:; style-src 'self' 'unsafe-inline';
 ```
 
@@ -169,29 +160,7 @@ worker-src blob:; child-src blob:; connect-src blob: data:; object-src 'none'; b
 
 ---
 
-## 7. Update mechanism security
-
-The self-updater is the most security-sensitive component, because applying an update writes files into the extension and reloads it. It is defended in depth.
-
-**Flow:** the background worker fetches `update/manifest.json` (version + per-file SHA-256 + source commit + optional signature). If a newer version exists, the widget offers to install. Installing downloads every listed file, verifies each SHA-256 **in memory before a single byte is written**, writes them (`manifest.json` last), and calls `chrome.runtime.reload()`. Writing uses the browser's File System Access API against a folder handle you granted once; the target is validated to be this extension's own folder, and file paths are restricted to `manifest.json`, `src/**`, and `icons/**` (no path traversal, no arbitrary writes).
-
-**Integrity — SHA-256.** Each file must match the hash in the manifest, so corruption or a partial/torn deploy is rejected atomically (nothing is written on any mismatch).
-
-**Authenticity — signature (ECDSA P-256, opt-in but strongly recommended).** Because the hashes travel in the same manifest as the files, hashes alone don't stop a *malicious* source (a compromised repo, CDN mirror, or custom base could serve bad files and matching hashes). The manifest can therefore be **cryptographically signed**, and the extension refuses any update whose signature doesn't verify against a public key compiled into `src/updater.js`. Since the manifest lists every file's hash, one signature transitively authenticates the entire update; changing any file invalidates it. The signed payload also includes the source commit ([below](#commit-pinning)).
-
-- The **private key exists only as a GitHub Actions secret** (`CUC_UPDATE_SIGNING_KEY`); it never enters the repository. The build/publish workflow signs each release with it.
-- Signing ships **dormant** (empty public key ⇒ hash-only integrity, so nothing breaks). Enabling is three steps — generate a keypair with `tools/gen-signing-key.mjs`, paste the public key into `src/updater.js`, add the private key as the Actions secret. Verification is enforced from the moment a public key is present.
-- The sign→verify round-trip, tamper rejection (any modified file hash fails), and wrong-key rejection are covered by tests run in a real Chromium engine.
-
-**Commit pinning.** The manifest is read from a moving branch (`main`) so new versions are discoverable, but it records the **immutable commit** it was built from, and every file download is pinned to that commit (`raw.githubusercontent.com/.../<commit>/…`, `jsdelivr@<commit>`). Combined with signing — the commit is part of the signed payload — code is only ever pulled from one exact commit the signature vouches for. A force-pushed or compromised branch can't swap files under a valid manifest, and there is no read-manifest-then-fetch race against the branch advancing.
-
-**Transport.** Update fetches are HTTPS only. A custom update base URL (`updateBaseUrl`, e.g. a self-hosted Cloudflare Pages mirror) is honored **only if it is `https`**; an `http` base is ignored.
-
-**Alternative distribution.** If you prefer not to use the self-updater at all, the extension can be distributed by any standard mechanism (Chrome Web Store private/unlisted listing, or enterprise `ExtensionInstallForcelist` with a self-hosted `.crx`), in which case the browser's own signed-update pipeline applies and the in-extension updater can be left dormant.
-
----
-
-## 8. File-conversion sandbox
+## 7. File-conversion sandbox
 
 Caveman Mode's file→Markdown feature parses user-selected office files with a vendored third-party library (`officeparser`). Parsing untrusted file formats is a classic exploitation surface, so the parser runs with **no privileges**:
 
@@ -203,20 +172,20 @@ This isolation is verified end-to-end in a real Chromium engine (opaque origin c
 
 ---
 
-## 9. Third-party dependencies
+## 8. Third-party dependencies
 
 The extension has **no runtime package dependencies** and loads **no code from any CDN at runtime**. Two third-party files are vendored (committed in-repo, served locally):
 
 | File | What | Isolation |
 | --- | --- | --- |
-| `src/vendor/officeparser.browser.slim.iife.js` | Office/PDF → Markdown parser (the "slim" build: **no remote-code URLs, no OCR engine**) | Runs only in the no-privilege sandbox ([§8](#8-file-conversion-sandbox)) |
+| `src/vendor/officeparser.browser.slim.iife.js` | Office/PDF → Markdown parser (the "slim" build: **no remote-code URLs, no OCR engine**) | Runs only in the no-privilege sandbox ([§7](#7-file-conversion-sandbox)) |
 | `src/vendor/pdf.worker.min.mjs` | pdf.js worker (version-matched to the parser) | Runs as a blob worker inside the sandbox |
 
 All other code is first-party and unminified. There is no build step that pulls dependencies at release time beyond these vendored files, reducing supply-chain surface.
 
 ---
 
-## 10. Prompt handling (Caveman Mode)
+## 9. Prompt handling (Caveman Mode)
 
 - **Brevity instruction.** A fixed, compact instruction (in `src/caveman.js`, human-readable) is sent **as an ordinary chat message**, once per conversation. It is not hidden and uses no private API.
 - **Local trimming.** Prompt trimming is 100% local, deterministic, and **extractive-only** — it deletes known filler and shortens fixed verbose phrases; it never paraphrases, and it never alters text inside code blocks, quotes, URLs, or emails. A safety valve restores the original if the rules would remove too much.
@@ -228,49 +197,33 @@ All other code is first-party and unminified. There is no build step that pulls 
 
 | Threat | Mitigation |
 | --- | --- |
-| Malicious/compromised update source (repo, jsDelivr, custom mirror) pushes code | Per-file SHA-256 + opt-in ECDSA signature the source can't forge + commit pinning + HTTPS-only |
-| Man-in-the-middle on updates | HTTPS only; signature + hash verification before any write |
-| Path traversal / arbitrary file write during update | File paths restricted to `manifest.json`, `src/**`, `icons/**`; folder validated as this extension's own |
-| Torn/partial update leaving a broken extension | All files downloaded + hash-verified in memory before any write; `manifest.json` written last |
 | Exploit in the third-party file parser | Runs in an opaque-origin sandbox: no `chrome.*`, no network, no session access |
 | Hostile page script forging usage events | Random one-time handshake token; content script drops untokened events; MV3 world isolation |
 | Forged/oversized messages to the background or offscreen worker | Sender identity + strict shape/size/range validation on every message |
 | Exfiltration of prompts, replies, or files | None is stored or transmitted; sandbox has no network; no analytics endpoint exists |
 | Session-cookie theft | Cookie never read; only the non-secret org UUID is used |
 | Account modification | Read-only; no state-changing Claude request exists in the code |
-| Over-broad site access | Host permissions limited to Claude.ai + one GitHub repo; no `<all_urls>` |
+| Over-broad site access | Host permissions limited to Claude.ai; no `<all_urls>` |
 
 ---
 
-## 12. How to audit / verify
+## 11. How to audit / verify
 
 Everything needed to review the extension is in the repository and observable at runtime:
 
-1. **Read the source.** All first-party code is unminified. Start with `manifest.json` (permissions, CSP, sandbox, content-script worlds), then `src/native-usage.js` (what Claude endpoints are read), `src/updater.js` (update verification), and `src/background.js` (message validation).
-2. **Confirm the network surface.** Search the tree for `fetch(` and `XMLHttpRequest`; verify every destination is a host in [§3](#3-network-egress). Then watch **DevTools → Network** on a Claude tab and on the extension's pages during normal use and during an update — you should see only Claude usage GETs and (on update) GitHub GETs. No analytics/telemetry calls exist.
-3. **Verify permissions at install.** `chrome://extensions` → Details lists the exact site access; confirm it is Claude.ai + the GitHub repo only.
+1. **Read the source.** All first-party code is unminified. Start with `manifest.json` (permissions, CSP, sandbox, content-script worlds), then `src/native-usage.js` (what Claude endpoints are read), and `src/background.js` (message validation).
+2. **Confirm the network surface.** Search the tree for `fetch(` and `XMLHttpRequest`; verify every destination is a host in [§3](#3-network-egress). Then watch **DevTools → Network** on a Claude tab and on the extension's pages during normal use — you should see only Claude usage GETs. No analytics/telemetry calls exist.
+3. **Verify permissions at install.** `chrome://extensions` → Details lists the exact site access; confirm it is Claude.ai only.
 4. **Confirm read-only.** Search for HTTP methods other than `GET` against `claude.ai` — there are none.
 5. **Confirm no prompt/response storage.** Search for where prompt/response text is written to storage — it is not; only numeric spend totals and settings are persisted.
 6. **Check the sandbox.** In DevTools, the conversion sandbox frame is an opaque origin (`null`); it has no `chrome` object and its CSP forbids network egress.
-7. **Verify update authenticity (if signing is enabled).** Confirm `UPDATE_PUBLIC_KEY_SPKI_B64` in `src/updater.js` matches your published key, and that `update/manifest.json` carries a `signature` and a `commit`.
 
 ---
 
-## 13. Incident response & key rotation
-
-- **Rotate the signing key** (e.g., suspected private-key exposure): run `tools/gen-signing-key.mjs` to generate a new pair, update the Actions secret `CUC_UPDATE_SIGNING_KEY`, replace `UPDATE_PUBLIC_KEY_SPKI_B64` in `src/updater.js`, and publish a release. Clients on the old public key will only accept updates signed by the matching old key, so publish the key change in a release those clients can still install (i.e., ship the new public key in a build signed by the *old* key), then subsequent releases use the new key.
-- **Suspend auto-updates:** remove/disable the `publish-update-manifest` workflow, or point clients away from the feed; existing installs simply stop seeing new versions (no code is pushed without a passing check).
-- **Contain a bad release:** because downloads are commit-pinned and signed, reverting the repository to a known-good commit and publishing a new signed manifest is sufficient; clients will only pull the newly-signed commit.
-- **Wipe a machine's local data:** Settings → Data & privacy → **Clear all local data** (clears storage, caches, and the update-folder handle). The Claude account is untouched.
-
----
-
-## 14. Known limitations & residual risks
+## 12. Known limitations & residual risks
 
 - **Undocumented Claude endpoints.** Usage is read from Claude.ai's own internal endpoints, which are not a published API and can change or disappear. If they do, the limits section shows an error and the rest of the extension keeps working; no security exposure results.
-- **Unpacked/developer-mode distribution.** When loaded unpacked, the extension is only as trustworthy as the folder on disk. Restrict write access to that folder; anyone who can write to it can alter the extension. The self-updater's folder handle grants the extension write access to *its own* folder only.
-- **Signing is opt-in.** Until a public key is configured, updates rely on SHA-256 integrity plus commit pinning plus HTTPS, but not signature authenticity. Enabling signing ([§7](#7-update-mechanism-security)) is strongly recommended for any multi-user deployment.
-- **CDN/GitHub availability.** Update checks depend on GitHub/jsDelivr being reachable; if not, the extension keeps running on its installed version and retries later.
+- **Unpacked/developer-mode distribution.** When loaded unpacked, the extension is only as trustworthy as the folder on disk. Restrict write access to that folder; anyone who can write to it can alter the extension.
 - **Third-party parser.** The vendored `officeparser`/pdf.js code is trusted to the extent of its sandbox — which is designed to contain it (no privileges, no network). Keep the vendored files updated from their upstream sources as part of routine maintenance.
 
 ---

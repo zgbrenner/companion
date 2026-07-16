@@ -2,6 +2,11 @@
 
 All notable changes to Claude Companion. The most recent release is at the top.
 
+### 1.0.0 (Chrome Web Store)
+
+- **Chrome Web Store release preparation:** removed the built-in self-update mechanism (updates now ship through the Chrome Web Store), dropped the now-unneeded `alarms` permission and GitHub/CDN host permissions and CSP entries — the extension now connects only to claude.ai.
+- Added store submission documents under `store/` and a packaging script `tools/package-webstore.sh`.
+
 ### 0.9.1 (security)
 
 - **Sandboxed file converter.** The third-party `officeparser` now runs in a manifest-declared sandbox page (opaque origin, no `chrome.*`, no network egress) instead of the privileged offscreen document — a parser exploit can no longer reach storage, the network, or Claude's session. The offscreen document relays bytes/Markdown over `postMessage` and passes the pdfjs worker in as a same-origin blob. Verified end-to-end in Chromium.
