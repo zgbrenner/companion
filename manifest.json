@@ -59,7 +59,8 @@
   "web_accessible_resources": [
     {
       "resources": [
-        "src/widget.css"
+        "src/widget.css",
+        "src/fonts/space-grotesk-latin.woff2"
       ],
       "matches": [
         "https://claude.ai/*",
