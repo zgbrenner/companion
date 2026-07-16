@@ -32,6 +32,25 @@
   // reveals the endpoint and it validates.
   let spendBreakdown = null;
   let generationRefreshTimer = null;
+  // Space Grotesk registration for the widget. @font-face declared INSIDE a
+  // shadow root's stylesheet never registers with the document font cache
+  // (a shadow root can use fonts, but can't define new ones), so it has to
+  // be injected once into the host page's <head> instead. Guarded by id so
+  // repeated createWidget() calls (SPA re-mounts, multiple invocations)
+  // can't stack duplicate <style> tags.
+  const FONT_FACE_STYLE_ID = "cuc-font-face";
+  function injectFontFace() {
+    if (document.getElementById(FONT_FACE_STYLE_ID)) return;
+    const style = document.createElement("style");
+    style.id = FONT_FACE_STYLE_ID;
+    style.textContent = `@font-face {
+      font-family: "Space Grotesk";
+      src: url("${chrome.runtime.getURL("src/fonts/space-grotesk-latin.woff2")}") format("woff2");
+      font-weight: 400 700;
+      font-display: swap;
+    }`;
+    (document.head || document.documentElement).appendChild(style);
+  }
   // Caveman Mode state. cavemanInjectedMap mirrors the background-owned
   // "instruction already sent to this conversation" map (persisted, so it
   // survives page reloads within the same chat). responsesSinceInjection is
@@ -199,6 +218,7 @@
 
   async function createWidget() {
     if (widget || !document.body) return;
+    injectFontFace();
     widget = document.createElement("div");
     widget.id = "cuc-widget";
     const shadow = widget.attachShadow({ mode: "open" });
@@ -246,7 +266,7 @@
           <div class="cuc-meter" data-cuc="meter">
             <div class="cuc-meter-label">
               <span title="Your real usage-credit spend since you opened your browser — read straight from Claude's own monthly counter, accurate to the cent. Covers ALL your Claude activity in that time (every tab and device on your account), not just this chat. Token figures are a range derived from this real spend using current Anthropic pricing.">Spent this session</span>
-              <span data-cuc="session-value" aria-live="polite">—</span>
+              <span data-cuc="session-value">—</span>
             </div>
             <div class="cuc-progress" role="progressbar" aria-label="Session spend as a share of the monthly allowance" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
               <div class="cuc-progress-bar" data-cuc="session-bar"></div>
@@ -270,14 +290,14 @@
             <div class="cuc-native-note" data-cuc="enterprise-note" aria-live="polite">Loading Claude usage…</div>
           </div>
 
-          <div class="cuc-tip" data-cuc="tip" hidden></div>
+          <div class="cuc-tip" data-cuc="tip" aria-live="polite" hidden></div>
 
           <div class="cuc-caveman-row" data-cuc="caveman-row">
             <span class="cuc-caveman-label" title="Caveman Mode saves your Claude quota: Claude answers ultra-brief, your prompts get trimmed (you approve a preview first), and dropped files convert to lean Markdown.">🪨 Caveman Mode — stretch your quota</span>
             <button class="cuc-switch" data-cuc-action="caveman-toggle" role="switch" aria-checked="false" aria-label="Toggle Caveman Mode"><span class="cuc-switch-knob"></span></button>
           </div>
           <div class="cuc-dropzone" data-cuc="dropzone" role="button" tabindex="0" hidden>
-            <span data-cuc="dropzone-label">Click to pick a file → Markdown (fewer tokens than raw files)</span>
+            <span data-cuc="dropzone-label" aria-live="polite">Click to pick a file → Markdown (fewer tokens than raw files)</span>
             <input type="file" data-cuc="dropzone-input" accept=".pdf,.docx,.pptx,.xlsx,.odt,.odp,.ods,.rtf,.csv,.html,.htm,.md,.txt" hidden />
           </div>
         </div>
@@ -900,6 +920,12 @@
   }
 
   const DISPLAY_MODE_GLYPHS = { dollars: "$", tokens: "#", both: "$#" };
+  // What clicking the cycle button does FROM the current display mode — used
+  // to keep its aria-label describing the actual next action rather than a
+  // generic fixed description, so a screen-reader user always knows what the
+  // button (and its glyph) currently means.
+  const DISPLAY_MODE_NEXT = { dollars: "tokens", tokens: "both", both: "dollars" };
+  const DISPLAY_MODE_NAMES = { dollars: "dollars", tokens: "tokens", both: "dollars and tokens" };
 
   // Today's spend: prefer the per-model breakdown learned from claude.ai's
   // own usage page (fresh within 6h), else the day-chain of counter samples.
@@ -944,7 +970,13 @@
     const modelKey = detectModelKey();
 
     const cycleButton = widgetRoot.querySelector("[data-cuc-action='cycle']");
-    if (cycleButton) cycleButton.textContent = DISPLAY_MODE_GLYPHS[settings.displayMode] || "$";
+    if (cycleButton) {
+      cycleButton.textContent = DISPLAY_MODE_GLYPHS[settings.displayMode] || "$";
+      const nextMode = DISPLAY_MODE_NEXT[settings.displayMode] || "tokens";
+      const label = `Showing ${DISPLAY_MODE_NAMES[settings.displayMode] || "dollars"}. Switch display to ${DISPLAY_MODE_NAMES[nextMode]}.`;
+      cycleButton.setAttribute("aria-label", label);
+      cycleButton.title = `Switch display to ${DISPLAY_MODE_NAMES[nextMode]}`;
+    }
 
     // "Spent this session" — Claude's own counter, sampled at session start
     // and on every poll/response since. The whole meter block (headline,
@@ -966,7 +998,10 @@
         sessionValueEl.textContent = spendValueText(deltaUsd, modelKey);
         // Bar: how much of the monthly allowance this session consumed.
         const limitUsd = nativeUsage?.monthlySpendLimit?.limitUsd;
-        setBar(sessionBar, limitUsd > 0 ? (deltaUsd / limitUsd) * 100 : 0);
+        const sessionPct = limitUsd > 0 ? (deltaUsd / limitUsd) * 100 : 0;
+        setBar(sessionBar, sessionPct, limitUsd > 0
+          ? `${Math.round(CUC.clamp(sessionPct, 0, 100))}% of monthly allowance used this session`
+          : null);
 
         const today = todaySpendInfo();
         if (today && today.spendUsd >= 0.005 && Math.abs(today.spendUsd - deltaUsd) >= 0.005) {
@@ -1001,14 +1036,19 @@
     return "low";
   }
 
-  // Update a progress bar's fill, color, and the aria-valuenow on its
-  // role="progressbar" container in one place.
-  function setBar(bar, pct) {
+  // Update a progress bar's fill, color, and the aria-valuenow/aria-valuetext
+  // on its role="progressbar" container in one place. valueText, when given,
+  // is the human-readable string screen readers announce instead of the bare
+  // percentage (e.g. "42% · resets in 2h 15m").
+  function setBar(bar, pct, valueText) {
     if (!bar) return;
     const clamped = CUC.clamp(pct, 0, 100);
     bar.style.width = `${clamped}%`;
     bar.className = `cuc-progress-bar ${nativeUsageBarLevel(clamped)}`;
-    bar.parentElement?.setAttribute?.("aria-valuenow", String(Math.round(clamped)));
+    const container = bar.parentElement;
+    container?.setAttribute?.("aria-valuenow", String(Math.round(clamped)));
+    if (valueText) container?.setAttribute?.("aria-valuetext", valueText);
+    else container?.removeAttribute?.("aria-valuetext");
   }
 
   // The three rolling-limit buckets Claude itself reports. These are what
@@ -1143,8 +1183,9 @@
         continue;
       }
       row.hidden = false;
-      widgetRoot.querySelector(`[data-cuc='${key}-value']`).textContent = bucketValueText(bucket);
-      setBar(widgetRoot.querySelector(`[data-cuc='${key}-bar']`), bucket.utilizationPct);
+      const valueText = bucketValueText(bucket);
+      widgetRoot.querySelector(`[data-cuc='${key}-value']`).textContent = valueText;
+      setBar(widgetRoot.querySelector(`[data-cuc='${key}-bar']`), bucket.utilizationPct, valueText);
     }
 
     // Monthly usage-credit allowance — individually hideable (personal-plan
@@ -1160,10 +1201,11 @@
     if (enterpriseRow) enterpriseRow.hidden = false;
     const pct = CUC.clamp(spendLimit.utilizationPct, 0, 100);
     const resetLabel = CUCNative?.formatResetLabel ? CUCNative.formatResetLabel(spendLimit) : null;
-    enterpriseValue.textContent = resetLabel
+    const enterpriseText = resetLabel
       ? `${CUC.formatUsd(spendLimit.usedUsd)} of ${CUC.formatUsd(spendLimit.limitUsd)} · ${resetLabel}`
       : `${CUC.formatUsd(spendLimit.usedUsd)} of ${CUC.formatUsd(spendLimit.limitUsd)}`;
-    setBar(enterpriseBar, pct);
+    enterpriseValue.textContent = enterpriseText;
+    setBar(enterpriseBar, pct, enterpriseText);
 
     if (spendLimit.outOfCredits) {
       setNote("Monthly usage-credit limit reached");

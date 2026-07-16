@@ -63,7 +63,10 @@ function render(state) {
     } else {
       sessionValueEl.textContent = spendText(deltaUsd, settings);
       const limitUsd = nativeUsage?.monthlySpendLimit?.limitUsd;
-      setBar(sessionBarEl, limitUsd > 0 ? (deltaUsd / limitUsd) * 100 : 0);
+      const sessionPct = limitUsd > 0 ? (deltaUsd / limitUsd) * 100 : 0;
+      setBar(sessionBarEl, sessionPct, limitUsd > 0
+        ? `${Math.round(CUC.clamp(sessionPct, 0, 100))}% of monthly allowance used this session`
+        : null);
       const startedAt = spendSession?.startedAt;
       sessionDetailEl.textContent = startedAt
         ? `All your Claude activity since ${new Date(startedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} — real spend, not an estimate.`
@@ -124,12 +127,15 @@ function nativeBarLevel(pct) {
   return "low";
 }
 
-function setBar(bar, pct) {
+function setBar(bar, pct, valueText) {
   if (!bar) return;
   const clamped = CUC.clamp(pct, 0, 100);
   bar.style.width = `${clamped}%`;
   bar.className = nativeBarLevel(clamped);
-  bar.parentElement?.setAttribute?.("aria-valuenow", String(Math.round(clamped)));
+  const container = bar.parentElement;
+  container?.setAttribute?.("aria-valuenow", String(Math.round(clamped)));
+  if (valueText) container?.setAttribute?.("aria-valuetext", valueText);
+  else container?.removeAttribute?.("aria-valuetext");
 }
 
 const NATIVE_BUCKETS = [
@@ -211,8 +217,9 @@ function renderNative(nativeUsage, nativeUsageError, settings) {
       continue;
     }
     row.hidden = false;
-    document.getElementById(`${id}-value`).textContent = bucketValueText(bucket);
-    setBar(document.getElementById(`${id}-bar`), bucket.utilizationPct);
+    const valueText = bucketValueText(bucket);
+    document.getElementById(`${id}-value`).textContent = valueText;
+    setBar(document.getElementById(`${id}-bar`), bucket.utilizationPct, valueText);
   }
 
   const enterpriseRow = document.getElementById("row-enterprise");
@@ -226,10 +233,11 @@ function renderNative(nativeUsage, nativeUsageError, settings) {
   if (enterpriseRow) enterpriseRow.hidden = false;
   const pct = CUC.clamp(spendLimit.utilizationPct, 0, 100);
   const resetLabel = CUCNative?.formatResetLabel ? CUCNative.formatResetLabel(spendLimit) : null;
-  document.getElementById("enterprise-value").textContent = resetLabel
+  const enterpriseText = resetLabel
     ? `${CUC.formatUsd(spendLimit.usedUsd)} of ${CUC.formatUsd(spendLimit.limitUsd)} · ${resetLabel}`
     : `${CUC.formatUsd(spendLimit.usedUsd)} of ${CUC.formatUsd(spendLimit.limitUsd)}`;
-  setBar(document.getElementById("enterprise-bar"), pct);
+  document.getElementById("enterprise-value").textContent = enterpriseText;
+  setBar(document.getElementById("enterprise-bar"), pct, enterpriseText);
   if (spendLimit.outOfCredits) {
     note.textContent = "Monthly usage-credit limit reached";
   } else if (spendLimit.capAdvisory) {

@@ -48,6 +48,13 @@
   }
 }
 
+@font-face {
+  font-family: "Space Grotesk";
+  src: url("fonts/space-grotesk-latin.woff2") format("woff2");
+  font-weight: 400 700;
+  font-display: swap;
+}
+
 * { box-sizing: border-box; }
 
 body {
@@ -79,7 +86,7 @@ body {
 }
 .brand { display: flex; align-items: baseline; gap: 8px; }
 .brand-mark { color: var(--accent); font-size: 14px; }
-.brand-name { font-weight: 700; font-size: 15px; color: var(--text-strong); letter-spacing: 0.01em; }
+.brand-name { font-family: "Space Grotesk", system-ui, -apple-system, sans-serif; font-weight: 700; font-size: 15px; color: var(--text-strong); letter-spacing: -0.01em; }
 .brand-sub { color: var(--muted); font-size: 13px; }
 .save-bar { display: flex; align-items: center; gap: 12px; }
 .save-status {
@@ -160,7 +167,7 @@ body {
   background: var(--surface-muted);
   border-bottom: 1px solid var(--border);
 }
-.card-header h2 { margin: 0; font-size: 15px; font-weight: 700; color: var(--text-strong); }
+.card-header h2 { margin: 0; font-family: "Space Grotesk", system-ui, -apple-system, sans-serif; font-size: 15px; font-weight: 700; letter-spacing: -0.01em; color: var(--text-strong); }
 .card-header p { margin: 3px 0 0; font-size: 12.5px; color: var(--muted); }
 .card-body { padding: 6px 18px 14px; }
 
@@ -195,8 +202,10 @@ label.row-label { cursor: pointer; }
 .metrics-group-legend {
   padding: 0 6px;
   margin-left: 4px;
+  font-family: "Space Grotesk", system-ui, -apple-system, sans-serif;
   font-size: 12.5px;
   font-weight: 700;
+  letter-spacing: -0.01em;
   color: var(--text-strong);
 }
 .metrics-group-desc {
@@ -416,3 +425,12 @@ code {
 .btn-ghost:hover { background: var(--surface-muted); color: var(--text); }
 .btn-danger { background: var(--danger); border-color: var(--danger); color: #fff; }
 .btn-danger:hover { background: color-mix(in srgb, var(--danger) 88%, #000); }
+
+/* ---- Reduced motion ---- */
+
+@media (prefers-reduced-motion: reduce) {
+  .switch,
+  .switch-knob {
+    transition: none;
+  }
+}
