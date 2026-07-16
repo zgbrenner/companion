@@ -3,7 +3,8 @@ const CUCNative = globalThis.ClaudeUsageCompanionNative;
 
 // Every persisted setting keyed by the control's data-setting attribute.
 const BOOLEAN_SETTINGS = new Set([
-  "showWidget", "showCavemanMode", "showNativeLimits", "showMonthlyCredits", "desktopNotifications", "showPlainEnglishTips"
+  "showWidget", "showCavemanMode", "showMonthlyCredits", "desktopNotifications", "showPlainEnglishTips",
+  "showSessionSpend", "showSessionLimit", "showWeeklyLimit", "showOpusLimit"
 ]);
 
 let detectedOrganizationId = null;
@@ -252,7 +253,12 @@ function wireSectionNav() {
   const links = [...document.querySelectorAll(".section-nav a")];
   const byId = new Map(links.map(a => [a.dataset.nav, a]));
   const setActive = id => {
-    links.forEach(a => a.classList.toggle("active", a.dataset.nav === id));
+    links.forEach(a => {
+      const isActive = a.dataset.nav === id;
+      a.classList.toggle("active", isActive);
+      if (isActive) a.setAttribute("aria-current", "page");
+      else a.removeAttribute("aria-current");
+    });
   };
   const observer = new IntersectionObserver(entries => {
     // The section whose top is nearest the viewport top wins.
