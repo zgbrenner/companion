@@ -162,7 +162,7 @@ function shortCountdown(resetsAt) {
 
 async function maybeNotifyThresholds(buckets) {
   const stored = await chrome.storage.local.get([NOTIFY_STATE_KEY, "cuc:settings"]);
-  const settings = { ...CUC.DEFAULT_SETTINGS, ...(stored["cuc:settings"] || {}) };
+  const settings = CUC.mergeSettings(stored["cuc:settings"]);
   if (!settings.desktopNotifications) return;
 
   const state = stored[NOTIFY_STATE_KEY] || {};
@@ -278,6 +278,9 @@ function isValidConversationId(value) {
 
 // Mirrors the drop-zone whitelist in content.js; a 20MB file base64-encodes
 // to ~27M chars, so the cap bounds message size, not just file size.
+// Must stay in sync with content.js's CONVERTIBLE_EXTENSIONS (minus md/txt,
+// which are read as text in-page and never reach this router) and with the
+// parser fileType aliasing in sandbox.js's convert().
 const CONVERTIBLE_EXTENSIONS = new Set(["pdf", "docx", "pptx", "xlsx", "odt", "odp", "ods", "rtf", "csv", "html", "htm"]);
 const MAX_CONVERT_DATAURL_CHARS = 30_000_000;
 

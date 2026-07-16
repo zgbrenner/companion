@@ -111,6 +111,20 @@
     return merged;
   }
 
+  // The four per-metric visibility prefs covering the rolling/monthly limit
+  // buckets. One source of truth for "is any limit row visible at all?" so
+  // the widget, the popup, and the badge/notification filters can't drift.
+  const NATIVE_LIMIT_PREF_KEYS = [
+    "showSessionLimit",
+    "showWeeklyLimit",
+    "showOpusLimit",
+    "showMonthlyCredits"
+  ];
+
+  function anyNativeLimitPrefVisible(settings) {
+    return NATIVE_LIMIT_PREF_KEYS.some(key => settings?.[key] !== false);
+  }
+
   // ---- Real-spend accounting -----------------------------------------------
   //
   // Every dollar figure below comes from Claude's own monthly usage-credit
@@ -505,6 +519,7 @@
     DEFAULT_SETTINGS,
     SPEND_TOKEN_MIX,
     mergeSettings,
+    anyNativeLimitPrefVisible,
     resolveModelKey,
     applySessionSpendSample,
     sessionSpendDelta,

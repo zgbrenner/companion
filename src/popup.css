@@ -1,9 +1,4 @@
-@font-face {
-  font-family: "Space Grotesk";
-  src: url("fonts/space-grotesk-latin.woff2") format("woff2");
-  font-weight: 400 700;
-  font-display: swap;
-}
+@import url("fonts.css");
 
 body {
   margin: 0;

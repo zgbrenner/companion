@@ -152,10 +152,9 @@ function bucketValueText(bucket) {
 
 // Whether ANY of the four rolling/monthly limit rows are visible per the
 // user's per-metric prefs — used to decide whether the whole native section
-// should render at all.
+// should render at all. Shared with the widget via shared.js.
 function anyNativeLimitPrefVisible(settings) {
-  return NATIVE_BUCKETS.some(({ prefKey }) => settings[prefKey] !== false)
-    || settings.showMonthlyCredits !== false;
+  return CUC.anyNativeLimitPrefVisible(settings);
 }
 
 function renderNative(nativeUsage, nativeUsageError, settings) {
@@ -251,8 +250,9 @@ function renderPace(paceSamples, nativeUsage, settings) {
   const el = document.getElementById("pace-note");
   if (!el) return;
   // The pace projection is specifically about the 5-hour session limit, so
-  // it follows that row's own visibility pref.
-  if (settings.showSessionLimit === false) {
+  // it follows that row's visibility pref AND the global pace-warnings
+  // switch — same gates the widget's in-page tip applies.
+  if (settings.showPlainEnglishTips === false || settings.showSessionLimit === false) {
     el.hidden = true;
     return;
   }

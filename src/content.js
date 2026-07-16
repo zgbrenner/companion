@@ -153,28 +153,6 @@
     return CUC.detectModelFromText(header) || settings.defaultModel;
   }
 
-  function detectEffortLevel() {
-    // Best-effort only: Claude.ai's effort/thinking-level control markup is
-    // not documented for extensions, so this is a heuristic scan of
-    // selector-like controls, not a guaranteed read. Returns null (shown as
-    // no effort suffix) rather than a guess when nothing matches.
-    const selectors = [
-      "[data-testid*='effort']",
-      "[data-testid*='thinking']",
-      "[aria-label*='effort' i]",
-      "[aria-label*='thinking' i]"
-    ];
-    for (const selector of selectors) {
-      const el = document.querySelector(selector);
-      const text = (el?.innerText || el?.getAttribute?.("aria-label") || "").toLowerCase().trim();
-      if (!text) continue;
-      if (text.includes("high")) return "High";
-      if (text.includes("medium") || text.includes("standard")) return "Medium";
-      if (text.includes("low")) return "Low";
-    }
-    return null;
-  }
-
   // The widget follows claude.ai's OWN theme (what the user picked in Claude's
   // appearance settings), not the OS preference — a dark-OS user running
   // Claude in light mode gets a light widget. Claude tags dark mode on the
@@ -327,9 +305,9 @@
         chrome.runtime.sendMessage({ type: "cuc:open-options" });
       }
       if (action === "cycle") {
-        const order = ["dollars", "tokens", "both"];
-        const next = order[(order.indexOf(settings.displayMode) + 1) % order.length];
-        settings.displayMode = next;
+        // Same table the button's aria-label is rendered from, so the
+        // announced "next" and the actual next can never disagree.
+        settings.displayMode = DISPLAY_MODE_NEXT[settings.displayMode] || "dollars";
         await chrome.storage.local.set({ "cuc:settings": settings });
         renderWidget();
       }
@@ -691,6 +669,11 @@
   // ---- File → Markdown drop zone --------------------------------------------
 
   const DROPZONE_DEFAULT_LABEL = "Click to pick a file → Markdown (fewer tokens than raw files)";
+  // Accepted dropzone extensions. Three lists gate an extension end to end:
+  // this one, background.js's CONVERTIBLE_EXTENSIONS (minus md/txt, which
+  // never leave this file), and the parser fileType mapping in sandbox.js's
+  // convert() — an extension the parser only knows under another name (htm →
+  // html today) must be aliased THERE, or it passes both gates then fails.
   const CONVERTIBLE_EXTENSIONS = new Set(["pdf", "docx", "pptx", "xlsx", "odt", "odp", "ods", "rtf", "csv", "html", "htm", "md", "txt"]);
   let dropzoneResetTimer = null;
 
@@ -972,7 +955,7 @@
     const cycleButton = widgetRoot.querySelector("[data-cuc-action='cycle']");
     if (cycleButton) {
       cycleButton.textContent = DISPLAY_MODE_GLYPHS[settings.displayMode] || "$";
-      const nextMode = DISPLAY_MODE_NEXT[settings.displayMode] || "tokens";
+      const nextMode = DISPLAY_MODE_NEXT[settings.displayMode] || "dollars";
       const label = `Showing ${DISPLAY_MODE_NAMES[settings.displayMode] || "dollars"}. Switch display to ${DISPLAY_MODE_NAMES[nextMode]}.`;
       cycleButton.setAttribute("aria-label", label);
       cycleButton.title = `Switch display to ${DISPLAY_MODE_NAMES[nextMode]}`;
@@ -1066,11 +1049,10 @@
   }
 
   // Whether ANY of the four rolling/monthly limit rows are visible per the
-  // user's per-metric prefs — used to decide whether the whole native
-  // section (and its status note) should render at all.
+  // user's per-metric prefs — decides whether the whole native section (and
+  // its status note) renders at all. Shared with the popup via shared.js.
   function anyNativeLimitPrefVisible() {
-    return NATIVE_BUCKETS.some(({ prefKey }) => settings[prefKey] !== false)
-      || settings.showMonthlyCredits !== false;
+    return CUC.anyNativeLimitPrefVisible(settings);
   }
 
   // Returns the most urgent plain-English warning across all native buckets,
@@ -1078,7 +1060,7 @@
   // bucket the user chose to hide (per-metric pref) is excluded so a warning
   // can't leak a number they don't want shown — this mirrors the existing
   // includeMonthly guard for the monthly-credit bucket.
-  function mostUrgentNativeWarning(native, { includeMonthly = true } = {}) {
+  function mostUrgentNativeWarning(native, { includeMonthly = settings.showMonthlyCredits !== false } = {}) {
     if (!native) return null;
     const candidates = [];
     for (const { prop, label, prefKey } of NATIVE_BUCKETS) {
@@ -1195,7 +1177,7 @@
     const showMonthly = settings.showMonthlyCredits !== false;
     if (!showMonthly || !spendLimit) {
       if (enterpriseRow) enterpriseRow.hidden = true;
-      setNote(mostUrgentNativeWarning(nativeUsage, { includeMonthly: showMonthly }));
+      setNote(mostUrgentNativeWarning(nativeUsage));
       return;
     }
     if (enterpriseRow) enterpriseRow.hidden = false;
@@ -1428,14 +1410,19 @@
   // org's 429 exposure.
   const NATIVE_USAGE_SHARED_FRESH_MS = 45 * 1000;
 
+  // Badge/notification feeds respect the same per-metric prefs as the rows:
+  // a metric the user hid must not resurface through the toolbar badge or an
+  // OS notification — those are MORE intrusive channels, not exempt ones.
   function maxNativeUtilizationPct(native) {
     if (!native) return null;
     const values = [];
-    for (const prop of ["fiveHour", "sevenDay", "sevenDayOpus"]) {
+    for (const { prop, prefKey } of NATIVE_BUCKETS) {
+      if (settings[prefKey] === false) continue;
       const bucket = native[prop];
       if (bucket && typeof bucket.utilizationPct === "number") values.push(bucket.utilizationPct);
     }
-    if (typeof native.monthlySpendLimit?.utilizationPct === "number") {
+    if (settings.showMonthlyCredits !== false
+      && typeof native.monthlySpendLimit?.utilizationPct === "number") {
       values.push(native.monthlySpendLimit.utilizationPct);
     }
     return values.length ? Math.max(...values) : null;
@@ -1449,15 +1436,16 @@
   function nativeUsageBucketsForBackground() {
     if (!nativeUsage) return [];
     const rows = [];
-    const push = (key, label, bucket) => {
+    const push = (key, label, bucket, prefKey) => {
+      if (settings[prefKey] === false) return; // hidden metric → no desktop alert either
       if (bucket && typeof bucket.utilizationPct === "number") {
         rows.push({ key, label, pct: bucket.utilizationPct, resetsAt: bucket.resetsAt || null });
       }
     };
-    push("five-hour", "Session limit", nativeUsage.fiveHour);
-    push("seven-day", "Weekly limit", nativeUsage.sevenDay);
-    push("opus", "Weekly Opus limit", nativeUsage.sevenDayOpus);
-    push("monthly", "Monthly allowance", nativeUsage.monthlySpendLimit);
+    push("five-hour", "Session limit", nativeUsage.fiveHour, "showSessionLimit");
+    push("seven-day", "Weekly limit", nativeUsage.sevenDay, "showWeeklyLimit");
+    push("opus", "Weekly Opus limit", nativeUsage.sevenDayOpus, "showOpusLimit");
+    push("monthly", "Monthly allowance", nativeUsage.monthlySpendLimit, "showMonthlyCredits");
     return rows;
   }
 

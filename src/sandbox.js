@@ -39,14 +39,29 @@ async function convert(bytes, ext, workerSource) {
       markdown = ast?.toText?.();
     }
     markdown = String(markdown || "").trim();
-    // A sheet with no cells still yields YAML frontmatter + separators, which
-    // would slip past a bare non-empty check and paste useless scaffolding
-    // into the chat. Judge emptiness on what's left after stripping those.
-    const meaningful = markdown
-      .replace(/^---\n[\s\S]*?\n---(\n|$)/g, "")
+    // The parser wraps sheets/sections in YAML frontmatter (`--- title:
+    // "Sheet1" ---`) plus bare `---` separators — scaffolding that reads as
+    // noise when pasted into a chat. Rewrite titled frontmatter into a plain
+    // heading, drop the rest, and judge emptiness on what remains (an empty
+    // sheet must error, not paste leftover scaffolding).
+    markdown = markdown
+      .replace(/(?:^|\n)---\n([\s\S]*?)\n---(?=\n|$)/g, (block, body) => {
+        // Only treat the block as frontmatter when every line is `key: value`
+        // (or blank) — two legitimate `---` rules with document text between
+        // them must survive untouched.
+        if (!/^(?:[\w-]+:[^\n]*|\s*)(?:\n(?:[\w-]+:[^\n]*|\s*))*$/.test(body)) return block;
+        const title = /(?:^|\n)title:\s*"?([^"\n]+?)"?\s*$/m.exec(body)?.[1]?.trim();
+        return title ? `\n## ${title}` : "\n";
+      })
       .replace(/^\s*---\s*$/gm, "")
+      .replace(/\n{3,}/g, "\n\n")
       .trim();
-    if (!meaningful) throw new Error("no extractable text found in the file");
+    // Emptiness is judged ignoring headings: a sheet name promoted to "##
+    // Sheet1" above isn't content — an empty sheet must still error rather
+    // than paste a lone heading into the chat.
+    if (!markdown.replace(/^#{1,6} .*$/gm, "").trim()) {
+      throw new Error("no extractable text found in the file");
+    }
     if (markdown.length > MAX_MARKDOWN_CHARS) {
       markdown = `${markdown.slice(0, MAX_MARKDOWN_CHARS)}\n\n[truncated — file text exceeded ${MAX_MARKDOWN_CHARS.toLocaleString()} characters]`;
     }
