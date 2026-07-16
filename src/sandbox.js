@@ -17,7 +17,10 @@ async function convert(bytes, ext, workerSource) {
   if (workerSource) {
     workerBlobUrl = URL.createObjectURL(new Blob([workerSource], { type: "text/javascript" }));
   }
-  const parserConfig = { fileType: ext, ocr: false };
+  // The vendored parser's format switch only knows "html" — map the equally
+  // common .htm extension onto it instead of letting it throw "unsupported".
+  const fileType = ext === "htm" ? "html" : ext;
+  const parserConfig = { fileType, ocr: false };
   if (workerBlobUrl) parserConfig.pdfWorkerSrc = workerBlobUrl;
 
   try {
@@ -36,7 +39,14 @@ async function convert(bytes, ext, workerSource) {
       markdown = ast?.toText?.();
     }
     markdown = String(markdown || "").trim();
-    if (!markdown) throw new Error("no extractable text found in the file");
+    // A sheet with no cells still yields YAML frontmatter + separators, which
+    // would slip past a bare non-empty check and paste useless scaffolding
+    // into the chat. Judge emptiness on what's left after stripping those.
+    const meaningful = markdown
+      .replace(/^---\n[\s\S]*?\n---(\n|$)/g, "")
+      .replace(/^\s*---\s*$/gm, "")
+      .trim();
+    if (!meaningful) throw new Error("no extractable text found in the file");
     if (markdown.length > MAX_MARKDOWN_CHARS) {
       markdown = `${markdown.slice(0, MAX_MARKDOWN_CHARS)}\n\n[truncated — file text exceeded ${MAX_MARKDOWN_CHARS.toLocaleString()} characters]`;
     }

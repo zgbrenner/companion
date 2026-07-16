@@ -25,7 +25,7 @@ async function loadState() {
     "cuc:spend-session"
   ]);
   return {
-    settings: { ...CUC.DEFAULT_SETTINGS, ...(stored["cuc:settings"] || {}) },
+    settings: CUC.mergeSettings(stored["cuc:settings"]),
     spendDays: stored["cuc:spend-days"] || null,
     spendSession: ephemeral["cuc:spend-session"] || null,
     nativeUsage: ephemeral["cuc:native-usage"] || null,
@@ -46,23 +46,29 @@ function render(state) {
   const { settings, spendSession, spendDays, nativeUsage } = state;
 
   // Session spend — Claude's own counter since the browser session started.
-  const sessionValueEl = document.getElementById("session-value");
-  const sessionDetailEl = document.getElementById("session-detail");
-  const sessionBarEl = document.getElementById("session-bar");
-  const deltaUsd = CUC.sessionSpendDelta(spendSession);
+  // The whole block (headline, bar, detail line) is individually hideable.
+  const meterSection = document.getElementById("session-spend-section");
+  const showSessionSpend = settings.showSessionSpend !== false;
+  if (meterSection) meterSection.hidden = !showSessionSpend;
+  if (showSessionSpend) {
+    const sessionValueEl = document.getElementById("session-value");
+    const sessionDetailEl = document.getElementById("session-detail");
+    const sessionBarEl = document.getElementById("session-bar");
+    const deltaUsd = CUC.sessionSpendDelta(spendSession);
 
-  if (deltaUsd == null) {
-    sessionValueEl.textContent = "—";
-    sessionDetailEl.textContent = "Open a claude.ai tab to load your usage.";
-    setBar(sessionBarEl, 0);
-  } else {
-    sessionValueEl.textContent = spendText(deltaUsd, settings);
-    const limitUsd = nativeUsage?.monthlySpendLimit?.limitUsd;
-    setBar(sessionBarEl, limitUsd > 0 ? (deltaUsd / limitUsd) * 100 : 0);
-    const startedAt = spendSession?.startedAt;
-    sessionDetailEl.textContent = startedAt
-      ? `All your Claude activity since ${new Date(startedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} — real spend, not an estimate.`
-      : "All your Claude activity this browser session — real spend, not an estimate.";
+    if (deltaUsd == null) {
+      sessionValueEl.textContent = "—";
+      sessionDetailEl.textContent = "Open a claude.ai tab to load your usage.";
+      setBar(sessionBarEl, 0);
+    } else {
+      sessionValueEl.textContent = spendText(deltaUsd, settings);
+      const limitUsd = nativeUsage?.monthlySpendLimit?.limitUsd;
+      setBar(sessionBarEl, limitUsd > 0 ? (deltaUsd / limitUsd) * 100 : 0);
+      const startedAt = spendSession?.startedAt;
+      sessionDetailEl.textContent = startedAt
+        ? `All your Claude activity since ${new Date(startedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} — real spend, not an estimate.`
+        : "All your Claude activity this browser session — real spend, not an estimate.";
+    }
   }
 
   // Today / This month — both real numbers. "This month" is hideable.
@@ -127,9 +133,9 @@ function setBar(bar, pct) {
 }
 
 const NATIVE_BUCKETS = [
-  { id: "five-hour", prop: "fiveHour" },
-  { id: "seven-day", prop: "sevenDay" },
-  { id: "opus", prop: "sevenDayOpus" }
+  { id: "five-hour", prop: "fiveHour", prefKey: "showSessionLimit" },
+  { id: "seven-day", prop: "sevenDay", prefKey: "showWeeklyLimit" },
+  { id: "opus", prop: "sevenDayOpus", prefKey: "showOpusLimit" }
 ];
 
 function bucketValueText(bucket) {
@@ -138,9 +144,17 @@ function bucketValueText(bucket) {
   return countdown ? `${pct}% · resets in ${countdown}` : `${pct}%`;
 }
 
+// Whether ANY of the four rolling/monthly limit rows are visible per the
+// user's per-metric prefs — used to decide whether the whole native section
+// should render at all.
+function anyNativeLimitPrefVisible(settings) {
+  return NATIVE_BUCKETS.some(({ prefKey }) => settings[prefKey] !== false)
+    || settings.showMonthlyCredits !== false;
+}
+
 function renderNative(nativeUsage, nativeUsageError, settings) {
   const section = document.getElementById("native-section");
-  if (!settings.showNativeLimits) {
+  if (!anyNativeLimitPrefVisible(settings)) {
     section.style.display = "none";
     return;
   }
@@ -182,9 +196,15 @@ function renderNative(nativeUsage, nativeUsageError, settings) {
     return;
   }
 
-  for (const { id, prop } of NATIVE_BUCKETS) {
+  for (const { id, prop, prefKey } of NATIVE_BUCKETS) {
     const row = document.getElementById(`row-${id}`);
     if (!row) continue;
+    // Pref check first: off hides the row even when Claude's data says
+    // there's something to show (e.g. Opus usage > 0).
+    if (settings[prefKey] === false) {
+      row.hidden = true;
+      continue;
+    }
     const bucket = nativeUsage[prop];
     if (!bucket || typeof bucket.utilizationPct !== "number" || (id === "opus" && bucket.utilizationPct <= 0)) {
       row.hidden = true;
@@ -222,7 +242,9 @@ function renderNative(nativeUsage, nativeUsageError, settings) {
 function renderPace(paceSamples, nativeUsage, settings) {
   const el = document.getElementById("pace-note");
   if (!el) return;
-  if (!settings.showNativeLimits) {
+  // The pace projection is specifically about the 5-hour session limit, so
+  // it follows that row's own visibility pref.
+  if (settings.showSessionLimit === false) {
     el.hidden = true;
     return;
   }

@@ -63,13 +63,53 @@
     // false the row, drop zone, and send-interception are all suppressed —
     // users who don't want the feature can hide it entirely from Settings.
     showCavemanMode: true,
-    showNativeLimits: true,
+    // Whether the "Spent this session" meter block (headline value, bar, and
+    // the Today/session-detail line under it) is shown.
+    showSessionSpend: true,
+    // Whether the rolling 5-hour session-limit row is shown.
+    showSessionLimit: true,
+    // Whether the rolling 7-day weekly-limit row is shown.
+    showWeeklyLimit: true,
+    // Whether the weekly Opus-limit row is shown. Still only rendered once
+    // there's actual Opus usage to report — this just lets it be hidden even
+    // when that data exists.
+    showOpusLimit: true,
     // Whether the monthly usage-credit allowance is shown (the "Monthly
     // allowance" row in the widget and the "This month" figure in the popup).
     // Personal-plan users may not want a monthly-credit view at all.
     showMonthlyCredits: true,
     desktopNotifications: true
   };
+
+  // Retired setting, kept ONLY as a migration source in mergeSettings below —
+  // never read anywhere else and never written back into merged output.
+  const LEGACY_SHOW_NATIVE_LIMITS_KEY = "showNativeLimits";
+
+  // Every consumer merges stored settings on top of the defaults through this
+  // one function so the retired `showNativeLimits` boolean (replaced by the
+  // five per-metric toggles above) migrates consistently everywhere. A user
+  // who had `showNativeLimits: false` — and hasn't already been migrated or
+  // customized any of the new per-limit keys — keeps all their rolling limits
+  // hidden after upgrading. `showNativeLimits: true` (or absent) just falls
+  // through to the new defaults (all visible). The legacy key itself is never
+  // present in the returned object.
+  function mergeSettings(stored) {
+    const merged = { ...DEFAULT_SETTINGS, ...(stored || {}) };
+    if (stored && stored[LEGACY_SHOW_NATIVE_LIMITS_KEY] === false) {
+      const hasNewLimitKeys = ["showSessionLimit", "showWeeklyLimit", "showOpusLimit"]
+        .some(key => Object.prototype.hasOwnProperty.call(stored, key));
+      if (!hasNewLimitKeys) {
+        merged.showSessionLimit = false;
+        merged.showWeeklyLimit = false;
+        merged.showOpusLimit = false;
+        if (!Object.prototype.hasOwnProperty.call(stored, "showMonthlyCredits")) {
+          merged.showMonthlyCredits = false;
+        }
+      }
+    }
+    delete merged[LEGACY_SHOW_NATIVE_LIMITS_KEY];
+    return merged;
+  }
 
   // ---- Real-spend accounting -----------------------------------------------
   //
@@ -464,6 +504,7 @@
     MODEL_PRICES,
     DEFAULT_SETTINGS,
     SPEND_TOKEN_MIX,
+    mergeSettings,
     resolveModelKey,
     applySessionSpendSample,
     sessionSpendDelta,

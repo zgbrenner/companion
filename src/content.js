@@ -97,7 +97,7 @@
 
   async function loadState() {
     const stored = await chrome.storage.local.get(["cuc:settings", "cuc:spend-days", "cuc:caveman-injected"]);
-    settings = { ...CUC.DEFAULT_SETTINGS, ...(stored["cuc:settings"] || {}) };
+    settings = CUC.mergeSettings(stored["cuc:settings"]);
     spendDays = stored["cuc:spend-days"] || null;
     cavemanInjectedMap = stored["cuc:caveman-injected"] || {};
     const ephemeral = await CUC.ephemeralGet(["cuc:spend-session", "cuc:spend-breakdown"]);
@@ -243,7 +243,7 @@
           </div>
         </div>
         <div class="cuc-body" data-cuc="body">
-          <div class="cuc-meter">
+          <div class="cuc-meter" data-cuc="meter">
             <div class="cuc-meter-label">
               <span title="Your real usage-credit spend since you opened your browser — read straight from Claude's own monthly counter, accurate to the cent. Covers ALL your Claude activity in that time (every tab and device on your account), not just this chat. Token figures are a range derived from this real spend using current Anthropic pricing.">Spent this session</span>
               <span data-cuc="session-value" aria-live="polite">—</span>
@@ -279,10 +279,6 @@
           <div class="cuc-dropzone" data-cuc="dropzone" role="button" tabindex="0" hidden>
             <span data-cuc="dropzone-label">Click to pick a file → Markdown (fewer tokens than raw files)</span>
             <input type="file" data-cuc="dropzone-input" accept=".pdf,.docx,.pptx,.xlsx,.odt,.odp,.ods,.rtf,.csv,.html,.htm,.md,.txt" hidden />
-          </div>
-
-          <div class="cuc-footer">
-            <span data-cuc="model" title="The model detected in this chat — used to convert real dollars into the approximate token range.">Model</span>
           </div>
         </div>
       </div>
@@ -943,42 +939,44 @@
     if (!widget || !widgetRoot) return;
     widget.classList.toggle("cuc-hidden", !settings.showWidget);
 
+    // Model detection stays live year-round — it feeds the dollars→tokens
+    // conversion below even though the widget no longer shows a model footer.
     const modelKey = detectModelKey();
-    const model = CUC.MODEL_PRICES[CUC.resolveModelKey(modelKey)] || CUC.MODEL_PRICES[CUC.resolveModelKey(settings.defaultModel)];
-    const effort = detectEffortLevel();
 
     const cycleButton = widgetRoot.querySelector("[data-cuc-action='cycle']");
     if (cycleButton) cycleButton.textContent = DISPLAY_MODE_GLYPHS[settings.displayMode] || "$";
 
     // "Spent this session" — Claude's own counter, sampled at session start
-    // and on every poll/response since.
-    const deltaUsd = CUC.sessionSpendDelta(spendSession);
-    const sessionValueEl = widgetRoot.querySelector("[data-cuc='session-value']");
-    const sessionDetailEl = widgetRoot.querySelector("[data-cuc='session-detail']");
-    const sessionBar = widgetRoot.querySelector("[data-cuc='session-bar']");
+    // and on every poll/response since. The whole meter block (headline,
+    // bar, Today line) is individually hideable.
+    const meterEl = widgetRoot.querySelector("[data-cuc='meter']");
+    const showSessionSpend = settings.showSessionSpend !== false;
+    if (meterEl) meterEl.hidden = !showSessionSpend;
+    if (showSessionSpend) {
+      const deltaUsd = CUC.sessionSpendDelta(spendSession);
+      const sessionValueEl = widgetRoot.querySelector("[data-cuc='session-value']");
+      const sessionDetailEl = widgetRoot.querySelector("[data-cuc='session-detail']");
+      const sessionBar = widgetRoot.querySelector("[data-cuc='session-bar']");
 
-    if (deltaUsd == null) {
-      sessionValueEl.textContent = "—";
-      sessionDetailEl.hidden = true;
-      setBar(sessionBar, 0);
-    } else {
-      sessionValueEl.textContent = spendValueText(deltaUsd, modelKey);
-      // Bar: how much of the monthly allowance this session consumed.
-      const limitUsd = nativeUsage?.monthlySpendLimit?.limitUsd;
-      setBar(sessionBar, limitUsd > 0 ? (deltaUsd / limitUsd) * 100 : 0);
-
-      const today = todaySpendInfo();
-      if (today && today.spendUsd >= 0.005 && Math.abs(today.spendUsd - deltaUsd) >= 0.005) {
-        sessionDetailEl.textContent = `Today: ${spendValueText(today.spendUsd, modelKey, today.rows)}`;
-        sessionDetailEl.hidden = false;
-      } else {
+      if (deltaUsd == null) {
+        sessionValueEl.textContent = "—";
         sessionDetailEl.hidden = true;
+        setBar(sessionBar, 0);
+      } else {
+        sessionValueEl.textContent = spendValueText(deltaUsd, modelKey);
+        // Bar: how much of the monthly allowance this session consumed.
+        const limitUsd = nativeUsage?.monthlySpendLimit?.limitUsd;
+        setBar(sessionBar, limitUsd > 0 ? (deltaUsd / limitUsd) * 100 : 0);
+
+        const today = todaySpendInfo();
+        if (today && today.spendUsd >= 0.005 && Math.abs(today.spendUsd - deltaUsd) >= 0.005) {
+          sessionDetailEl.textContent = `Today: ${spendValueText(today.spendUsd, modelKey, today.rows)}`;
+          sessionDetailEl.hidden = false;
+        } else {
+          sessionDetailEl.hidden = true;
+        }
       }
     }
-
-    widgetRoot.querySelector("[data-cuc='model']").textContent = effort
-      ? `${model?.label || "Model"} · ${effort} effort`
-      : (model?.label || "Model");
 
     // Caveman Mode row + switch + drop zone visibility. The whole row hides
     // when the user has turned the feature off in Settings (showCavemanMode).
@@ -1016,9 +1014,9 @@
   // The three rolling-limit buckets Claude itself reports. These are what
   // actually locks a person out mid-workday, so they get first-class rows.
   const NATIVE_BUCKETS = [
-    { key: "five-hour", prop: "fiveHour", label: "Session limit" },
-    { key: "seven-day", prop: "sevenDay", label: "Weekly limit" },
-    { key: "opus", prop: "sevenDayOpus", label: "Weekly Opus limit" }
+    { key: "five-hour", prop: "fiveHour", label: "Session limit", prefKey: "showSessionLimit" },
+    { key: "seven-day", prop: "sevenDay", label: "Weekly limit", prefKey: "showWeeklyLimit" },
+    { key: "opus", prop: "sevenDayOpus", label: "Weekly Opus limit", prefKey: "showOpusLimit" }
   ];
 
   function bucketValueText(bucket) {
@@ -1027,14 +1025,24 @@
     return countdown ? `${pct}% · resets in ${countdown}` : `${pct}%`;
   }
 
+  // Whether ANY of the four rolling/monthly limit rows are visible per the
+  // user's per-metric prefs — used to decide whether the whole native
+  // section (and its status note) should render at all.
+  function anyNativeLimitPrefVisible() {
+    return NATIVE_BUCKETS.some(({ prefKey }) => settings[prefKey] !== false)
+      || settings.showMonthlyCredits !== false;
+  }
+
   // Returns the most urgent plain-English warning across all native buckets,
-  // or null when everything is comfortably below the warning threshold. When
-  // the monthly-credit view is hidden, its bucket is excluded so a warning
-  // can't leak the number the user chose not to show.
+  // or null when everything is comfortably below the warning threshold. Any
+  // bucket the user chose to hide (per-metric pref) is excluded so a warning
+  // can't leak a number they don't want shown — this mirrors the existing
+  // includeMonthly guard for the monthly-credit bucket.
   function mostUrgentNativeWarning(native, { includeMonthly = true } = {}) {
     if (!native) return null;
     const candidates = [];
-    for (const { prop, label } of NATIVE_BUCKETS) {
+    for (const { prop, label, prefKey } of NATIVE_BUCKETS) {
+      if (settings[prefKey] === false) continue;
       const bucket = native[prop];
       if (bucket && typeof bucket.utilizationPct === "number") {
         candidates.push({ pct: bucket.utilizationPct, label, resetsAt: bucket.resetsAt });
@@ -1058,7 +1066,9 @@
     const section = widgetRoot.querySelector("[data-cuc='native-section']");
     if (!section) return;
 
-    if (!settings.showNativeLimits) {
+    // All four rows pref-hidden → collapse the whole section (including the
+    // status note) rather than leaving an empty, bordered husk behind.
+    if (!anyNativeLimitPrefVisible()) {
       section.style.display = "none";
       return;
     }
@@ -1111,10 +1121,16 @@
       return;
     }
 
-    // Rolling limits (session/weekly/Opus) — Claude's own numbers.
-    for (const { key, prop } of NATIVE_BUCKETS) {
+    // Rolling limits (session/weekly/Opus) — Claude's own numbers. Each row
+    // is gated on its own pref FIRST: pref-off hides the row even when
+    // Claude's data says there's something to show (e.g. Opus usage > 0).
+    for (const { key, prop, prefKey } of NATIVE_BUCKETS) {
       const row = rows[key];
       if (!row) continue;
+      if (settings[prefKey] === false) {
+        row.hidden = true;
+        continue;
+      }
       const bucket = nativeUsage[prop];
       if (!bucket || typeof bucket.utilizationPct !== "number") {
         row.hidden = true;
@@ -1162,7 +1178,10 @@
   function renderTip() {
     const tip = widgetRoot.querySelector("[data-cuc='tip']");
     if (!tip) return;
-    if (!settings.showPlainEnglishTips || !settings.showNativeLimits) {
+    // The pace projection is specifically about the 5-hour session limit, so
+    // it follows that row's own visibility pref rather than the section as a
+    // whole.
+    if (!settings.showPlainEnglishTips || settings.showSessionLimit === false) {
       tip.hidden = true;
       return;
     }
@@ -1418,7 +1437,9 @@
   }
 
   async function refreshNativeUsage({ force = false } = {}) {
-    if (!settings.showNativeLimits || !CUCNative) {
+    // No point polling Claude's usage endpoint at all when every limit row
+    // that data would feed is pref-hidden.
+    if (!anyNativeLimitPrefVisible() || !CUCNative) {
       scheduleNextNativeUsagePoll();
       return;
     }
@@ -1524,7 +1545,7 @@
     }
     if (area !== "local") return;
     if (changes["cuc:settings"]?.newValue) {
-      settings = { ...CUC.DEFAULT_SETTINGS, ...changes["cuc:settings"].newValue };
+      settings = CUC.mergeSettings(changes["cuc:settings"].newValue);
       placeWidget();
       renderWidget();
     }

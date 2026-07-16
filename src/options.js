@@ -31,7 +31,7 @@ async function updateSetting(key, value) {
   try {
     const stored = await chrome.storage.local.get(["cuc:settings"]);
     // Merge onto CURRENT stored settings so keys not shown here are preserved.
-    const settings = { ...CUC.DEFAULT_SETTINGS, ...(stored["cuc:settings"] || {}), [key]: value };
+    const settings = { ...CUC.mergeSettings(stored["cuc:settings"]), [key]: value };
     await chrome.storage.local.set({ "cuc:settings": settings });
     clearTimeout(saveStatusTimer);
     saveStatusTimer = setTimeout(flashSaved, 220);
@@ -198,7 +198,7 @@ async function exportCsv() {
   const status = document.getElementById("export-status");
   try {
     const stored = await chrome.storage.local.get(["cuc:spend-days", "cuc:settings"]);
-    const settings = { ...CUC.DEFAULT_SETTINGS, ...(stored["cuc:settings"] || {}) };
+    const settings = CUC.mergeSettings(stored["cuc:settings"]);
     const csv = CUC.spendDaysCsv(stored["cuc:spend-days"], settings.defaultModel);
     const rowCount = Math.max(0, csv.split("\n").length - 1);
     const blob = new Blob([csv], { type: "text/csv" });
@@ -276,7 +276,7 @@ function wireSectionNav() {
 async function loadSettings() {
   populateModels();
   const stored = await chrome.storage.local.get(["cuc:settings"]);
-  const settings = { ...CUC.DEFAULT_SETTINGS, ...(stored["cuc:settings"] || {}) };
+  const settings = CUC.mergeSettings(stored["cuc:settings"]);
   renderControls(settings);
   await renderDetectedAccount();
 }

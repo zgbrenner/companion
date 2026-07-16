@@ -140,6 +140,10 @@ p {
   margin-bottom: 0;
 }
 
+.summary-row[hidden] {
+  display: none;
+}
+
 @media (prefers-color-scheme: dark) {
   .summary-row {
     color: #a09c98;
