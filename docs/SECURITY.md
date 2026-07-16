@@ -105,7 +105,7 @@ The extension is split into isolated components so that the least-trusted code h
                  │ chrome.runtime messaging (sender + shape validated)
                  ▼
       background.js (service worker) — single writer of spend state,
-      badge, notifications, update checks. Validates every message.
+      badge, notifications. Validates every message.
                  │ chrome.runtime messaging
                  ▼
       offscreen.html/js (extension origin) — PRIVILEGED relay for file
