@@ -1,3 +1,5 @@
+@import url("fonts.css");
+
 body {
   margin: 0;
   width: 300px;
@@ -18,8 +20,10 @@ body {
 }
 
 h1 {
+  font-family: "Space Grotesk", system-ui, -apple-system, sans-serif;
   font-size: 15px;
   font-weight: 650;
+  letter-spacing: -0.01em;
   margin: 0;
   color: #2b3648;
 }
@@ -40,9 +44,10 @@ p {
 
 .meter-label {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: baseline;
-  gap: 10px;
+  gap: 2px 10px;
   font-size: 11px;
   color: #4a5568;
 }
@@ -55,16 +60,17 @@ p {
 
 .meter-label span:first-child {
   flex-shrink: 0;
+  font-family: "Space Grotesk", system-ui, -apple-system, sans-serif;
   font-weight: 600;
 }
 
 .meter-label span:last-child {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   color: #1c2430;
+  font-family: "Space Grotesk", system-ui, -apple-system, sans-serif;
   font-weight: 650;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
   text-align: right;
 }
 
@@ -140,6 +146,10 @@ p {
   margin-bottom: 0;
 }
 
+.summary-row[hidden] {
+  display: none;
+}
+
 @media (prefers-color-scheme: dark) {
   .summary-row {
     color: #a09c98;
@@ -147,12 +157,15 @@ p {
 }
 
 .summary-row span:first-child {
+  font-family: "Space Grotesk", system-ui, -apple-system, sans-serif;
   font-weight: 600;
 }
 
 .summary-row span:last-child {
   color: #1c2430;
+  font-family: "Space Grotesk", system-ui, -apple-system, sans-serif;
   font-weight: 650;
+  font-variant-numeric: tabular-nums;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -191,13 +204,16 @@ p {
 
 .trend-caption {
   font-size: 10px;
-  color: #8b95a3;
+  /* #68707a gives 5.0:1 against the white background (was #8b95a3, ~3.0:1 —
+     below the 4.5:1 AA floor for normal-size text). */
+  color: #68707a;
   margin-top: 3px;
 }
 
 @media (prefers-color-scheme: dark) {
   .trend-caption {
-    color: #8a8784;
+    /* #9c9996 gives 5.1:1 against the dark background (was #8a8784, ~4.0:1). */
+    color: #9c9996;
   }
 }
 
@@ -235,6 +251,23 @@ p {
   }
 }
 
+.native-label span:first-child {
+  font-family: "Space Grotesk", system-ui, -apple-system, sans-serif;
+}
+
+.native-label span:last-child {
+  color: #1c2430;
+  font-family: "Space Grotesk", system-ui, -apple-system, sans-serif;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-color-scheme: dark) {
+  .native-label span:last-child {
+    color: #e8e6e3;
+  }
+}
+
 .native-note {
   font-size: 11px;
   color: #6b7684;
@@ -242,7 +275,9 @@ p {
 }
 
 .pace-note {
-  color: #b4791f;
+  /* #906119 gives 5.4:1 against the white background (was #b4791f, ~3.7:1 —
+     below the 4.5:1 AA floor for normal-size text). */
+  color: #906119;
   font-weight: 600;
 }
 
@@ -296,5 +331,16 @@ button:hover {
 @media (prefers-color-scheme: dark) {
   button:hover {
     background: #3f3d3a;
+  }
+}
+
+button:focus-visible {
+  outline: 2px solid #3d7a5c;
+  outline-offset: 2px;
+}
+
+@media (prefers-color-scheme: dark) {
+  button:focus-visible {
+    outline-color: #5fb383;
   }
 }

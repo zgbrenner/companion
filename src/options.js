@@ -1,12 +1,10 @@
 const CUC = globalThis.ClaudeUsageCompanion;
 const CUCNative = globalThis.ClaudeUsageCompanionNative;
-const CUCUpdater = globalThis.ClaudeUsageCompanionUpdater;
-const REPO_URL = "https://github.com/zgbrenner/claudecompanion";
-const UPDATER_DB_NAME = "cuc-updater";
 
 // Every persisted setting keyed by the control's data-setting attribute.
 const BOOLEAN_SETTINGS = new Set([
-  "showWidget", "showCavemanMode", "showNativeLimits", "showMonthlyCredits", "desktopNotifications", "showPlainEnglishTips"
+  "showWidget", "showCavemanMode", "showMonthlyCredits", "desktopNotifications", "showPlainEnglishTips",
+  "showSessionSpend", "showSessionLimit", "showWeeklyLimit", "showOpusLimit"
 ]);
 
 let detectedOrganizationId = null;
@@ -33,7 +31,7 @@ async function updateSetting(key, value) {
   try {
     const stored = await chrome.storage.local.get(["cuc:settings"]);
     // Merge onto CURRENT stored settings so keys not shown here are preserved.
-    const settings = { ...CUC.DEFAULT_SETTINGS, ...(stored["cuc:settings"] || {}), [key]: value };
+    const settings = { ...CUC.mergeSettings(stored["cuc:settings"]), [key]: value };
     await chrome.storage.local.set({ "cuc:settings": settings });
     clearTimeout(saveStatusTimer);
     saveStatusTimer = setTimeout(flashSaved, 220);
@@ -194,99 +192,13 @@ function toggleOrganizationVisibility() {
   setAccountActionStatus(organizationRevealed ? "Full organization ID revealed." : "Organization ID masked.");
 }
 
-// ---- Updates ---------------------------------------------------------------
-
-function updateStatusEl() { return document.getElementById("update-status"); }
-function updateDetailEl() { return document.getElementById("update-detail"); }
-function applyUpdateButton() { return document.getElementById("apply-update"); }
-function updateBadgeEl() { return document.getElementById("update-badge"); }
-
-function setUpdateBadge(kind, text) {
-  const badge = updateBadgeEl();
-  if (!badge) return;
-  if (!kind) { badge.hidden = true; return; }
-  badge.hidden = false;
-  badge.className = `badge badge-${kind}`;
-  badge.textContent = text;
-}
-
-async function renderUpdateSection(check) {
-  const status = updateStatusEl();
-  const applyButton = applyUpdateButton();
-  const current = CUCUpdater.currentVersion();
-  const folder = await CUCUpdater.folderStatus().catch(() => "unset");
-  const folderNote = folder === "unset"
-    ? " Connect the extension folder below for one-click install."
-    : (folder === "needs-permission" ? " Chrome will confirm folder access when you install." : "");
-
-  if (!check) {
-    status.textContent = `You're on v${current}.`;
-    applyButton.hidden = true;
-    setUpdateBadge(null);
-    return;
-  }
-  if (check.updateAvailable) {
-    status.textContent = `v${check.latestVersion} is available (you're on v${current}).${folderNote}`;
-    applyButton.hidden = false;
-    applyButton.textContent = `Install v${check.latestVersion}`;
-    setUpdateBadge("warn", "Update available");
-  } else {
-    status.textContent = `You're on the latest version (v${current}).`;
-    applyButton.hidden = true;
-    setUpdateBadge("ok", "Up to date");
-  }
-}
-
-async function checkForUpdates() {
-  const status = updateStatusEl();
-  status.textContent = "Checking GitHub for updates…";
-  setUpdateBadge("muted", "Checking…");
-  try {
-    await renderUpdateSection(await CUCUpdater.checkForUpdate());
-  } catch (error) {
-    status.textContent = `Couldn't check for updates: ${error?.message || error}`;
-    applyUpdateButton().hidden = true;
-    setUpdateBadge(null);
-  }
-}
-
-async function setupUpdateFolder() {
-  const detail = updateDetailEl();
-  try {
-    await CUCUpdater.chooseExtensionFolder();
-    detail.textContent = "Extension folder connected — updates are one click now.";
-    await renderUpdateSection(await CUCUpdater.checkForUpdate().catch(() => null));
-  } catch (error) {
-    if (error?.name === "AbortError") return;
-    detail.textContent = `Couldn't connect that folder: ${error?.message || error}`;
-  }
-}
-
-async function applyUpdateNow() {
-  const detail = updateDetailEl();
-  const applyButton = applyUpdateButton();
-  applyButton.disabled = true;
-  try {
-    const result = await CUCUpdater.applyUpdate(message => { detail.textContent = message; });
-    detail.textContent = `Updated to v${result.version} — reloading…`;
-    setTimeout(() => chrome.runtime.reload(), 1200);
-  } catch (error) {
-    applyButton.disabled = false;
-    if (error?.code === "no-folder") {
-      detail.textContent = "Connect the extension folder first (below), then install.";
-      return;
-    }
-    detail.textContent = `Update failed: ${error?.message || error}`;
-  }
-}
-
 // ---- Export / destructive reset --------------------------------------------
 
 async function exportCsv() {
   const status = document.getElementById("export-status");
   try {
     const stored = await chrome.storage.local.get(["cuc:spend-days", "cuc:settings"]);
-    const settings = { ...CUC.DEFAULT_SETTINGS, ...(stored["cuc:settings"] || {}) };
+    const settings = CUC.mergeSettings(stored["cuc:settings"]);
     const csv = CUC.spendDaysCsv(stored["cuc:spend-days"], settings.defaultModel);
     const rowCount = Math.max(0, csv.split("\n").length - 1);
     const blob = new Blob([csv], { type: "text/csv" });
@@ -306,18 +218,9 @@ async function exportCsv() {
   }
 }
 
-function deleteUpdaterDatabase() {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.deleteDatabase(UPDATER_DB_NAME);
-    request.onsuccess = () => resolve();
-    request.onerror = () => reject(request.error || new Error("Could not clear updater database."));
-    request.onblocked = () => reject(new Error("Updater database is still in use. Reopen Settings and try again."));
-  });
-}
-
 async function clearAllLocalData() {
   const confirmed = window.confirm(
-    "Clear all Claude Companion data stored in this browser? This removes settings, usage history, caches, and the connected update folder. Claude itself is not changed."
+    "Clear all Companion data stored in this browser? This removes settings, usage history, and caches. Claude itself is not changed."
   );
   if (!confirmed) return;
 
@@ -329,7 +232,6 @@ async function clearAllLocalData() {
   const results = await Promise.allSettled([
     chrome.storage.local.clear(),
     chrome.storage.session?.clear?.() || Promise.resolve(),
-    deleteUpdaterDatabase(),
     chrome.action?.setBadgeText?.({ text: "" }) || Promise.resolve()
   ]);
   const failed = results.filter(r => r.status === "rejected");
@@ -337,13 +239,11 @@ async function clearAllLocalData() {
   detectedOrganizationId = null;
   organizationRevealed = false;
   setAccountActionStatus("");
-  updateDetailEl().textContent = "";
   await loadSettings();
-  await renderUpdateSection(null);
 
   status.textContent = failed.length
     ? "Storage cleared, but one item couldn't be removed. Reopen Settings and try again."
-    : "All local Claude Companion data has been cleared.";
+    : "All local Companion data has been cleared.";
   button.disabled = false;
 }
 
@@ -353,7 +253,12 @@ function wireSectionNav() {
   const links = [...document.querySelectorAll(".section-nav a")];
   const byId = new Map(links.map(a => [a.dataset.nav, a]));
   const setActive = id => {
-    links.forEach(a => a.classList.toggle("active", a.dataset.nav === id));
+    links.forEach(a => {
+      const isActive = a.dataset.nav === id;
+      a.classList.toggle("active", isActive);
+      if (isActive) a.setAttribute("aria-current", "page");
+      else a.removeAttribute("aria-current");
+    });
   };
   const observer = new IntersectionObserver(entries => {
     // The section whose top is nearest the viewport top wins.
@@ -371,7 +276,7 @@ function wireSectionNav() {
 async function loadSettings() {
   populateModels();
   const stored = await chrome.storage.local.get(["cuc:settings"]);
-  const settings = { ...CUC.DEFAULT_SETTINGS, ...(stored["cuc:settings"] || {}) };
+  const settings = CUC.mergeSettings(stored["cuc:settings"]);
   renderControls(settings);
   await renderDetectedAccount();
 }
@@ -398,12 +303,7 @@ document.getElementById("clear-org-cache")?.addEventListener("click", async () =
 });
 document.getElementById("clear-all-data")?.addEventListener("click", clearAllLocalData);
 document.getElementById("export-csv")?.addEventListener("click", exportCsv);
-document.getElementById("check-updates")?.addEventListener("click", checkForUpdates);
-document.getElementById("setup-folder")?.addEventListener("click", setupUpdateFolder);
-document.getElementById("apply-update")?.addEventListener("click", applyUpdateNow);
-document.getElementById("open-github")?.addEventListener("click", () => chrome.tabs.create({ url: REPO_URL }));
 
 wireControls();
 wireSectionNav();
 loadSettings();
-checkForUpdates();

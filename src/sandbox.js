@@ -17,7 +17,10 @@ async function convert(bytes, ext, workerSource) {
   if (workerSource) {
     workerBlobUrl = URL.createObjectURL(new Blob([workerSource], { type: "text/javascript" }));
   }
-  const parserConfig = { fileType: ext, ocr: false };
+  // The vendored parser's format switch only knows "html" — map the equally
+  // common .htm extension onto it instead of letting it throw "unsupported".
+  const fileType = ext === "htm" ? "html" : ext;
+  const parserConfig = { fileType, ocr: false };
   if (workerBlobUrl) parserConfig.pdfWorkerSrc = workerBlobUrl;
 
   try {
@@ -36,7 +39,29 @@ async function convert(bytes, ext, workerSource) {
       markdown = ast?.toText?.();
     }
     markdown = String(markdown || "").trim();
-    if (!markdown) throw new Error("no extractable text found in the file");
+    // The parser wraps sheets/sections in YAML frontmatter (`--- title:
+    // "Sheet1" ---`) plus bare `---` separators — scaffolding that reads as
+    // noise when pasted into a chat. Rewrite titled frontmatter into a plain
+    // heading, drop the rest, and judge emptiness on what remains (an empty
+    // sheet must error, not paste leftover scaffolding).
+    markdown = markdown
+      .replace(/(?:^|\n)---\n([\s\S]*?)\n---(?=\n|$)/g, (block, body) => {
+        // Only treat the block as frontmatter when every line is `key: value`
+        // (or blank) — two legitimate `---` rules with document text between
+        // them must survive untouched.
+        if (!/^(?:[\w-]+:[^\n]*|\s*)(?:\n(?:[\w-]+:[^\n]*|\s*))*$/.test(body)) return block;
+        const title = /(?:^|\n)title:\s*"?([^"\n]+?)"?\s*$/m.exec(body)?.[1]?.trim();
+        return title ? `\n## ${title}` : "\n";
+      })
+      .replace(/^\s*---\s*$/gm, "")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+    // Emptiness is judged ignoring headings: a sheet name promoted to "##
+    // Sheet1" above isn't content — an empty sheet must still error rather
+    // than paste a lone heading into the chat.
+    if (!markdown.replace(/^#{1,6} .*$/gm, "").trim()) {
+      throw new Error("no extractable text found in the file");
+    }
     if (markdown.length > MAX_MARKDOWN_CHARS) {
       markdown = `${markdown.slice(0, MAX_MARKDOWN_CHARS)}\n\n[truncated — file text exceeded ${MAX_MARKDOWN_CHARS.toLocaleString()} characters]`;
     }

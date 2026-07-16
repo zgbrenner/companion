@@ -389,7 +389,7 @@
       const stored = await chrome.storage.local.get([SPEND_ENDPOINT_KEY]);
       if (stored[SPEND_ENDPOINT_KEY]?.path === path) return false;
       await chrome.storage.local.set({ [SPEND_ENDPOINT_KEY]: { path, learnedAt: Date.now() } });
-      console.debug("[Claude Companion] learned candidate spend endpoint:", path);
+      console.debug("[Companion] learned candidate spend endpoint:", path);
       return true;
     } catch {
       return false;
@@ -471,7 +471,7 @@
     const monthUsed = currentNative?.monthlySpendLimit?.usedUsd;
     const total = rows.reduce((sum, row) => sum + row.spendUsd, 0);
     if (typeof monthUsed === "number" && total > Math.max(monthUsed * 1.25, monthUsed + 5)) {
-      console.debug("[Claude Companion] spend breakdown rejected: total", total, "vs monthly counter", monthUsed);
+      console.debug("[Companion] spend breakdown rejected: total", total, "vs monthly counter", monthUsed);
       return null;
     }
     return { fetchedAt: Date.now(), path: endpoint.path, rows };

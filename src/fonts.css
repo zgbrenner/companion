@@ -1,0 +1,11 @@
+/* Single source for the bundled display font, imported by popup.css and
+   options.css. The in-page widget can't use this file: shadow-root
+   stylesheets don't register @font-face, so content.js injects the same
+   rule into the host document's <head> with a chrome.runtime.getURL()
+   src — keep that copy (injectFontFace in content.js) in sync with this. */
+@font-face {
+  font-family: "Space Grotesk";
+  src: url("fonts/space-grotesk-latin.woff2") format("woff2");
+  font-weight: 400 700;
+  font-display: swap;
+}

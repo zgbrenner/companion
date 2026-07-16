@@ -57,25 +57,33 @@
 //     no preamble/filler/sign-offs." Rejected: lacked the persistence clause
 //     and the substance-preservation guardrail, which matters — terse-mode
 //     drift toward dropping caveats is the known failure mode.
-//   Candidate 3 (BELOW, ~75 tokens): fewest-words core + explicit
+//   Candidate 3 (~75 tokens): fewest-words core + explicit
 //     persistence ("entire conversation"), explicit substance guardrail,
-//     and explicit scope ("your responses, not mine"). Chosen.
+//     and explicit scope ("your responses, not mine"). Shipped in 0.9.x.
+//   Candidate 4 (BELOW, ~105 tokens): candidate 3 plus the three verbosity
+//     leaks it didn't plug — models under "no preamble" instructions still
+//     (a) enumerate alternatives when one answer was asked for, (b)
+//     re-explain things already established earlier in the chat, and (c)
+//     decorate with emoji/headers. Each gets an explicit clause; measured
+//     against candidate 3 the extra ~30 tokens pay for themselves within
+//     one avoided alternatives-list. Chosen.
 //
 // The wording is deliberately grammatical-professional, NOT grunt-speak:
 // the goal is filler-free business prose, not novelty.
 
 (() => {
   const CAVEMAN_INSTRUCTION = [
-    "Maximum-brevity mode is ON for this entire conversation — every turn, no exceptions, even as it gets long.",
-    "Answer in the fewest words that fully and accurately resolve my request. Lead with the answer; cut all preamble, question-restatement, filler, hedging, praise, and closing offers or sign-offs.",
-    "Plain, grammatical, professional prose. Prefer tight lists or tables over paragraphs when they carry the same information in less space.",
-    "Brevity never overrides correctness: keep every fact, number, step, and caveat that matters — trim words, not substance.",
+    "Maximum-brevity mode is ON for this entire conversation — every turn, no exceptions, even as the chat gets long.",
+    "Lead with the answer, in the fewest words that fully and accurately resolve my request. Cut all preamble, question-restatement, filler, hedging, praise, meta-commentary, and closing offers or sign-offs.",
+    "Give the single best answer; mention alternatives only when I ask for options or the choice genuinely depends on something I haven't told you. Never re-explain what this conversation already covered.",
+    "Plain, grammatical, professional prose. Prefer tight lists or tables over paragraphs when they carry the same information in less space. No emoji, headers, or decorative formatting unless I ask.",
+    "Brevity never overrides correctness: keep every fact, number, step, and caveat that matters — cut words, not substance.",
     "This governs only your replies, never my messages."
   ].join(" ");
 
   // Re-pinned into every Nth outgoing message (long chats get compacted and
   // early instructions lose salience — see persistence caveat above).
-  const CAVEMAN_REMINDER = "(Still in maximum-brevity mode: fewest words that fully and accurately resolve this — no preamble, filler, or sign-off.)";
+  const CAVEMAN_REMINDER = "(Still in maximum-brevity mode: lead with the answer, fewest words that fully and accurately resolve this — no preamble, alternatives, filler, or sign-off.)";
   const CAVEMAN_REMINDER_EVERY_N_RESPONSES = 12;
 
   // ---- Prompt compression (rule-based, extractive-only) -------------------

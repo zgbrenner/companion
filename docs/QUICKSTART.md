@@ -1,6 +1,6 @@
 # Quick Start
 
-Claude Companion is a Chrome/Edge extension that shows your real Claude.ai usage under the chat box. This guide covers installing it, first-run setup, and everyday use. For the security model and IT/infosec review, see **[SECURITY.md](SECURITY.md)**.
+Companion is a Chrome/Edge extension that shows your real Claude.ai usage under the chat box. This guide covers installing it, first-run setup, and everyday use. For the security model and IT/infosec review, see **[SECURITY.md](SECURITY.md)**.
 
 ---
 
@@ -16,7 +16,7 @@ No account, sign-up, API key, or server is required by the extension itself.
 
 ## 2. Install (Developer mode / "Load unpacked")
 
-1. Download or clone this repository to a stable location on disk — a folder you won't move or delete (e.g. `Documents\ClaudeCompanion`). The extension runs from these files in place.
+1. Download or clone this repository to a stable location on disk — a folder you won't move or delete (e.g. `Documents\Companion`). The extension runs from these files in place.
 2. Open your browser and go to `chrome://extensions` (or `edge://extensions`).
 3. Turn on **Developer mode** (top-right toggle).
 4. Click **Load unpacked** and select the extension folder (the one containing `manifest.json`).
@@ -49,7 +49,6 @@ Open Settings from the widget's **⚙**, the popup's **Settings** button, or `ch
 - **Alerts** — desktop notification when a limit runs hot (85% / 95%); plain-English pace warnings.
 - **Claude connection** — show/hide Claude's real limits; show/hide the monthly usage-credit view; a live connection-status panel (detected organization — masked, with reveal/copy — the cached monthly cap, and how long ago it was detected); "Re-detect account"; and a "How the connection works" explainer.
 - **Data & privacy** — a summary of what is and isn't stored; **Download CSV** (daily spend history, no chat text); and **Clear all local data** (a clearly separated destructive action).
-- **Updates** — current version, "Check now", and one-time setup for one-click updates.
 
 ---
 
@@ -65,31 +64,7 @@ Don't want the feature at all? Turn off **Show Caveman Mode in the widget** in S
 
 ---
 
-## 6. Enable one-click updates (per user, one time)
-
-So updates install without touching `chrome://extensions`:
-
-1. Settings → **Updates** → expand "One-time setup for one-click updates".
-2. Click **Connect extension folder** and select the same folder you loaded in step 2.
-3. Chrome asks for permission to that folder once; grant it.
-
-From then on, when a newer version is published the widget shows an **"Update ready — click to install"** banner. Installing verifies every file's hash before writing anything and reloads the extension in place — your settings are kept and the extension keeps its ID.
-
----
-
-## 7. For the maintainer / IT: turn on update signing
-
-Update signing makes the auto-updater refuse any release that isn't cryptographically signed with your private key — closing off a compromised repo or CDN. It ships **off** (hash-only) so nothing breaks; enable it once:
-
-1. Run `node tools/gen-signing-key.mjs`. It prints a public and a private key.
-2. Paste the **public** key into `UPDATE_PUBLIC_KEY_SPKI_B64` in `src/updater.js` and commit.
-3. Store the **private** key as the GitHub Actions secret `CUC_UPDATE_SIGNING_KEY` (repo → Settings → Secrets and variables → Actions). Never commit it.
-
-Details and the full rationale are in **[SECURITY.md → Update mechanism](SECURITY.md#7-update-mechanism-security)**.
-
----
-
-## 8. Troubleshooting
+## 6. Troubleshooting
 
 - **Widget doesn't appear** — make sure you're on `https://claude.ai` and signed in; reload the tab. If Claude changed its page layout, the widget waits for the composer rather than floating in the wrong place.
 - **Limits show "Sign in to claude.ai…"** — you're signed out, or the tab hasn't finished loading; sign in and reload.
@@ -99,6 +74,6 @@ Details and the full rationale are in **[SECURITY.md → Update mechanism](SECUR
 
 ---
 
-## 9. Uninstall
+## 7. Uninstall
 
 Remove it at `chrome://extensions`. To also wipe locally-stored data first, use Settings → Data & privacy → **Clear all local data**. Your Claude account is unaffected either way.

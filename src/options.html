@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Claude Companion — Settings</title>
+  <title>Companion — Settings</title>
   <link rel="stylesheet" href="options.css" />
 </head>
 <body>
@@ -11,7 +11,7 @@
     <div class="topbar-inner">
       <div class="brand">
         <span class="brand-mark" aria-hidden="true">◆</span>
-        <span class="brand-name">Claude Companion</span>
+        <span class="brand-name">Companion</span>
         <span class="brand-sub">Settings</span>
       </div>
       <div class="save-bar">
@@ -23,11 +23,10 @@
 
   <div class="layout">
     <nav class="section-nav" aria-label="Settings sections">
-      <a href="#display" data-nav="display" class="active">Display</a>
+      <a href="#display" data-nav="display" class="active" aria-current="page">Display</a>
       <a href="#alerts" data-nav="alerts">Alerts</a>
       <a href="#connection" data-nav="connection">Claude connection</a>
       <a href="#privacy" data-nav="privacy">Data &amp; privacy</a>
-      <a href="#updates" data-nav="updates">Updates</a>
     </nav>
 
     <main class="content">
@@ -40,38 +39,83 @@
         <div class="card-body">
           <div class="row">
             <div class="row-text">
-              <div class="row-label">Show usage as</div>
-              <div class="row-desc">Dollars are real spend from Claude's counter; tokens are an approximate range derived from it.</div>
+              <label class="row-label" id="lbl-show-widget" for="showWidget">Show the usage widget on Claude</label>
+              <div class="row-desc" id="desc-show-widget">The meter pinned under the chat box. You can also hide it with its ✕ button.</div>
             </div>
-            <div class="segmented" role="group" aria-label="Display mode" data-setting="displayMode">
+            <button type="button" id="showWidget" class="switch" role="switch" aria-checked="true" data-setting="showWidget" aria-labelledby="lbl-show-widget" aria-describedby="desc-show-widget"><span class="switch-knob"></span></button>
+          </div>
+
+          <div class="row">
+            <div class="row-text">
+              <label class="row-label" id="lbl-display-mode">Show usage as</label>
+              <div class="row-desc" id="desc-display-mode">Dollars are real spend from Claude's counter; tokens are an approximate range derived from it.</div>
+            </div>
+            <div class="segmented" role="group" aria-labelledby="lbl-display-mode" data-setting="displayMode">
               <button type="button" class="segment" data-value="dollars">Dollars</button>
               <button type="button" class="segment" data-value="tokens">Tokens</button>
               <button type="button" class="segment" data-value="both">Both</button>
             </div>
           </div>
 
-          <div class="row">
-            <div class="row-text">
-              <div class="row-label">Show the usage widget on Claude</div>
-              <div class="row-desc">The meter pinned under the chat box. You can also hide it with its ✕ button.</div>
+          <fieldset class="metrics-group">
+            <legend class="metrics-group-legend">Widget metrics</legend>
+            <p class="metrics-group-desc">Pick exactly which meters the widget and popup show.</p>
+
+            <div class="row">
+              <div class="row-text">
+                <label class="row-label" id="lbl-session-spend" for="showSessionSpend">Spent this session</label>
+                <div class="row-desc" id="desc-session-spend">Real usage-credit spend since this browser session began, with the Today line.</div>
+              </div>
+              <button type="button" id="showSessionSpend" class="switch" role="switch" aria-checked="true" data-setting="showSessionSpend" aria-labelledby="lbl-session-spend" aria-describedby="desc-session-spend"><span class="switch-knob"></span></button>
             </div>
-            <button type="button" class="switch" role="switch" aria-checked="true" data-setting="showWidget" aria-label="Show the usage widget"><span class="switch-knob"></span></button>
-          </div>
+
+            <div class="row">
+              <div class="row-text">
+                <label class="row-label" id="lbl-session-limit" for="showSessionLimit">Session limit (5-hour)</label>
+                <div class="row-desc" id="desc-session-limit">The rolling 5-hour allowance that pauses you mid-day.</div>
+              </div>
+              <button type="button" id="showSessionLimit" class="switch" role="switch" aria-checked="true" data-setting="showSessionLimit" aria-labelledby="lbl-session-limit" aria-describedby="desc-session-limit"><span class="switch-knob"></span></button>
+            </div>
+
+            <div class="row">
+              <div class="row-text">
+                <label class="row-label" id="lbl-weekly-limit" for="showWeeklyLimit">Weekly limit</label>
+                <div class="row-desc" id="desc-weekly-limit">The 7-day allowance across all models.</div>
+              </div>
+              <button type="button" id="showWeeklyLimit" class="switch" role="switch" aria-checked="true" data-setting="showWeeklyLimit" aria-labelledby="lbl-weekly-limit" aria-describedby="desc-weekly-limit"><span class="switch-knob"></span></button>
+            </div>
+
+            <div class="row">
+              <div class="row-text">
+                <label class="row-label" id="lbl-opus-limit" for="showOpusLimit">Weekly Opus limit</label>
+                <div class="row-desc" id="desc-opus-limit">The 7-day Opus-specific allowance. Appears only after Opus use.</div>
+              </div>
+              <button type="button" id="showOpusLimit" class="switch" role="switch" aria-checked="true" data-setting="showOpusLimit" aria-labelledby="lbl-opus-limit" aria-describedby="desc-opus-limit"><span class="switch-knob"></span></button>
+            </div>
+
+            <div class="row">
+              <div class="row-text">
+                <label class="row-label" id="lbl-monthly-credits" for="showMonthlyCredits">Monthly allowance</label>
+                <div class="row-desc" id="desc-monthly-credits">Monthly usage-credit spend and cap. Most useful on enterprise or usage-credit accounts.</div>
+              </div>
+              <button type="button" id="showMonthlyCredits" class="switch" role="switch" aria-checked="true" data-setting="showMonthlyCredits" aria-labelledby="lbl-monthly-credits" aria-describedby="desc-monthly-credits"><span class="switch-knob"></span></button>
+            </div>
+          </fieldset>
 
           <div class="row">
             <div class="row-text">
-              <div class="row-label">Show Caveman Mode in the widget</div>
-              <div class="row-desc">The quota-stretching controls: ultra-brief replies, prompt trimming, and file&nbsp;→&nbsp;Markdown. Turn off to hide them entirely.</div>
+              <label class="row-label" id="lbl-caveman" for="showCavemanMode">Show Caveman Mode in the widget</label>
+              <div class="row-desc" id="desc-caveman">The quota-stretching controls: ultra-brief replies, prompt trimming, and file&nbsp;→&nbsp;Markdown.</div>
             </div>
-            <button type="button" class="switch" role="switch" aria-checked="true" data-setting="showCavemanMode" aria-label="Show Caveman Mode in the widget"><span class="switch-knob"></span></button>
+            <button type="button" id="showCavemanMode" class="switch" role="switch" aria-checked="true" data-setting="showCavemanMode" aria-labelledby="lbl-caveman" aria-describedby="desc-caveman"><span class="switch-knob"></span></button>
           </div>
 
           <div class="row row-stack">
             <div class="row-text">
-              <div class="row-label">Model for token estimates</div>
-              <div class="row-desc">Only used to turn real dollars into an approximate token range when the active model can't be detected. Dollar figures never depend on this.</div>
+              <label class="row-label" for="defaultModel">Model for token estimates</label>
+              <div class="row-desc" id="desc-default-model">Used to turn dollars into an approximate token range when the active model can't be detected. Real dollar figures never depend on this.</div>
             </div>
-            <select id="defaultModel" data-setting="defaultModel"></select>
+            <select id="defaultModel" data-setting="defaultModel" aria-describedby="desc-default-model"></select>
           </div>
         </div>
       </section>
@@ -85,18 +129,18 @@
         <div class="card-body">
           <div class="row">
             <div class="row-text">
-              <div class="row-label">Desktop notification when a limit runs hot</div>
-              <div class="row-desc">A gentle nudge when any Claude limit crosses 85% or 95% — once per threshold per reset window, never repeated. The toolbar badge stays on regardless.</div>
+              <label class="row-label" id="lbl-desktop-notifications" for="desktopNotifications">Desktop notification when a limit runs hot</label>
+              <div class="row-desc" id="desc-desktop-notifications">A nudge when any limit crosses 85% or 95%, once per threshold per reset window. The toolbar badge stays on regardless.</div>
             </div>
-            <button type="button" class="switch" role="switch" aria-checked="true" data-setting="desktopNotifications" aria-label="Desktop notifications"><span class="switch-knob"></span></button>
+            <button type="button" id="desktopNotifications" class="switch" role="switch" aria-checked="true" data-setting="desktopNotifications" aria-labelledby="lbl-desktop-notifications" aria-describedby="desc-desktop-notifications"><span class="switch-knob"></span></button>
           </div>
 
           <div class="row">
             <div class="row-text">
-              <div class="row-label">Plain-English pace warnings</div>
-              <div class="row-desc">An in-widget line like "at this pace you'll hit your session limit around 3:40 PM" when you're burning quota fast.</div>
+              <label class="row-label" id="lbl-pace-warnings" for="showPlainEnglishTips">Plain-English pace warnings</label>
+              <div class="row-desc" id="desc-pace-warnings">An in-widget line like "at this pace you'll hit your session limit around 3:40 PM" when you're burning quota fast.</div>
             </div>
-            <button type="button" class="switch" role="switch" aria-checked="true" data-setting="showPlainEnglishTips" aria-label="Plain-English pace warnings"><span class="switch-knob"></span></button>
+            <button type="button" id="showPlainEnglishTips" class="switch" role="switch" aria-checked="true" data-setting="showPlainEnglishTips" aria-labelledby="lbl-pace-warnings" aria-describedby="desc-pace-warnings"><span class="switch-knob"></span></button>
           </div>
         </div>
       </section>
@@ -108,26 +152,10 @@
           <p>The extension reads Claude's own usage numbers directly — never an estimate.</p>
         </div>
         <div class="card-body">
-          <div class="row">
-            <div class="row-text">
-              <div class="row-label">Show Claude's real limits</div>
-              <div class="row-desc">Session (5-hour), weekly, and Opus limits, each with a reset countdown.</div>
-            </div>
-            <button type="button" class="switch" role="switch" aria-checked="true" data-setting="showNativeLimits" aria-label="Show Claude's real limits"><span class="switch-knob"></span></button>
-          </div>
-
-          <div class="row">
-            <div class="row-text">
-              <div class="row-label">Show monthly usage credits</div>
-              <div class="row-desc">The monthly usage-credit allowance ("$X of $Y") in the widget and the "This month" figure in the popup. Turn off if you don't want a monthly-credit view.</div>
-            </div>
-            <button type="button" class="switch" role="switch" aria-checked="true" data-setting="showMonthlyCredits" aria-label="Show monthly usage credits"><span class="switch-knob"></span></button>
-          </div>
-
           <div class="panel">
             <div class="panel-head">
               <span class="panel-title">Connection status</span>
-              <span class="badge badge-muted" id="connection-badge">Checking…</span>
+              <span class="badge badge-muted" id="connection-badge" aria-live="polite">Checking…</span>
             </div>
             <dl class="panel-grid">
               <dt>Organization</dt>
@@ -188,7 +216,7 @@
           <div class="danger">
             <div class="danger-head">
               <div class="row-label">Clear all local data</div>
-              <div class="row-desc">Removes settings, spend history, caches, learned endpoints, and the connected update folder. Your Claude account is not touched.</div>
+              <div class="row-desc">Removes settings, spend history, and caches. Your Claude account is not touched.</div>
             </div>
             <div class="row-actions">
               <button type="button" class="btn btn-danger" id="clear-all-data">Clear all local data</button>
@@ -197,44 +225,11 @@
           </div>
         </div>
       </section>
-
-      <!-- ============ Updates ============ -->
-      <section class="card" id="updates">
-        <div class="card-header">
-          <h2>Updates</h2>
-          <p>Installs straight from GitHub — no reinstall, settings kept.</p>
-        </div>
-        <div class="card-body">
-          <div class="panel">
-            <div class="panel-head">
-              <span class="panel-title" id="update-status">Checking for updates…</span>
-              <span class="badge badge-muted" id="update-badge" hidden></span>
-            </div>
-            <div class="panel-foot">
-              <button type="button" class="btn btn-primary" id="apply-update" hidden>Install update</button>
-              <button type="button" class="btn btn-secondary btn-sm" id="check-updates">Check now</button>
-              <span class="mini-status" id="update-detail" aria-live="polite"></span>
-            </div>
-          </div>
-
-          <details class="disclosure">
-            <summary>One-time setup for one-click updates</summary>
-            <div class="disclosure-body">
-              <p>To let updates install with a single click, connect the extension's folder once — pick the folder you chose at <code>chrome://extensions → Load unpacked</code>. After that the extension can refresh its own files.</p>
-              <div class="row-actions">
-                <button type="button" class="btn btn-secondary btn-sm" id="setup-folder">Connect extension folder</button>
-                <button type="button" class="btn btn-ghost btn-sm" id="open-github">Open GitHub</button>
-              </div>
-            </div>
-          </details>
-        </div>
-      </section>
     </main>
   </div>
 
   <script src="shared.js"></script>
   <script src="native-usage.js"></script>
-  <script src="updater.js"></script>
   <script src="options.js"></script>
 </body>
 </html>

@@ -5,7 +5,30 @@
 // machine, and the parser never sees a chrome API.
 
 const SANDBOX_TIMEOUT_MS = 60_000;
+const SANDBOX_READY_TIMEOUT_MS = 10_000;
 const pending = new Map(); // id -> {resolve, reject, timer}
+
+// Decode a data: URL to bytes WITHOUT fetch(): the extension-pages CSP has no
+// data: source in connect-src, so fetch(dataUrl) is blocked outright.
+// FileReader.readAsDataURL (the producer, in content.js) always emits base64.
+function dataUrlToArrayBuffer(dataUrl) {
+  const comma = dataUrl.indexOf(",");
+  if (comma < 0) throw new Error("malformed data URL");
+  const meta = dataUrl.slice(0, comma);
+  const payload = dataUrl.slice(comma + 1);
+  if (!/;base64$/i.test(meta)) {
+    return new TextEncoder().encode(decodeURIComponent(payload)).buffer;
+  }
+  // Native base64 decode when available (no intermediate 2-bytes-per-char
+  // string, ~8x faster on a 20MB file); atob loop as the fallback.
+  if (typeof Uint8Array.fromBase64 === "function") {
+    return Uint8Array.fromBase64(payload).buffer;
+  }
+  const binary = atob(payload);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return bytes.buffer;
+}
 
 function sandboxFrame() {
   return document.getElementById("sandbox");
@@ -15,8 +38,23 @@ function sandboxFrame() {
 // load event OR the sandbox's ready message — whichever comes first — so we
 // can never miss an already-fired signal and hang.
 let resolveSandboxReady;
-const sandboxReady = new Promise(resolve => { resolveSandboxReady = resolve; });
-function whenSandboxReady() { return sandboxReady; }
+let sandboxIsReady = false;
+const sandboxReady = new Promise(resolve => {
+  resolveSandboxReady = () => { sandboxIsReady = true; resolve(); };
+});
+// Bounded wait: if the sandbox iframe never signals ready (load failure,
+// future CSP change), fail the conversion instead of hanging the caller's
+// sendMessage — and with it the dropzone's "Converting…" label — forever.
+function whenSandboxReady() {
+  if (sandboxIsReady) return sandboxReady;
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error("file converter failed to start — try reloading the extension")),
+      SANDBOX_READY_TIMEOUT_MS
+    );
+    sandboxReady.then(() => { clearTimeout(timer); resolve(); });
+  });
+}
 (function armReadyFallback() {
   const frame = sandboxFrame();
   if (!frame) { requestAnimationFrame(armReadyFallback); return; }
@@ -71,8 +109,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   (async () => {
     await whenSandboxReady();
     const ext = String(message.ext || "").toLowerCase();
-    const response = await fetch(message.dataUrl);
-    const bytes = await response.arrayBuffer();
+    const bytes = dataUrlToArrayBuffer(String(message.dataUrl || ""));
     // Only PDFs need the pdfjs worker; read its source here (extension origin)
     // so the sandbox can run it from a same-origin blob.
     let workerSource = null;

@@ -3,16 +3,16 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Claude Companion</title>
+  <title>Companion</title>
   <link rel="stylesheet" href="popup.css" />
 </head>
 <body>
   <main class="popup">
     <header>
-      <h1>Claude Companion</h1>
+      <h1>Companion</h1>
     </header>
 
-    <section class="meter">
+    <section class="meter" id="session-spend-section">
       <div class="meter-label"><span title="Your real usage-credit spend since you opened your browser — read from Claude's own monthly counter, accurate to the cent. Covers all your Claude activity in that time (every tab and device), not just one chat.">Spent this session</span><span id="session-value">—</span></div>
       <div class="bar" role="progressbar" aria-label="Session spend as a share of the monthly allowance" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div id="session-bar"></div></div>
       <p class="budget-line" id="session-detail">Open a claude.ai tab to load your usage.</p>
@@ -42,8 +42,8 @@
         <div class="native-label"><span title="Monthly usage-credit spend and cap from Claude.ai — real account data, not an estimate.">Monthly allowance</span><span id="enterprise-value">—</span></div>
         <div class="bar bar--thin" role="progressbar" aria-label="Monthly allowance" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div id="enterprise-bar"></div></div>
       </div>
-      <p class="native-note" id="native-note"></p>
-      <p class="native-note pace-note" id="pace-note" hidden></p>
+      <p class="native-note" id="native-note" aria-live="polite"></p>
+      <p class="native-note pace-note" id="pace-note" aria-live="polite" hidden></p>
     </section>
 
     <section class="actions">

@@ -19,9 +19,6 @@
   // ephemeral store; feeds the "at this pace…" projection.
   let paceSamples = [];
   let lastUsageSnapshotRefreshAt = 0;
-  // Newest version published on GitHub, recorded by the background's update
-  // checker; drives the "Update ready" banner at the top of the widget.
-  let updateAvailableVersion = null;
   // Real-spend state, written by the background single-writer from the
   // samples this (and every other) tab reports:
   //   spendSession — {baselineUsd, lastUsd, monthKey, startedAt} in
@@ -35,6 +32,25 @@
   // reveals the endpoint and it validates.
   let spendBreakdown = null;
   let generationRefreshTimer = null;
+  // Space Grotesk registration for the widget. @font-face declared INSIDE a
+  // shadow root's stylesheet never registers with the document font cache
+  // (a shadow root can use fonts, but can't define new ones), so it has to
+  // be injected once into the host page's <head> instead. Guarded by id so
+  // repeated createWidget() calls (SPA re-mounts, multiple invocations)
+  // can't stack duplicate <style> tags.
+  const FONT_FACE_STYLE_ID = "cuc-font-face";
+  function injectFontFace() {
+    if (document.getElementById(FONT_FACE_STYLE_ID)) return;
+    const style = document.createElement("style");
+    style.id = FONT_FACE_STYLE_ID;
+    style.textContent = `@font-face {
+      font-family: "Space Grotesk";
+      src: url("${chrome.runtime.getURL("src/fonts/space-grotesk-latin.woff2")}") format("woff2");
+      font-weight: 400 700;
+      font-display: swap;
+    }`;
+    (document.head || document.documentElement).appendChild(style);
+  }
   // Caveman Mode state. cavemanInjectedMap mirrors the background-owned
   // "instruction already sent to this conversation" map (persisted, so it
   // survives page reloads within the same chat). responsesSinceInjection is
@@ -99,9 +115,8 @@
   }
 
   async function loadState() {
-    const stored = await chrome.storage.local.get(["cuc:settings", "cuc:update-available", "cuc:spend-days", "cuc:caveman-injected"]);
-    settings = { ...CUC.DEFAULT_SETTINGS, ...(stored["cuc:settings"] || {}) };
-    updateAvailableVersion = stored["cuc:update-available"]?.latestVersion || null;
+    const stored = await chrome.storage.local.get(["cuc:settings", "cuc:spend-days", "cuc:caveman-injected"]);
+    settings = CUC.mergeSettings(stored["cuc:settings"]);
     spendDays = stored["cuc:spend-days"] || null;
     cavemanInjectedMap = stored["cuc:caveman-injected"] || {};
     const ephemeral = await CUC.ephemeralGet(["cuc:spend-session", "cuc:spend-breakdown"]);
@@ -136,28 +151,6 @@
     // the full body, to avoid picking up model names mentioned in messages.
     const header = document.querySelector("header")?.innerText || "";
     return CUC.detectModelFromText(header) || settings.defaultModel;
-  }
-
-  function detectEffortLevel() {
-    // Best-effort only: Claude.ai's effort/thinking-level control markup is
-    // not documented for extensions, so this is a heuristic scan of
-    // selector-like controls, not a guaranteed read. Returns null (shown as
-    // no effort suffix) rather than a guess when nothing matches.
-    const selectors = [
-      "[data-testid*='effort']",
-      "[data-testid*='thinking']",
-      "[aria-label*='effort' i]",
-      "[aria-label*='thinking' i]"
-    ];
-    for (const selector of selectors) {
-      const el = document.querySelector(selector);
-      const text = (el?.innerText || el?.getAttribute?.("aria-label") || "").toLowerCase().trim();
-      if (!text) continue;
-      if (text.includes("high")) return "High";
-      if (text.includes("medium") || text.includes("standard")) return "Medium";
-      if (text.includes("low")) return "Low";
-    }
-    return null;
   }
 
   // The widget follows claude.ai's OWN theme (what the user picked in Claude's
@@ -203,6 +196,7 @@
 
   async function createWidget() {
     if (widget || !document.body) return;
+    injectFontFace();
     widget = document.createElement("div");
     widget.id = "cuc-widget";
     const shadow = widget.attachShadow({ mode: "open" });
@@ -239,19 +233,18 @@
     container.innerHTML = `
       <div class="cuc-card" role="complementary" aria-label="Claude usage meter">
         <div class="cuc-header">
-          <span class="cuc-title">Claude Companion</span>
+          <span class="cuc-title">Companion</span>
           <div class="cuc-controls">
             <button class="cuc-button" data-cuc-action="cycle" title="Switch between dollars/tokens" aria-label="Switch display between dollars, tokens, and both">$</button>
             <button class="cuc-button" data-cuc-action="options" title="Settings" aria-label="Open settings">⚙</button>
             <button class="cuc-button" data-cuc-action="hide" title="Hide" aria-label="Hide usage widget">✕</button>
           </div>
         </div>
-        <button class="cuc-update" data-cuc="update-banner" data-cuc-action="update" hidden></button>
         <div class="cuc-body" data-cuc="body">
-          <div class="cuc-meter">
+          <div class="cuc-meter" data-cuc="meter">
             <div class="cuc-meter-label">
               <span title="Your real usage-credit spend since you opened your browser — read straight from Claude's own monthly counter, accurate to the cent. Covers ALL your Claude activity in that time (every tab and device on your account), not just this chat. Token figures are a range derived from this real spend using current Anthropic pricing.">Spent this session</span>
-              <span data-cuc="session-value" aria-live="polite">—</span>
+              <span data-cuc="session-value">—</span>
             </div>
             <div class="cuc-progress" role="progressbar" aria-label="Session spend as a share of the monthly allowance" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
               <div class="cuc-progress-bar" data-cuc="session-bar"></div>
@@ -275,19 +268,15 @@
             <div class="cuc-native-note" data-cuc="enterprise-note" aria-live="polite">Loading Claude usage…</div>
           </div>
 
-          <div class="cuc-tip" data-cuc="tip" hidden></div>
+          <div class="cuc-tip" data-cuc="tip" aria-live="polite" hidden></div>
 
           <div class="cuc-caveman-row" data-cuc="caveman-row">
             <span class="cuc-caveman-label" title="Caveman Mode saves your Claude quota: Claude answers ultra-brief, your prompts get trimmed (you approve a preview first), and dropped files convert to lean Markdown.">🪨 Caveman Mode — stretch your quota</span>
             <button class="cuc-switch" data-cuc-action="caveman-toggle" role="switch" aria-checked="false" aria-label="Toggle Caveman Mode"><span class="cuc-switch-knob"></span></button>
           </div>
           <div class="cuc-dropzone" data-cuc="dropzone" role="button" tabindex="0" hidden>
-            <span data-cuc="dropzone-label">Click to pick a file → Markdown (fewer tokens than raw files)</span>
+            <span data-cuc="dropzone-label" aria-live="polite">Click to pick a file → Markdown (fewer tokens than raw files)</span>
             <input type="file" data-cuc="dropzone-input" accept=".pdf,.docx,.pptx,.xlsx,.odt,.odp,.ods,.rtf,.csv,.html,.htm,.md,.txt" hidden />
-          </div>
-
-          <div class="cuc-footer">
-            <span data-cuc="model" title="The model detected in this chat — used to convert real dollars into the approximate token range.">Model</span>
           </div>
         </div>
       </div>
@@ -312,15 +301,13 @@
         await chrome.storage.local.set({ "cuc:settings": settings });
         renderWidget();
       }
-      if (action === "options" || action === "update") {
-        // The update banner routes to the options page too — that's where the
-        // one-click installer lives.
+      if (action === "options") {
         chrome.runtime.sendMessage({ type: "cuc:open-options" });
       }
       if (action === "cycle") {
-        const order = ["dollars", "tokens", "both"];
-        const next = order[(order.indexOf(settings.displayMode) + 1) % order.length];
-        settings.displayMode = next;
+        // Same table the button's aria-label is rendered from, so the
+        // announced "next" and the actual next can never disagree.
+        settings.displayMode = DISPLAY_MODE_NEXT[settings.displayMode] || "dollars";
         await chrome.storage.local.set({ "cuc:settings": settings });
         renderWidget();
       }
@@ -682,6 +669,11 @@
   // ---- File → Markdown drop zone --------------------------------------------
 
   const DROPZONE_DEFAULT_LABEL = "Click to pick a file → Markdown (fewer tokens than raw files)";
+  // Accepted dropzone extensions. Three lists gate an extension end to end:
+  // this one, background.js's CONVERTIBLE_EXTENSIONS (minus md/txt, which
+  // never leave this file), and the parser fileType mapping in sandbox.js's
+  // convert() — an extension the parser only knows under another name (htm →
+  // html today) must be aliased THERE, or it passes both gates then fails.
   const CONVERTIBLE_EXTENSIONS = new Set(["pdf", "docx", "pptx", "xlsx", "odt", "odp", "ods", "rtf", "csv", "html", "htm", "md", "txt"]);
   let dropzoneResetTimer = null;
 
@@ -911,6 +903,12 @@
   }
 
   const DISPLAY_MODE_GLYPHS = { dollars: "$", tokens: "#", both: "$#" };
+  // What clicking the cycle button does FROM the current display mode — used
+  // to keep its aria-label describing the actual next action rather than a
+  // generic fixed description, so a screen-reader user always knows what the
+  // button (and its glyph) currently means.
+  const DISPLAY_MODE_NEXT = { dollars: "tokens", tokens: "both", both: "dollars" };
+  const DISPLAY_MODE_NAMES = { dollars: "dollars", tokens: "tokens", both: "dollars and tokens" };
 
   // Today's spend: prefer the per-model breakdown learned from claude.ai's
   // own usage page (fresh within 6h), else the day-chain of counter samples.
@@ -950,53 +948,53 @@
     if (!widget || !widgetRoot) return;
     widget.classList.toggle("cuc-hidden", !settings.showWidget);
 
+    // Model detection stays live year-round — it feeds the dollars→tokens
+    // conversion below even though the widget no longer shows a model footer.
     const modelKey = detectModelKey();
-    const model = CUC.MODEL_PRICES[CUC.resolveModelKey(modelKey)] || CUC.MODEL_PRICES[CUC.resolveModelKey(settings.defaultModel)];
-    const effort = detectEffortLevel();
 
     const cycleButton = widgetRoot.querySelector("[data-cuc-action='cycle']");
-    if (cycleButton) cycleButton.textContent = DISPLAY_MODE_GLYPHS[settings.displayMode] || "$";
-
-    // Update banner: shown while GitHub has a newer version than the one
-    // running. The inequality check auto-hides it once the update applies,
-    // even before the background clears the stored flag.
-    const updateBanner = widgetRoot.querySelector("[data-cuc='update-banner']");
-    if (updateBanner) {
-      const runningVersion = chrome.runtime.getManifest().version;
-      const showBanner = Boolean(updateAvailableVersion) && updateAvailableVersion !== runningVersion;
-      updateBanner.hidden = !showBanner;
-      if (showBanner) updateBanner.textContent = `Update v${updateAvailableVersion} is ready — click to install`;
+    if (cycleButton) {
+      cycleButton.textContent = DISPLAY_MODE_GLYPHS[settings.displayMode] || "$";
+      const nextMode = DISPLAY_MODE_NEXT[settings.displayMode] || "dollars";
+      const label = `Showing ${DISPLAY_MODE_NAMES[settings.displayMode] || "dollars"}. Switch display to ${DISPLAY_MODE_NAMES[nextMode]}.`;
+      cycleButton.setAttribute("aria-label", label);
+      cycleButton.title = `Switch display to ${DISPLAY_MODE_NAMES[nextMode]}`;
     }
 
     // "Spent this session" — Claude's own counter, sampled at session start
-    // and on every poll/response since.
-    const deltaUsd = CUC.sessionSpendDelta(spendSession);
-    const sessionValueEl = widgetRoot.querySelector("[data-cuc='session-value']");
-    const sessionDetailEl = widgetRoot.querySelector("[data-cuc='session-detail']");
-    const sessionBar = widgetRoot.querySelector("[data-cuc='session-bar']");
+    // and on every poll/response since. The whole meter block (headline,
+    // bar, Today line) is individually hideable.
+    const meterEl = widgetRoot.querySelector("[data-cuc='meter']");
+    const showSessionSpend = settings.showSessionSpend !== false;
+    if (meterEl) meterEl.hidden = !showSessionSpend;
+    if (showSessionSpend) {
+      const deltaUsd = CUC.sessionSpendDelta(spendSession);
+      const sessionValueEl = widgetRoot.querySelector("[data-cuc='session-value']");
+      const sessionDetailEl = widgetRoot.querySelector("[data-cuc='session-detail']");
+      const sessionBar = widgetRoot.querySelector("[data-cuc='session-bar']");
 
-    if (deltaUsd == null) {
-      sessionValueEl.textContent = "—";
-      sessionDetailEl.hidden = true;
-      setBar(sessionBar, 0);
-    } else {
-      sessionValueEl.textContent = spendValueText(deltaUsd, modelKey);
-      // Bar: how much of the monthly allowance this session consumed.
-      const limitUsd = nativeUsage?.monthlySpendLimit?.limitUsd;
-      setBar(sessionBar, limitUsd > 0 ? (deltaUsd / limitUsd) * 100 : 0);
-
-      const today = todaySpendInfo();
-      if (today && today.spendUsd >= 0.005 && Math.abs(today.spendUsd - deltaUsd) >= 0.005) {
-        sessionDetailEl.textContent = `Today: ${spendValueText(today.spendUsd, modelKey, today.rows)}`;
-        sessionDetailEl.hidden = false;
-      } else {
+      if (deltaUsd == null) {
+        sessionValueEl.textContent = "—";
         sessionDetailEl.hidden = true;
+        setBar(sessionBar, 0);
+      } else {
+        sessionValueEl.textContent = spendValueText(deltaUsd, modelKey);
+        // Bar: how much of the monthly allowance this session consumed.
+        const limitUsd = nativeUsage?.monthlySpendLimit?.limitUsd;
+        const sessionPct = limitUsd > 0 ? (deltaUsd / limitUsd) * 100 : 0;
+        setBar(sessionBar, sessionPct, limitUsd > 0
+          ? `${Math.round(CUC.clamp(sessionPct, 0, 100))}% of monthly allowance used this session`
+          : null);
+
+        const today = todaySpendInfo();
+        if (today && today.spendUsd >= 0.005 && Math.abs(today.spendUsd - deltaUsd) >= 0.005) {
+          sessionDetailEl.textContent = `Today: ${spendValueText(today.spendUsd, modelKey, today.rows)}`;
+          sessionDetailEl.hidden = false;
+        } else {
+          sessionDetailEl.hidden = true;
+        }
       }
     }
-
-    widgetRoot.querySelector("[data-cuc='model']").textContent = effort
-      ? `${model?.label || "Model"} · ${effort} effort`
-      : (model?.label || "Model");
 
     // Caveman Mode row + switch + drop zone visibility. The whole row hides
     // when the user has turned the feature off in Settings (showCavemanMode).
@@ -1021,22 +1019,27 @@
     return "low";
   }
 
-  // Update a progress bar's fill, color, and the aria-valuenow on its
-  // role="progressbar" container in one place.
-  function setBar(bar, pct) {
+  // Update a progress bar's fill, color, and the aria-valuenow/aria-valuetext
+  // on its role="progressbar" container in one place. valueText, when given,
+  // is the human-readable string screen readers announce instead of the bare
+  // percentage (e.g. "42% · resets in 2h 15m").
+  function setBar(bar, pct, valueText) {
     if (!bar) return;
     const clamped = CUC.clamp(pct, 0, 100);
     bar.style.width = `${clamped}%`;
     bar.className = `cuc-progress-bar ${nativeUsageBarLevel(clamped)}`;
-    bar.parentElement?.setAttribute?.("aria-valuenow", String(Math.round(clamped)));
+    const container = bar.parentElement;
+    container?.setAttribute?.("aria-valuenow", String(Math.round(clamped)));
+    if (valueText) container?.setAttribute?.("aria-valuetext", valueText);
+    else container?.removeAttribute?.("aria-valuetext");
   }
 
   // The three rolling-limit buckets Claude itself reports. These are what
   // actually locks a person out mid-workday, so they get first-class rows.
   const NATIVE_BUCKETS = [
-    { key: "five-hour", prop: "fiveHour", label: "Session limit" },
-    { key: "seven-day", prop: "sevenDay", label: "Weekly limit" },
-    { key: "opus", prop: "sevenDayOpus", label: "Weekly Opus limit" }
+    { key: "five-hour", prop: "fiveHour", label: "Session limit", prefKey: "showSessionLimit" },
+    { key: "seven-day", prop: "sevenDay", label: "Weekly limit", prefKey: "showWeeklyLimit" },
+    { key: "opus", prop: "sevenDayOpus", label: "Weekly Opus limit", prefKey: "showOpusLimit" }
   ];
 
   function bucketValueText(bucket) {
@@ -1045,14 +1048,23 @@
     return countdown ? `${pct}% · resets in ${countdown}` : `${pct}%`;
   }
 
+  // Whether ANY of the four rolling/monthly limit rows are visible per the
+  // user's per-metric prefs — decides whether the whole native section (and
+  // its status note) renders at all. Shared with the popup via shared.js.
+  function anyNativeLimitPrefVisible() {
+    return CUC.anyNativeLimitPrefVisible(settings);
+  }
+
   // Returns the most urgent plain-English warning across all native buckets,
-  // or null when everything is comfortably below the warning threshold. When
-  // the monthly-credit view is hidden, its bucket is excluded so a warning
-  // can't leak the number the user chose not to show.
-  function mostUrgentNativeWarning(native, { includeMonthly = true } = {}) {
+  // or null when everything is comfortably below the warning threshold. Any
+  // bucket the user chose to hide (per-metric pref) is excluded so a warning
+  // can't leak a number they don't want shown — this mirrors the existing
+  // includeMonthly guard for the monthly-credit bucket.
+  function mostUrgentNativeWarning(native, { includeMonthly = settings.showMonthlyCredits !== false } = {}) {
     if (!native) return null;
     const candidates = [];
-    for (const { prop, label } of NATIVE_BUCKETS) {
+    for (const { prop, label, prefKey } of NATIVE_BUCKETS) {
+      if (settings[prefKey] === false) continue;
       const bucket = native[prop];
       if (bucket && typeof bucket.utilizationPct === "number") {
         candidates.push({ pct: bucket.utilizationPct, label, resetsAt: bucket.resetsAt });
@@ -1076,7 +1088,9 @@
     const section = widgetRoot.querySelector("[data-cuc='native-section']");
     if (!section) return;
 
-    if (!settings.showNativeLimits) {
+    // All four rows pref-hidden → collapse the whole section (including the
+    // status note) rather than leaving an empty, bordered husk behind.
+    if (!anyNativeLimitPrefVisible()) {
       section.style.display = "none";
       return;
     }
@@ -1129,10 +1143,16 @@
       return;
     }
 
-    // Rolling limits (session/weekly/Opus) — Claude's own numbers.
-    for (const { key, prop } of NATIVE_BUCKETS) {
+    // Rolling limits (session/weekly/Opus) — Claude's own numbers. Each row
+    // is gated on its own pref FIRST: pref-off hides the row even when
+    // Claude's data says there's something to show (e.g. Opus usage > 0).
+    for (const { key, prop, prefKey } of NATIVE_BUCKETS) {
       const row = rows[key];
       if (!row) continue;
+      if (settings[prefKey] === false) {
+        row.hidden = true;
+        continue;
+      }
       const bucket = nativeUsage[prop];
       if (!bucket || typeof bucket.utilizationPct !== "number") {
         row.hidden = true;
@@ -1145,8 +1165,9 @@
         continue;
       }
       row.hidden = false;
-      widgetRoot.querySelector(`[data-cuc='${key}-value']`).textContent = bucketValueText(bucket);
-      setBar(widgetRoot.querySelector(`[data-cuc='${key}-bar']`), bucket.utilizationPct);
+      const valueText = bucketValueText(bucket);
+      widgetRoot.querySelector(`[data-cuc='${key}-value']`).textContent = valueText;
+      setBar(widgetRoot.querySelector(`[data-cuc='${key}-bar']`), bucket.utilizationPct, valueText);
     }
 
     // Monthly usage-credit allowance — individually hideable (personal-plan
@@ -1156,16 +1177,17 @@
     const showMonthly = settings.showMonthlyCredits !== false;
     if (!showMonthly || !spendLimit) {
       if (enterpriseRow) enterpriseRow.hidden = true;
-      setNote(mostUrgentNativeWarning(nativeUsage, { includeMonthly: showMonthly }));
+      setNote(mostUrgentNativeWarning(nativeUsage));
       return;
     }
     if (enterpriseRow) enterpriseRow.hidden = false;
     const pct = CUC.clamp(spendLimit.utilizationPct, 0, 100);
     const resetLabel = CUCNative?.formatResetLabel ? CUCNative.formatResetLabel(spendLimit) : null;
-    enterpriseValue.textContent = resetLabel
+    const enterpriseText = resetLabel
       ? `${CUC.formatUsd(spendLimit.usedUsd)} of ${CUC.formatUsd(spendLimit.limitUsd)} · ${resetLabel}`
       : `${CUC.formatUsd(spendLimit.usedUsd)} of ${CUC.formatUsd(spendLimit.limitUsd)}`;
-    setBar(enterpriseBar, pct);
+    enterpriseValue.textContent = enterpriseText;
+    setBar(enterpriseBar, pct, enterpriseText);
 
     if (spendLimit.outOfCredits) {
       setNote("Monthly usage-credit limit reached");
@@ -1180,7 +1202,10 @@
   function renderTip() {
     const tip = widgetRoot.querySelector("[data-cuc='tip']");
     if (!tip) return;
-    if (!settings.showPlainEnglishTips || !settings.showNativeLimits) {
+    // The pace projection is specifically about the 5-hour session limit, so
+    // it follows that row's own visibility pref rather than the section as a
+    // whole.
+    if (!settings.showPlainEnglishTips || settings.showSessionLimit === false) {
       tip.hidden = true;
       return;
     }
@@ -1385,14 +1410,19 @@
   // org's 429 exposure.
   const NATIVE_USAGE_SHARED_FRESH_MS = 45 * 1000;
 
+  // Badge/notification feeds respect the same per-metric prefs as the rows:
+  // a metric the user hid must not resurface through the toolbar badge or an
+  // OS notification — those are MORE intrusive channels, not exempt ones.
   function maxNativeUtilizationPct(native) {
     if (!native) return null;
     const values = [];
-    for (const prop of ["fiveHour", "sevenDay", "sevenDayOpus"]) {
+    for (const { prop, prefKey } of NATIVE_BUCKETS) {
+      if (settings[prefKey] === false) continue;
       const bucket = native[prop];
       if (bucket && typeof bucket.utilizationPct === "number") values.push(bucket.utilizationPct);
     }
-    if (typeof native.monthlySpendLimit?.utilizationPct === "number") {
+    if (settings.showMonthlyCredits !== false
+      && typeof native.monthlySpendLimit?.utilizationPct === "number") {
       values.push(native.monthlySpendLimit.utilizationPct);
     }
     return values.length ? Math.max(...values) : null;
@@ -1406,15 +1436,16 @@
   function nativeUsageBucketsForBackground() {
     if (!nativeUsage) return [];
     const rows = [];
-    const push = (key, label, bucket) => {
+    const push = (key, label, bucket, prefKey) => {
+      if (settings[prefKey] === false) return; // hidden metric → no desktop alert either
       if (bucket && typeof bucket.utilizationPct === "number") {
         rows.push({ key, label, pct: bucket.utilizationPct, resetsAt: bucket.resetsAt || null });
       }
     };
-    push("five-hour", "Session limit", nativeUsage.fiveHour);
-    push("seven-day", "Weekly limit", nativeUsage.sevenDay);
-    push("opus", "Weekly Opus limit", nativeUsage.sevenDayOpus);
-    push("monthly", "Monthly allowance", nativeUsage.monthlySpendLimit);
+    push("five-hour", "Session limit", nativeUsage.fiveHour, "showSessionLimit");
+    push("seven-day", "Weekly limit", nativeUsage.sevenDay, "showWeeklyLimit");
+    push("opus", "Weekly Opus limit", nativeUsage.sevenDayOpus, "showOpusLimit");
+    push("monthly", "Monthly allowance", nativeUsage.monthlySpendLimit, "showMonthlyCredits");
     return rows;
   }
 
@@ -1436,7 +1467,9 @@
   }
 
   async function refreshNativeUsage({ force = false } = {}) {
-    if (!settings.showNativeLimits || !CUCNative) {
+    // No point polling Claude's usage endpoint at all when every limit row
+    // that data would feed is pref-hidden.
+    if (!anyNativeLimitPrefVisible() || !CUCNative) {
       scheduleNextNativeUsagePoll();
       return;
     }
@@ -1542,7 +1575,7 @@
     }
     if (area !== "local") return;
     if (changes["cuc:settings"]?.newValue) {
-      settings = { ...CUC.DEFAULT_SETTINGS, ...changes["cuc:settings"].newValue };
+      settings = CUC.mergeSettings(changes["cuc:settings"].newValue);
       placeWidget();
       renderWidget();
     }
@@ -1554,10 +1587,6 @@
     // isn't reachable yet — cover them here too.
     if (changes["cuc:spend-session"]) {
       spendSession = changes["cuc:spend-session"].newValue || null;
-      renderWidget();
-    }
-    if ("cuc:update-available" in changes) {
-      updateAvailableVersion = changes["cuc:update-available"].newValue?.latestVersion || null;
       renderWidget();
     }
     if (changes["cuc:caveman-injected"]) {

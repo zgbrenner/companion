@@ -1,9 +1,11 @@
-/* Claude Companion settings. Design language mirrors the in-chat widget:
+/* Companion settings. Design language mirrors the in-chat widget:
    12px radii, muted surfaces, bordered headers, green status accents,
    restrained shadows, coordinated dark mode. Dependency-free shadcn-style
    components (switch, segmented, badge, notice, disclosure, buttons).
 
    Theme tokens via CSS variables; the dark block below re-points them. */
+
+@import url("fonts.css");
 :root {
   --bg: #f4f6f9;
   --surface: #ffffff;
@@ -13,7 +15,10 @@
   --border-strong: #c3cbd6;
   --text: #1c2430;
   --text-strong: #2b3648;
-  --muted: #6b7684;
+  /* #57626f gives >=5.4:1 against --surface/--surface-muted/--surface-sunken
+     (was #6b7684, which dropped to ~4.1:1 on --surface-sunken — below the
+     4.5:1 AA floor for normal-size text). */
+  --muted: #57626f;
   --muted-2: #4a5568;
   --accent: #3d7a5c;
   --accent-soft: rgba(61, 122, 92, 0.12);
@@ -76,7 +81,7 @@ body {
 }
 .brand { display: flex; align-items: baseline; gap: 8px; }
 .brand-mark { color: var(--accent); font-size: 14px; }
-.brand-name { font-weight: 700; font-size: 15px; color: var(--text-strong); letter-spacing: 0.01em; }
+.brand-name { font-family: "Space Grotesk", system-ui, -apple-system, sans-serif; font-weight: 700; font-size: 15px; color: var(--text-strong); letter-spacing: -0.01em; }
 .brand-sub { color: var(--muted); font-size: 13px; }
 .save-bar { display: flex; align-items: center; gap: 12px; }
 .save-status {
@@ -127,6 +132,7 @@ body {
   background: var(--accent-soft);
   border-left-color: var(--accent);
 }
+.section-nav a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 @media (max-width: 720px) {
   .layout { grid-template-columns: 1fr; gap: 16px; }
@@ -156,7 +162,7 @@ body {
   background: var(--surface-muted);
   border-bottom: 1px solid var(--border);
 }
-.card-header h2 { margin: 0; font-size: 15px; font-weight: 700; color: var(--text-strong); }
+.card-header h2 { margin: 0; font-family: "Space Grotesk", system-ui, -apple-system, sans-serif; font-size: 15px; font-weight: 700; letter-spacing: -0.01em; color: var(--text-strong); }
 .card-header p { margin: 3px 0 0; font-size: 12.5px; color: var(--muted); }
 .card-body { padding: 6px 18px 14px; }
 
@@ -172,12 +178,38 @@ body {
 .row:last-child { border-bottom: none; }
 .row-stack { flex-direction: column; align-items: stretch; }
 .row-text { min-width: 0; }
-.row-label { font-weight: 600; font-size: 13.5px; color: var(--text-strong); }
+.row-label { display: block; font-weight: 600; font-size: 13.5px; color: var(--text-strong); }
+label.row-label { cursor: pointer; }
 .row-desc { font-size: 12.5px; color: var(--muted); margin-top: 3px; }
 .row-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .row-stack .segmented,
 .row-stack select,
 .row-stack .row-actions { margin-top: 10px; }
+
+/* ---- Widget metrics group (fieldset) ---- */
+.metrics-group {
+  margin: 14px 0;
+  padding: 4px 14px 2px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-muted);
+}
+.metrics-group-legend {
+  padding: 0 6px;
+  margin-left: 4px;
+  font-family: "Space Grotesk", system-ui, -apple-system, sans-serif;
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text-strong);
+}
+.metrics-group-desc {
+  margin: 2px 0 4px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.metrics-group .row { padding: 12px 0; }
+.metrics-group .row:last-child { border-bottom: none; }
 
 /* ---- Switch ---- */
 .switch {
@@ -337,6 +369,7 @@ select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   list-style: none;
 }
 .disclosure summary::-webkit-details-marker { display: none; }
+.disclosure summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .disclosure summary::after { content: "＋"; float: right; color: var(--muted); font-weight: 400; }
 .disclosure[open] summary::after { content: "－"; }
 .disclosure[open] summary { border-bottom: 1px solid var(--border); }
@@ -387,3 +420,12 @@ code {
 .btn-ghost:hover { background: var(--surface-muted); color: var(--text); }
 .btn-danger { background: var(--danger); border-color: var(--danger); color: #fff; }
 .btn-danger:hover { background: color-mix(in srgb, var(--danger) 88%, #000); }
+
+/* ---- Reduced motion ---- */
+
+@media (prefers-reduced-motion: reduce) {
+  .switch,
+  .switch-knob {
+    transition: none;
+  }
+}
