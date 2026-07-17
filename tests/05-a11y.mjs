@@ -22,7 +22,10 @@ try {
       await page.reload();
       await page.waitForTimeout(800);
     }
-    await page.addScriptTag({ content: axeSource });
+    // Inject axe via CDP evaluation, NOT addScriptTag: an inline <script>
+    // tag is (correctly) blocked by the extension pages' own CSP
+    // (script-src 'self'); Runtime.evaluate is not subject to page CSP.
+    await page.evaluate(axeSource);
     const results = await page.evaluate(() =>
       window.axe.run(document, { resultTypes: ["violations"] })
     );

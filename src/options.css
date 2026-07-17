@@ -81,7 +81,7 @@ body {
 }
 .brand { display: flex; align-items: baseline; gap: 8px; }
 .brand-mark { color: var(--accent); font-size: 14px; }
-.brand-name { font-family: "Space Grotesk", system-ui, -apple-system, sans-serif; font-weight: 700; font-size: 15px; color: var(--text-strong); letter-spacing: -0.01em; }
+.brand-name { margin: 0; font-family: "Space Grotesk", system-ui, -apple-system, sans-serif; font-weight: 700; font-size: 15px; color: var(--text-strong); letter-spacing: -0.01em; }
 .brand-sub { color: var(--muted); font-size: 13px; }
 .save-bar { display: flex; align-items: center; gap: 12px; }
 .save-status {
@@ -128,9 +128,18 @@ body {
 }
 .section-nav a:hover { color: var(--text); background: var(--surface-muted); }
 .section-nav a.active {
-  color: var(--accent);
+  /* Darker than --accent: #3d7a5c over the soft-green active pill is only
+     4.03:1 — below AA. #2f6249 gives 5.6:1; dark mode's --accent already
+     passes (4.98:1) so it keeps the token. */
+  color: #2f6249;
   background: var(--accent-soft);
   border-left-color: var(--accent);
+}
+
+@media (prefers-color-scheme: dark) {
+  .section-nav a.active {
+    color: var(--accent);
+  }
 }
 .section-nav a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 

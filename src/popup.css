@@ -418,7 +418,9 @@ p {
 
 .insights-stat {
   font-size: 10.5px;
-  color: #6b7684;
+  /* #57626f gives 5.4:1 against the card's #f4f6f9 (was #6b7684, 4.26:1 —
+     below the 4.5:1 AA floor for small text). */
+  color: #57626f;
   margin-top: 4px;
 }
 
