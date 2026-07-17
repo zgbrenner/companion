@@ -419,18 +419,43 @@
     if (!modelRaw || !amount) return null;
     const modelKey = CUC.detectModelFromId(modelRaw) || CUC.detectModelFromText(modelRaw);
     if (!modelKey) return null;
-    // Unit heuristic: credit-named fields (and large integers) are cents —
-    // the known claude.ai billing endpoints all report cents. The caller's
-    // monthly-counter sanity check backstops a wrong guess.
-    const isCents = /credit/i.test(amount.name) || (Number.isInteger(amount.value) && amount.value >= 1000);
-    const spendUsd = isCents ? amount.value / 100 : amount.value;
     const dateRaw = [item.date, item.day, item.date_key, item.period, item.timestamp]
       .find(v => typeof v === "string" && /^\d{4}-\d{2}-\d{2}/.test(v));
+    // Unit is decided per ARRAY (see decideAmountDivisor), never per row —
+    // one endpoint reports one unit, and the old per-row magnitude test could
+    // split a single response across units (999.5 as dollars, 1500 as cents).
     return {
       modelKey,
-      spendUsd: Number(spendUsd.toFixed(4)),
+      amountName: amount.name,
+      amountValue: amount.value,
       dateKey: dateRaw ? dateRaw.slice(0, 10) : null
     };
+  }
+
+  // One divisor for the whole response. Signals, strongest first:
+  //   1. Field name says "credit" → cents (claude.ai's billing convention).
+  //   2. Field name says "usd" → dollars (an explicit unit in the name beats
+  //      any magnitude guess — a genuine `spend_usd: 1000` is $1000, not $10).
+  //   3. Otherwise: all-integer values with a large maximum look like cents
+  //      (claude.ai reports cents as integers); any fractional value means
+  //      dollars. fetchSpendBreakdown's monthly-counter check backstops a
+  //      wrong guess by retrying the other unit before rejecting.
+  function decideAmountDivisor(rows) {
+    const names = rows.map(r => r.amountName);
+    if (names.some(n => /credit/i.test(n))) return 100;
+    if (names.some(n => /usd/i.test(n))) return 1;
+    const values = rows.map(r => r.amountValue);
+    const allIntegers = values.every(v => Number.isInteger(v));
+    const max = Math.max(...values);
+    return allIntegers && max >= 1000 ? 100 : 1;
+  }
+
+  function rowsWithDivisor(rows, divisor) {
+    return rows.map(({ modelKey, amountValue, dateKey }) => ({
+      modelKey,
+      spendUsd: Number((amountValue / divisor).toFixed(4)),
+      dateKey
+    }));
   }
 
   function normalizeSpendBreakdownRows(payload) {
@@ -462,17 +487,26 @@
     if (!endpoint?.path || !isCandidateSpendPath(endpoint.path)) return null;
 
     const payload = await fetchJson(`https://claude.ai${endpoint.path}`);
-    const rows = normalizeSpendBreakdownRows(payload);
-    if (!rows || !rows.length) return null;
+    const rawRows = normalizeSpendBreakdownRows(payload);
+    if (!rawRows || !rawRows.length) return null;
 
     // Sanity check: the breakdown's total can't meaningfully exceed the real
-    // monthly counter. If it does, the unit heuristic (or the endpoint guess)
-    // is wrong — reject rather than display nonsense.
+    // monthly counter. If the chosen unit fails that bound, try the other
+    // unit (name/magnitude heuristics can be fooled) before rejecting.
     const monthUsed = currentNative?.monthlySpendLimit?.usedUsd;
-    const total = rows.reduce((sum, row) => sum + row.spendUsd, 0);
-    if (typeof monthUsed === "number" && total > Math.max(monthUsed * 1.25, monthUsed + 5)) {
-      console.debug("[Companion] spend breakdown rejected: total", total, "vs monthly counter", monthUsed);
-      return null;
+    const bound = typeof monthUsed === "number" ? Math.max(monthUsed * 1.25, monthUsed + 5) : null;
+    const divisor = decideAmountDivisor(rawRows);
+    let rows = rowsWithDivisor(rawRows, divisor);
+    let total = rows.reduce((sum, row) => sum + row.spendUsd, 0);
+    if (bound !== null && total > bound) {
+      const flipped = rowsWithDivisor(rawRows, divisor === 100 ? 1 : 100);
+      const flippedTotal = flipped.reduce((sum, row) => sum + row.spendUsd, 0);
+      if (flippedTotal > bound) {
+        console.debug("[Companion] spend breakdown rejected: totals", total, flippedTotal, "vs monthly counter", monthUsed);
+        return null;
+      }
+      console.debug("[Companion] spend breakdown unit flipped:", total, "->", flippedTotal, "vs monthly counter", monthUsed);
+      rows = flipped;
     }
     return { fetchedAt: Date.now(), path: endpoint.path, rows };
   }
@@ -486,6 +520,6 @@
     formatResetCountdown,
     formatResetLabel,
     // Exposed for unit testing pure helpers; not used elsewhere in the extension.
-    _internal: { nextMonthFirstDayUtcIso, normalizeSpendBreakdownRows, isCandidateSpendPath }
+    _internal: { nextMonthFirstDayUtcIso, normalizeSpendBreakdownRows, isCandidateSpendPath, decideAmountDivisor, rowsWithDivisor }
   };
 })();
