@@ -78,7 +78,17 @@
     // allowance" row in the widget and the "This month" figure in the popup).
     // Personal-plan users may not want a monthly-credit view at all.
     showMonthlyCredits: true,
-    desktopNotifications: true
+    desktopNotifications: true,
+    // Whether the "Spent this week" figure (week-to-date real spend) is
+    // shown alongside the existing session/daily figures.
+    showWeekSpend: true,
+    // Off by default: the toolbar badge normally only appears once a limit
+    // is running hot (≥80%). When true, the badge always shows the current
+    // max utilization pct (still filtered by the per-metric prefs above),
+    // in neutral gray below 80% and the existing amber/red above.
+    alwaysShowBadge: false,
+    // Row granularity of the CSV export in Settings → Data & privacy.
+    exportGranularity: "daily"
   };
 
   // Retired setting, kept ONLY as a migration source in mergeSettings below —
@@ -241,13 +251,103 @@
     return series;
   }
 
-  // CSV export: one row per observed day, newest first. Real dollars plus the
-  // derived token range. No text, no prompts — same privacy posture as always.
-  function spendDaysCsv(store, modelKey = DEFAULT_SETTINGS.defaultModel) {
-    const header = "date,spend_usd,approx_tokens_low,approx_tokens_high";
+  // Week-to-date real spend. When `sinceMs` is a real weekly-reset timestamp
+  // (the caller has one from Claude's own rolling 7-day window), sums every
+  // day from the calendar day containing `sinceMs` through `now`, inclusive.
+  // Day granularity is all we store, so the day containing `sinceMs` counts
+  // for its FULL day's spend even if the reset happened partway through it —
+  // there's no finer-grained figure to slice out. When `sinceMs` is null,
+  // falls back to the last 7 calendar days including today (same convention
+  // as spendDaysSeries). Missing days within the range count as $0 (nothing
+  // was observed, not nothing was spent); an entirely empty store returns
+  // null so callers can distinguish "no data yet" from "$0 this week".
+  function weekSpendUsd(store, { sinceMs = null, now = Date.now() } = {}) {
+    if (!store?.days || Object.keys(store.days).length === 0) return null;
+    const end = new Date(now);
+    const endDay = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+    let startDay;
+    if (sinceMs == null) {
+      startDay = new Date(endDay.getFullYear(), endDay.getMonth(), endDay.getDate() - 6);
+    } else {
+      const since = new Date(sinceMs);
+      startDay = new Date(since.getFullYear(), since.getMonth(), since.getDate());
+    }
+    if (startDay > endDay) return null;
+
+    let total = 0;
+    for (let d = new Date(startDay); d <= endDay; d.setDate(d.getDate() + 1)) {
+      total += daySpendUsd(store, todayKey(d)) ?? 0;
+    }
+    return Number(total.toFixed(2));
+  }
+
+  // ISO-8601 week key ("2026-W29") for a local calendar date, and the Monday
+  // (local date) that starts that ISO week — used only to group/label CSV
+  // rows, so day-of-week math is done in local time throughout.
+  function isoWeekKey(date) {
+    const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+    const dayNum = (d.getUTCDay() + 6) % 7; // Mon=0 .. Sun=6
+    d.setUTCDate(d.getUTCDate() - dayNum + 3); // nearest Thursday
+    const firstThursday = new Date(Date.UTC(d.getUTCFullYear(), 0, 4));
+    const firstDayNum = (firstThursday.getUTCDay() + 6) % 7;
+    firstThursday.setUTCDate(firstThursday.getUTCDate() - firstDayNum + 3);
+    const weekNum = 1 + Math.round((d - firstThursday) / (7 * 86400000));
+    return `${d.getUTCFullYear()}-W${String(weekNum).padStart(2, "0")}`;
+  }
+
+  function isoWeekStartKey(date) {
+    const day = date.getDay(); // 0=Sun .. 6=Sat
+    const diff = day === 0 ? -6 : 1 - day; // offset back to Monday
+    return todayKey(new Date(date.getFullYear(), date.getMonth(), date.getDate() + diff));
+  }
+
+  // CSV export: real dollars plus the derived token range, grouped at the
+  // requested granularity, newest-first. No text, no prompts — same privacy
+  // posture as always. "daily" preserves the original spendDaysCsv columns
+  // exactly (one row per observed day); "weekly" groups by ISO week (label
+  // plus the week's Monday as a separate column); "monthly" groups by
+  // YYYY-MM. Dollar totals are summed; token ranges are summed low/high
+  // independently (summing a range's endpoints is still a valid bound on the
+  // summed spend, even though it isn't literally "the range of the sum").
+  function spendCsv(store, modelKey = DEFAULT_SETTINGS.defaultModel, granularity = "daily") {
     const days = store?.days || {};
-    const lines = Object.keys(days)
-      .sort()
+    const dayKeys = Object.keys(days).sort();
+
+    if (granularity === "weekly" || granularity === "monthly") {
+      const groups = new Map();
+      for (const key of dayKeys) {
+        const [y, m, d] = key.split("-").map(Number);
+        const date = new Date(y, m - 1, d);
+        const groupKey = granularity === "weekly" ? isoWeekKey(date) : key.slice(0, 7);
+        const spend = daySpendUsd(store, key) ?? 0;
+        const range = estimateTokenRangeFromSpend(spend, modelKey);
+        const existing = groups.get(groupKey)
+          || { weekStart: granularity === "weekly" ? isoWeekStartKey(date) : null, spend: 0, low: 0, high: 0 };
+        existing.spend += spend;
+        existing.low += range.low;
+        existing.high += range.high;
+        groups.set(groupKey, existing);
+      }
+      const header = granularity === "weekly"
+        ? "week,week_start,spend_usd,approx_tokens_low,approx_tokens_high"
+        : "month,spend_usd,approx_tokens_low,approx_tokens_high";
+      const lines = Array.from(groups.keys())
+        .sort()
+        .reverse()
+        .map(key => {
+          const g = groups.get(key);
+          const fields = granularity === "weekly"
+            ? [key, g.weekStart, g.spend.toFixed(2), g.low, g.high]
+            : [key, g.spend.toFixed(2), g.low, g.high];
+          return fields.join(",");
+        });
+      return [header, ...lines].join("\n");
+    }
+
+    // "daily" (and any unrecognized granularity, defensively).
+    const header = "date,spend_usd,approx_tokens_low,approx_tokens_high";
+    const lines = dayKeys
+      .slice()
       .reverse()
       .map(key => {
         const spend = daySpendUsd(store, key) ?? 0;
@@ -255,6 +355,158 @@
         return [key, spend.toFixed(2), range.low, range.high].join(",");
       });
     return [header, ...lines].join("\n");
+  }
+
+  // Thin backward-compat alias — the original name/signature, unchanged
+  // behavior (always "daily" granularity).
+  function spendDaysCsv(store, modelKey = DEFAULT_SETTINGS.defaultModel) {
+    return spendCsv(store, modelKey, "daily");
+  }
+
+  // ---- Burn rate / month-end forecast ---------------------------------------
+  //
+  // A simple run-rate projection, not a fitted trend: trailing-14-day total
+  // spend divided by 14 CALENDAR days (not active days, so a quiet weekend
+  // pulls the rate down the same way it would pull down an actual monthly
+  // bill). Requires at least 3 days with nonzero spend in that window, or the
+  // rate is too noisy (one lone $40 top-up) to be worth showing.
+  const BURN_RATE_WINDOW_DAYS = 14;
+  const BURN_RATE_MIN_ACTIVE_DAYS = 3;
+
+  function burnRateInfo(store, now = Date.now()) {
+    const nowDate = new Date(now);
+    const trailing = spendDaysSeries(store, BURN_RATE_WINDOW_DAYS, nowDate);
+    const activeDays = trailing.filter(d => d.spendUsd > 0).length;
+    if (activeDays < BURN_RATE_MIN_ACTIVE_DAYS) return null;
+
+    const total14 = trailing.reduce((sum, d) => sum + d.spendUsd, 0);
+    const avgPerDayUsd = Number((total14 / BURN_RATE_WINDOW_DAYS).toFixed(4));
+
+    const y = nowDate.getFullYear();
+    const m = nowDate.getMonth();
+    const currentDay = nowDate.getDate();
+    let monthToDateUsd = 0;
+    for (let day = 1; day <= currentDay; day += 1) {
+      monthToDateUsd += daySpendUsd(store, todayKey(new Date(y, m, day))) ?? 0;
+    }
+    const daysInMonth = new Date(y, m + 1, 0).getDate();
+    const remainingDays = Math.max(0, daysInMonth - currentDay);
+    const projectedMonthUsd = Number((monthToDateUsd + avgPerDayUsd * remainingDays).toFixed(2));
+
+    return { avgPerDayUsd, activeDays, projectedMonthUsd };
+  }
+
+  // ---- Limit-utilization history / plan-fit insights ------------------------
+  //
+  // Local-only history of each day's PEAK utilization pct per rolling-limit
+  // bucket, derived entirely from numbers already shown in the widget (never
+  // new data collection). Stored under "cuc:limit-history" in chrome.storage
+  // .local, pruned to 90 days, and wiped by the same "Clear all local data"
+  // flow in options.js that clears the rest of chrome.storage.local (that
+  // flow calls chrome.storage.local.clear(), so this key needs no special
+  // handling there — it isn't enumerated by name).
+
+  // Maps the wire bucket keys (from content.js's nativeUsageBucketsForBackground)
+  // to the storage property names in each day's entry.
+  const LIMIT_BUCKET_KEY_MAP = {
+    "five-hour": "fiveHour",
+    "seven-day": "sevenDay",
+    opus: "sevenDayOpus",
+    monthly: "monthly"
+  };
+  const MAX_LIMIT_HISTORY_DAYS = 90;
+
+  // Pure state-transition helper (mirrors applyDailySpendSample): folds one
+  // reading of `buckets` (as received in the cuc:native-usage-updated
+  // message) into `history`, keeping the max pct per bucket per day, and
+  // returns a NEW history object with days older than 90 pruned. Buckets with
+  // unrecognized keys or non-finite pct are ignored rather than throwing —
+  // callers are expected to have already validated the message shape, but
+  // this stays defensive since it's the last line before a storage write.
+  function recordLimitPeaks(history, buckets, now = Date.now()) {
+    const dk = todayKey(new Date(now));
+    const next = { days: { ...(history?.days || {}) } };
+    const entry = { ...(next.days[dk] || {}) };
+
+    for (const bucket of Array.isArray(buckets) ? buckets : []) {
+      const prop = LIMIT_BUCKET_KEY_MAP[bucket?.key];
+      if (!prop) continue;
+      const pct = Number(bucket.pct);
+      if (!Number.isFinite(pct)) continue;
+      if (!(entry[prop] >= pct)) entry[prop] = pct;
+    }
+    if (Object.keys(entry).length) next.days[dk] = entry;
+
+    const cutoffKey = todayKey(new Date(now - MAX_LIMIT_HISTORY_DAYS * 86400000));
+    for (const key of Object.keys(next.days)) {
+      if (key < cutoffKey) delete next.days[key];
+    }
+    return next;
+  }
+
+  const LIMIT_INSIGHTS_WINDOW_DAYS = 56;
+  const LIMIT_INSIGHTS_MIN_DAYS = 14;
+  const LIMIT_INSIGHTS_HIGH_PCT_THRESHOLD = 95;
+  const LIMIT_INSIGHTS_SMALLER_PLAN_MAX_PCT = 60;
+  const LIMIT_INSIGHTS_SMALLER_PLAN_P90_PCT = 40;
+  const LIMIT_INSIGHTS_MANY_DAYS_AT_95 = 3;
+
+  // Nearest-rank percentile over an ascending-sorted array.
+  function percentileOf(sortedAsc, p) {
+    if (!sortedAsc.length) return 0;
+    const idx = clamp(Math.ceil((p / 100) * sortedAsc.length) - 1, 0, sortedAsc.length - 1);
+    return sortedAsc[idx];
+  }
+
+  // Plan-fit guidance derived ONLY from the user's own recorded utilization —
+  // no hardcoded plan names or prices, since those change and we can't see
+  // which plan the account is actually on. Returns null until there are at
+  // least 14 distinct days of history in the trailing 56-day analysis window
+  // (too little signal before that to say anything useful). "weekly" treats
+  // the more binding of the two weekly-cadence buckets (the general 7-day
+  // limit and the Opus-only 7-day limit) as that day's weekly peak, since
+  // either one hitting the ceiling means the plan itself was the constraint
+  // that day.
+  function limitInsights(history, now = Date.now()) {
+    const days = history?.days || {};
+    const cutoffKey = todayKey(new Date(now - LIMIT_INSIGHTS_WINDOW_DAYS * 86400000));
+    const nowKey = todayKey(new Date(now));
+    const relevantKeys = Object.keys(days).filter(k => k >= cutoffKey && k <= nowKey);
+    if (relevantKeys.length < LIMIT_INSIGHTS_MIN_DAYS) return null;
+
+    const weeklyPeaks = [];
+    const sessionPeaks = [];
+    for (const key of relevantKeys) {
+      const entry = days[key] || {};
+      const weeklyVals = [entry.sevenDay, entry.sevenDayOpus].filter(Number.isFinite);
+      if (weeklyVals.length) weeklyPeaks.push(Math.max(...weeklyVals));
+      if (Number.isFinite(entry.fiveHour)) sessionPeaks.push(entry.fiveHour);
+    }
+    weeklyPeaks.sort((a, b) => a - b);
+    sessionPeaks.sort((a, b) => a - b);
+
+    const weeklyP90Pct = percentileOf(weeklyPeaks, 90);
+    const weeklyMaxPct = weeklyPeaks.length ? weeklyPeaks[weeklyPeaks.length - 1] : 0;
+    const weeklyDaysAt95Plus = weeklyPeaks.filter(v => v >= LIMIT_INSIGHTS_HIGH_PCT_THRESHOLD).length;
+
+    const sessionP90Pct = percentileOf(sessionPeaks, 90);
+    const sessionDaysAt95Plus = sessionPeaks.filter(v => v >= LIMIT_INSIGHTS_HIGH_PCT_THRESHOLD).length;
+
+    let summaryText;
+    if (weeklyMaxPct <= LIMIT_INSIGHTS_SMALLER_PLAN_MAX_PCT && weeklyP90Pct <= LIMIT_INSIGHTS_SMALLER_PLAN_P90_PCT) {
+      summaryText = "You're using well under your plan's weekly limit — a smaller plan might cover you.";
+    } else if (weeklyDaysAt95Plus >= LIMIT_INSIGHTS_MANY_DAYS_AT_95) {
+      summaryText = `You've hit your weekly limit ${weeklyDaysAt95Plus} days recently — a higher plan would remove that ceiling.`;
+    } else {
+      summaryText = "Your plan looks like a good fit for how you use Claude.";
+    }
+
+    return {
+      daysObserved: relevantKeys.length,
+      weekly: { p90Pct: weeklyP90Pct, maxPct: weeklyMaxPct, daysAt95Plus: weeklyDaysAt95Plus },
+      session: { p90Pct: sessionP90Pct, daysAt95Plus: sessionDaysAt95Plus },
+      summaryText
+    };
   }
 
   // ---- Dollars → tokens conversion -----------------------------------------
@@ -526,7 +778,12 @@
     applyDailySpendSample,
     daySpendUsd,
     spendDaysSeries,
+    weekSpendUsd,
     spendDaysCsv,
+    spendCsv,
+    burnRateInfo,
+    recordLimitPeaks,
+    limitInsights,
     blendedPricePerMTok,
     estimateTokensFromSpend,
     estimateTokenRangeFromSpend,

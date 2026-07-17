@@ -250,6 +250,7 @@
               <div class="cuc-progress-bar" data-cuc="session-bar"></div>
             </div>
             <div class="cuc-budget-line" data-cuc="session-detail" hidden></div>
+            <div class="cuc-budget-line" data-cuc="week-detail" hidden></div>
           </div>
 
           <div class="cuc-native" data-cuc="native-section">
@@ -992,6 +993,28 @@
           sessionDetailEl.hidden = false;
         } else {
           sessionDetailEl.hidden = true;
+        }
+
+        // "This week:" — same shape as the Today line above, just windowed to
+        // Claude's real weekly reset (falls back to a rolling 7 days when the
+        // weekly bucket's resetsAt isn't known yet). Individually hideable.
+        const weekDetailEl = widgetRoot.querySelector("[data-cuc='week-detail']");
+        if (weekDetailEl) {
+          const showWeekSpend = settings.showWeekSpend !== false;
+          if (showWeekSpend) {
+            const sinceMs = nativeUsage?.sevenDay?.resetsAt
+              ? Date.parse(nativeUsage.sevenDay.resetsAt) - 7 * 24 * 60 * 60 * 1000
+              : null;
+            const weekUsd = CUC.weekSpendUsd?.(spendDays, { sinceMs, now: Date.now() });
+            if (typeof weekUsd === "number" && weekUsd >= 0.005) {
+              weekDetailEl.textContent = `This week: ${spendValueText(weekUsd, modelKey)}`;
+              weekDetailEl.hidden = false;
+            } else {
+              weekDetailEl.hidden = true;
+            }
+          } else {
+            weekDetailEl.hidden = true;
+          }
         }
       }
     }

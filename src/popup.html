@@ -20,9 +20,11 @@
 
     <section class="summary">
       <div class="summary-row"><span title="Counter samples observed today; spend while the browser was closed lands on the first day it's seen again.">Today</span><span id="today-value">—</span></div>
+      <div class="summary-row" id="week-row"><span title="Real spend for Claude's current weekly window (falls back to a rolling 7 days when the reset time isn't known yet).">This week</span><span id="week-value">—</span></div>
       <div class="summary-row" id="month-row"><span title="Claude's own monthly usage-credit counter — real, to the cent.">This month</span><span id="month-value">—</span></div>
-      <div class="trend" id="trend" role="img" aria-label="Daily spend, last 14 days"></div>
+      <div class="trend" id="trend" role="group" aria-label="Daily spend, last 14 days"></div>
       <p class="trend-caption" id="trend-caption" hidden>Last 14 days · real spend</p>
+      <p class="trend-caption burn-rate-line" id="burn-rate-note" aria-live="polite" hidden></p>
     </section>
 
     <section class="native" id="native-section">
@@ -44,6 +46,12 @@
       </div>
       <p class="native-note" id="native-note" aria-live="polite"></p>
       <p class="native-note pace-note" id="pace-note" aria-live="polite" hidden></p>
+    </section>
+
+    <section class="insights" id="insights-section" hidden>
+      <div class="insights-title">Plan fit</div>
+      <p class="insights-summary" id="insights-summary"></p>
+      <p class="insights-stat" id="insights-stat"></p>
     </section>
 
     <section class="actions">

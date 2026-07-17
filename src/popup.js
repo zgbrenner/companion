@@ -15,7 +15,13 @@ async function getActiveClaudeTab() {
 }
 
 async function loadState() {
-  const stored = await chrome.storage.local.get(["cuc:settings", "cuc:spend-days"]);
+  const stored = await chrome.storage.local.get([
+    "cuc:settings",
+    "cuc:spend-days",
+    // Read-only here: the daily peak-utilization history the data layer
+    // writes, powering the "Plan fit" insights card below.
+    "cuc:limit-history"
+  ]);
   // Native usage, pace samples, and the session spend baseline are ephemeral
   // cross-tab state — they live in storage.session (with a local fallback).
   const ephemeral = await CUC.ephemeralGet([
@@ -27,6 +33,7 @@ async function loadState() {
   return {
     settings: CUC.mergeSettings(stored["cuc:settings"]),
     spendDays: stored["cuc:spend-days"] || null,
+    limitHistory: stored["cuc:limit-history"] || null,
     spendSession: ephemeral["cuc:spend-session"] || null,
     nativeUsage: ephemeral["cuc:native-usage"] || null,
     nativeUsageError: ephemeral["cuc:native-usage-error"] || null,
@@ -74,9 +81,22 @@ function render(state) {
     }
   }
 
-  // Today / This month — both real numbers. "This month" is hideable.
+  // Today / This week / This month — all real numbers. "This week" and
+  // "This month" are individually hideable.
   const todayUsd = CUC.daySpendUsd(spendDays);
   document.getElementById("today-value").textContent = todayUsd == null ? "—" : CUC.formatUsd(todayUsd);
+
+  const weekRow = document.getElementById("week-row");
+  const showWeekSpend = settings.showWeekSpend !== false;
+  if (weekRow) weekRow.hidden = !showWeekSpend;
+  if (showWeekSpend) {
+    const sinceMs = nativeUsage?.sevenDay?.resetsAt
+      ? Date.parse(nativeUsage.sevenDay.resetsAt) - 7 * 24 * 60 * 60 * 1000
+      : null;
+    const weekUsd = CUC.weekSpendUsd?.(spendDays, { sinceMs, now: Date.now() });
+    document.getElementById("week-value").textContent = typeof weekUsd === "number" ? CUC.formatUsd(weekUsd) : "—";
+  }
+
   const monthRow = document.getElementById("month-row");
   const showMonthly = settings.showMonthlyCredits !== false;
   if (monthRow) monthRow.hidden = !showMonthly;
@@ -86,6 +106,54 @@ function render(state) {
   }
 
   renderTrend(spendDays);
+  renderBurnRate(spendDays);
+}
+
+// Muted one-liner under the trend chart: "Averaging $X.XX/day — on pace for
+// ~$Y this month." Hidden entirely when there isn't enough history yet.
+function renderBurnRate(spendDays) {
+  const el = document.getElementById("burn-rate-note");
+  if (!el) return;
+  const info = CUC.burnRateInfo?.(spendDays, Date.now());
+  if (!info) {
+    el.hidden = true;
+    el.textContent = "";
+    return;
+  }
+  el.textContent = `Averaging ${CUC.formatUsd(info.avgPerDayUsd)}/day — on pace for ~${CUC.formatUsd(info.projectedMonthUsd)} this month.`;
+  el.hidden = false;
+}
+
+// "Plan fit" card: a plain-English read on how close usage runs to Claude's
+// own limits, derived from the peak-utilization history the data layer
+// tracks. Renders nothing at all (no empty husk) when there isn't enough
+// history yet — CUC.limitInsights returns null in that case.
+function renderInsights(limitHistory) {
+  const section = document.getElementById("insights-section");
+  if (!section) return;
+  const insights = CUC.limitInsights?.(limitHistory, Date.now());
+  if (!insights) {
+    section.hidden = true;
+    return;
+  }
+  section.hidden = false;
+  const summaryEl = document.getElementById("insights-summary");
+  const statEl = document.getElementById("insights-stat");
+  if (summaryEl) summaryEl.textContent = insights.summaryText || "";
+  if (statEl) {
+    const p90 = Math.round(insights.weekly?.p90Pct ?? 0);
+    const days = insights.daysObserved ?? 0;
+    statEl.textContent = `Based on ${days} day${days === 1 ? "" : "s"} of your usage. Typical week peaks at ${p90}%.`;
+  }
+}
+
+// "Jul 12" — short, locale-aware day label for trend-bar tooltips/aria-labels.
+// Parsed as a local midnight (not UTC) so the label matches the day key's
+// actual local calendar date, same convention as todayKey().
+function formatDayLabel(dateKey) {
+  const [y, m, d] = String(dateKey || "").split("-").map(Number);
+  if (!y || !m || !d) return dateKey || "";
+  return new Date(y, m - 1, d).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
 // 14 flexbox bars, no chart library — each day's real spend scaled to the
@@ -108,11 +176,18 @@ function renderTrend(spendDays) {
   trend.textContent = "";
   const todayKey = CUC.todayKey();
   for (const day of series) {
-    const bar = document.createElement("div");
+    // A real <button> (not a div) so every day is keyboard-focusable, with
+    // its own aria-label and a CSS-only hover/focus tooltip driven by
+    // data-tooltip (see .trend .trend-bar::after in popup.css). type="button"
+    // keeps it inert as far as form submission goes.
+    const bar = document.createElement("button");
+    bar.type = "button";
     bar.className = day.date === todayKey ? "trend-bar today" : "trend-bar";
     const pct = Math.max(day.spendUsd > 0 ? 7 : 0, Math.round((day.spendUsd / max) * 100));
     bar.style.height = `${pct}%`;
-    bar.title = `${day.date}: ${CUC.formatUsd(day.spendUsd)}`;
+    const label = `${formatDayLabel(day.date)}: ${CUC.formatUsd(day.spendUsd)}`;
+    bar.setAttribute("aria-label", label);
+    bar.dataset.tooltip = label;
     trend.appendChild(bar);
   }
   trend.setAttribute(
@@ -267,6 +342,7 @@ async function boot() {
   render(state);
   renderNative(state.nativeUsage, state.nativeUsageError, state.settings);
   renderPace(state.paceSamples, state.nativeUsage, state.settings);
+  renderInsights(state.limitHistory);
 
   // Ask the content script (if a claude.ai tab is open) to force-refresh the
   // usage counter so the popup opens on live numbers, not the last poll.

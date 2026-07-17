@@ -199,7 +199,8 @@ async function exportCsv() {
   try {
     const stored = await chrome.storage.local.get(["cuc:spend-days", "cuc:settings"]);
     const settings = CUC.mergeSettings(stored["cuc:settings"]);
-    const csv = CUC.spendDaysCsv(stored["cuc:spend-days"], settings.defaultModel);
+    const granularity = settings.exportGranularity || "daily";
+    const csv = CUC.spendCsv(stored["cuc:spend-days"], settings.defaultModel, granularity);
     const rowCount = Math.max(0, csv.split("\n").length - 1);
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
@@ -212,7 +213,7 @@ async function exportCsv() {
     setTimeout(() => URL.revokeObjectURL(url), 5000);
     status.textContent = rowCount === 0
       ? "No spend recorded yet — headers only."
-      : `Exported ${rowCount} day${rowCount === 1 ? "" : "s"}.`;
+      : `Exported ${rowCount} row${rowCount === 1 ? "" : "s"}.`;
   } catch (error) {
     status.textContent = `Export failed: ${error?.message || error}`;
   }
