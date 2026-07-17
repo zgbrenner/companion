@@ -21,7 +21,16 @@ export async function launchExtension() {
       `--load-extension=${EXT_PATH}`,
     ],
   };
-  if (process.env.CHROMIUM_BIN) options.executablePath = process.env.CHROMIUM_BIN;
+  if (process.env.CHROMIUM_BIN) {
+    options.executablePath = process.env.CHROMIUM_BIN;
+  } else {
+    // Without an explicit binary, headless:true selects Playwright's
+    // "headless shell", which cannot load extensions — the service-worker
+    // wait then times out. channel:"chromium" picks the full Chromium
+    // build running new headless, which can. (This is the documented
+    // Playwright recipe for MV3 extension testing.)
+    options.channel = "chromium";
+  }
   const context = await chromium.launchPersistentContext(profile, options);
   let [worker] = context.serviceWorkers();
   if (!worker) worker = await context.waitForEvent("serviceworker", { timeout: 15000 });
