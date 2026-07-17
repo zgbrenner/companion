@@ -127,18 +127,41 @@ async function ensureOffscreenDocument() {
 
 // Toolbar badge: a red/amber percentage when any of Claude's real limits is
 // running hot, so people get warned even when the in-page widget is hidden.
-function updateBadge(maxUtilizationPct) {
+// `maxUtilizationPct` has already been filtered by content.js's per-metric
+// showSessionLimit/showWeeklyLimit/showOpusLimit/showMonthlyCredits prefs
+// before it ever reaches this message — this function does no additional
+// filtering of its own, just the display decision.
+// When `alwaysShowBadge` is on, the badge is always shown (not just ≥80%):
+// neutral gray below 80%, the existing amber/red at or above it.
+const BADGE_NEUTRAL_COLOR = "#6b7280";
+
+function updateBadge(maxUtilizationPct, alwaysShowBadge = false) {
   try {
-    if (typeof maxUtilizationPct === "number" && maxUtilizationPct >= 80) {
+    const hasPct = typeof maxUtilizationPct === "number" && Number.isFinite(maxUtilizationPct);
+    if (hasPct && maxUtilizationPct >= 80) {
       const pct = Math.min(100, Math.round(maxUtilizationPct));
       chrome.action.setBadgeText({ text: `${pct}%` });
       chrome.action.setBadgeBackgroundColor({ color: pct >= 90 ? "#b23b3b" : "#b4791f" });
+    } else if (alwaysShowBadge && hasPct) {
+      const pct = Math.min(100, Math.max(0, Math.round(maxUtilizationPct)));
+      chrome.action.setBadgeText({ text: `${pct}%` });
+      chrome.action.setBadgeBackgroundColor({ color: BADGE_NEUTRAL_COLOR });
     } else {
       chrome.action.setBadgeText({ text: "" });
     }
   } catch {
     // Badge failures must never affect spend tracking.
   }
+}
+
+// Settings-aware wrapper: reads the alwaysShowBadge pref (always through
+// CUC.mergeSettings, like every other settings read in this file) and then
+// applies it. Split out from updateBadge so updateBadge itself stays a
+// synchronous, easily-testable display decision.
+async function applyBadge(maxUtilizationPct) {
+  const stored = await chrome.storage.local.get(["cuc:settings"]);
+  const settings = CUC.mergeSettings(stored["cuc:settings"]);
+  updateBadge(maxUtilizationPct, settings.alwaysShowBadge);
 }
 
 // Desktop notifications when a limit crosses 85% / 95% — once per threshold
@@ -223,6 +246,46 @@ async function maybeNotifyThresholds(buckets) {
       // Losing dedupe state means at worst one repeat notification.
     }
   }
+}
+
+// Limit-utilization history ("cuc:limit-history"): each day's PEAK
+// utilization pct per rolling-limit bucket, purely derived from numbers
+// already displayed in the widget — no new data collection. Local-only
+// (chrome.storage.local), and covered by the existing "Clear all local
+// data" flow in options.js, which calls chrome.storage.local.clear() and so
+// wipes this key too without needing to enumerate it by name.
+const LIMIT_HISTORY_KEY = "cuc:limit-history";
+// Slightly looser than normalizeNativeUsageMessage's general 0-1000 bound —
+// this is the last line before a value is permanently retained in history,
+// so it gets its own tight, independent guard: a malformed/spoofed message
+// that somehow got past the sender/shape checks still can't write a bogus
+// utilization figure into 90 days of stored history.
+const MAX_LIMIT_HISTORY_BUCKET_PCT = 200;
+
+async function recordLimitHistory(buckets, now = Date.now()) {
+  const safeBuckets = (Array.isArray(buckets) ? buckets : []).filter(bucket =>
+    bucket
+    && typeof bucket.key === "string"
+    && Number.isFinite(bucket.pct)
+    && bucket.pct >= 0
+    && bucket.pct <= MAX_LIMIT_HISTORY_BUCKET_PCT
+  );
+  if (!safeBuckets.length) return;
+
+  const stored = await chrome.storage.local.get([LIMIT_HISTORY_KEY]);
+  const prevHistory = stored[LIMIT_HISTORY_KEY] || null;
+  const nextHistory = CUC.recordLimitPeaks(prevHistory, safeBuckets, now);
+
+  // Throttle: skip the write if today's entry didn't actually change (two
+  // tabs polling near-identical readings a few seconds apart shouldn't each
+  // hit storage). Comparing the serialized day entry is simpler than
+  // threading a `changed` flag back out of the pure helper above.
+  const dk = CUC.todayKey(new Date(now));
+  const prevEntry = JSON.stringify(prevHistory?.days?.[dk] || null);
+  const nextEntry = JSON.stringify(nextHistory?.days?.[dk] || null);
+  if (prevEntry === nextEntry) return;
+
+  await chrome.storage.local.set({ [LIMIT_HISTORY_KEY]: nextHistory });
 }
 
 chrome.runtime.onInstalled.addListener(async () => {
@@ -362,11 +425,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (!isTrustedClaudeContentSender(sender)) return false;
     const normalized = normalizeNativeUsageMessage(message);
     if (!normalized) return false;
-    updateBadge(normalized.maxUtilizationPct);
+    applyBadge(normalized.maxUtilizationPct).catch(() => {});
     serialize(() => maybeNotifyThresholds(normalized.buckets)).catch(() => {});
     if (normalized.monthlySpend) {
       serialize(() => recordSpendSample(normalized.monthlySpend)).catch(() => {});
     }
+    serialize(() => recordLimitHistory(normalized.buckets)).catch(() => {});
     return false;
   }
 

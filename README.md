@@ -10,7 +10,7 @@
   <img alt="Chrome & Edge · Manifest V3" src="https://img.shields.io/badge/Chrome%20%26%20Edge-Manifest%20V3-3d7a5c?style=for-the-badge&logo=googlechrome&logoColor=white" />
   <img alt="100% local & private" src="https://img.shields.io/badge/100%25-local%20%26%20private-3d7a5c?style=for-the-badge" />
   <img alt="your account · read-only" src="https://img.shields.io/badge/your%20account-read--only-b4791f?style=for-the-badge" />
-  <img alt="version 1.0.0" src="https://img.shields.io/badge/version-1.0.0-2b3648?style=for-the-badge" />
+  <img alt="version 1.1.0" src="https://img.shields.io/badge/version-1.1.0-2b3648?style=for-the-badge" />
 </p>
 
 <p>

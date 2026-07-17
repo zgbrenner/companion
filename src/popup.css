@@ -183,10 +183,19 @@ p {
 }
 
 .trend .trend-bar {
+  /* Bars are <button> elements now (focusable, hoverable tooltip) — reset
+     the page's generic `button {…}` rule (border/padding/font/color) back
+     to nothing so the chart's visual size and look are unchanged. */
+  position: relative;
   flex: 1 1 0;
   min-height: 2px;
+  border: none;
   border-radius: 2px 2px 0 0;
   background: #cfe0d7;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
 }
 
 .trend .trend-bar.today {
@@ -199,6 +208,65 @@ p {
   }
   .trend .trend-bar.today {
     background: #5fb383;
+  }
+}
+
+/* Invisible hit-area extension (doesn't affect layout/visual size — it's
+   absolutely positioned) so short bars still have a reasonable tap target. */
+.trend .trend-bar::before {
+  content: "";
+  position: absolute;
+  inset: -6px -1px;
+}
+
+/* Pure-CSS tooltip: the day + dollar figure set as data-tooltip in JS,
+   shown above the bar on hover/focus. */
+.trend .trend-bar::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%) scale(0.96);
+  background: #1c2430;
+  color: #ffffff;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, ui-sans-serif, system-ui, sans-serif;
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+  padding: 4px 7px;
+  border-radius: 6px;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 120ms ease, transform 120ms ease;
+  z-index: 5;
+}
+
+.trend .trend-bar:hover::after,
+.trend .trend-bar:focus-visible::after {
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(-50%) scale(1);
+}
+
+.trend .trend-bar:focus-visible {
+  outline: 2px solid #3d7a5c;
+  outline-offset: 2px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .trend .trend-bar::after {
+    background: #f0efec;
+    color: #1c2430;
+  }
+  .trend .trend-bar:focus-visible {
+    outline-color: #5fb383;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .trend .trend-bar::after {
+    transition: none;
   }
 }
 
@@ -215,6 +283,10 @@ p {
     /* #9c9996 gives 5.1:1 against the dark background (was #8a8784, ~4.0:1). */
     color: #9c9996;
   }
+}
+
+.burn-rate-line {
+  margin-top: 6px;
 }
 
 .native {
@@ -296,6 +368,66 @@ p {
 .bar--thin {
   height: 4px;
   margin-top: 4px;
+}
+
+.insights {
+  margin: 14px 0 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #f4f6f9;
+  border: 1px solid #eaeef3;
+}
+
+.insights[hidden] {
+  display: none;
+}
+
+@media (prefers-color-scheme: dark) {
+  .insights {
+    background: #323036;
+    border-color: #4a4945;
+  }
+}
+
+.insights-title {
+  font-family: "Space Grotesk", system-ui, -apple-system, sans-serif;
+  font-weight: 650;
+  font-size: 11px;
+  letter-spacing: -0.01em;
+  color: #2b3648;
+  margin-bottom: 4px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .insights-title {
+    color: #e8e6e3;
+  }
+}
+
+.insights-summary {
+  font-size: 11.5px;
+  color: #1c2430;
+  line-height: 1.4;
+}
+
+@media (prefers-color-scheme: dark) {
+  .insights-summary {
+    color: #e8e6e3;
+  }
+}
+
+.insights-stat {
+  font-size: 10.5px;
+  /* #57626f gives 5.4:1 against the card's #f4f6f9 (was #6b7684, 4.26:1 —
+     below the 4.5:1 AA floor for small text). */
+  color: #57626f;
+  margin-top: 4px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .insights-stat {
+    color: #a09c98;
+  }
 }
 
 .actions {

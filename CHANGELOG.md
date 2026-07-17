@@ -2,6 +2,18 @@
 
 All notable changes to Companion. The most recent release is at the top.
 
+### 1.1.0 (insights)
+
+Built from a broad open-source research pass (ccusage, Claude-Code-Usage-Monitor, claudetuner, par-cc-usage, and a survey of every claude.ai usage extension on GitHub) — adopting the ideas that fit Companion's privacy model and rejecting the ones that don't (cloud sync, cross-user scoring, tokenizer-based pre-send estimates).
+
+- **"This week" spend** in the widget and popup — week-to-date real dollars aligned to Claude's actual weekly reset window (the one rollup that matches how the weekly limit works), individually toggleable like every other metric.
+- **Burn rate & month projection** under the popup trend: "Averaging $X/day — on pace for ~$Y this month."
+- **Plan fit insights.** Companion now keeps a local-only history of each day's peak limit utilization and, after two weeks of data, gives a plain-English read on whether your plan matches your usage (P90 weekly peaks, days at 95%+). Nothing leaves your device; the history is wiped by "Clear all local data."
+- **Accessible trend chart** — each of the 14 day-bars is now a focusable button with a visible tooltip (date + real spend) on hover and keyboard focus.
+- **CSV export granularity** — daily, weekly, or monthly rows.
+- **Opt-in always-on badge** — keep the toolbar badge visible even when nothing is running hot (gray until 80%, then the existing amber/red).
+- **Committed test suite + CI** (`tests/`, plain node scripts, no framework): extension boot, settings persistence and legacy migration, popup rendering, the full file-conversion pipeline, and an axe-core accessibility audit — run on every push and PR via GitHub Actions.
+
 ### 1.0.0 (Chrome Web Store)
 
 - **Pre-submission audit fixes (round 2):**

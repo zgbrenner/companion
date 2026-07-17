@@ -1,5 +1,5 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -7,11 +7,11 @@
   <link rel="stylesheet" href="options.css" />
 </head>
 <body>
-  <div class="topbar">
+  <header class="topbar">
     <div class="topbar-inner">
       <div class="brand">
         <span class="brand-mark" aria-hidden="true">◆</span>
-        <span class="brand-name">Companion</span>
+        <h1 class="brand-name">Companion</h1>
         <span class="brand-sub">Settings</span>
       </div>
       <div class="save-bar">
@@ -19,7 +19,7 @@
         <button type="button" class="btn btn-ghost btn-sm" id="reset-defaults">Restore defaults</button>
       </div>
     </div>
-  </div>
+  </header>
 
   <div class="layout">
     <nav class="section-nav" aria-label="Settings sections">
@@ -67,6 +67,14 @@
                 <div class="row-desc" id="desc-session-spend">Real usage-credit spend since this browser session began, with the Today line.</div>
               </div>
               <button type="button" id="showSessionSpend" class="switch" role="switch" aria-checked="true" data-setting="showSessionSpend" aria-labelledby="lbl-session-spend" aria-describedby="desc-session-spend"><span class="switch-knob"></span></button>
+            </div>
+
+            <div class="row">
+              <div class="row-text">
+                <label class="row-label" id="lbl-week-spend" for="showWeekSpend">This week's spend</label>
+                <div class="row-desc" id="desc-week-spend">Real spend for Claude's current weekly window, next to the Today line.</div>
+              </div>
+              <button type="button" id="showWeekSpend" class="switch" role="switch" aria-checked="true" data-setting="showWeekSpend" aria-labelledby="lbl-week-spend" aria-describedby="desc-week-spend"><span class="switch-knob"></span></button>
             </div>
 
             <div class="row">
@@ -142,6 +150,14 @@
             </div>
             <button type="button" id="showPlainEnglishTips" class="switch" role="switch" aria-checked="true" data-setting="showPlainEnglishTips" aria-labelledby="lbl-pace-warnings" aria-describedby="desc-pace-warnings"><span class="switch-knob"></span></button>
           </div>
+
+          <div class="row">
+            <div class="row-text">
+              <label class="row-label" id="lbl-always-badge" for="alwaysShowBadge">Always show the toolbar badge</label>
+              <div class="row-desc" id="desc-always-badge">Keep the usage badge visible even when nothing is running hot (gray until 80%).</div>
+            </div>
+            <button type="button" id="alwaysShowBadge" class="switch" role="switch" aria-checked="false" data-setting="alwaysShowBadge" aria-labelledby="lbl-always-badge" aria-describedby="desc-always-badge"><span class="switch-knob"></span></button>
+          </div>
         </div>
       </section>
 
@@ -204,10 +220,15 @@
 
           <div class="row row-stack">
             <div class="row-text">
-              <div class="row-label">Export usage history</div>
-              <div class="row-desc">One CSV row per day: real dollars plus an approximate token range. Handy for expense notes. No chat text is included.</div>
+              <div class="row-label" id="lbl-export">Export usage history</div>
+              <div class="row-desc">One CSV row per day, week, or month: real dollars plus an approximate token range. Handy for expense notes. No chat text is included.</div>
             </div>
             <div class="row-actions">
+              <div class="segmented" data-setting="exportGranularity" role="group" aria-labelledby="lbl-export">
+                <button type="button" class="segment" data-value="daily">Daily</button>
+                <button type="button" class="segment" data-value="weekly">Weekly</button>
+                <button type="button" class="segment" data-value="monthly">Monthly</button>
+              </div>
               <button type="button" class="btn btn-secondary" id="export-csv">Download CSV</button>
               <span class="mini-status" id="export-status" aria-live="polite"></span>
             </div>

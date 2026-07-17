@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Companion",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "minimum_chrome_version": "111",
   "description": "See your real Claude.ai usage — dollars, tokens, and limits — pinned under the chat box. 100% local, read-only, no telemetry.",
   "permissions": [
