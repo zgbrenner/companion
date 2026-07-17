@@ -189,8 +189,12 @@ async function maybeNotifyThresholds(buckets) {
       }
       continue;
     }
-    if (top <= record.notified && Date.now() - (record.at || 0) < NOTIFY_MIN_REPEAT_MS) continue;
-    if (top <= record.notified) continue;
+    // Never re-alarm at a LOWER tier than already notified this window; the
+    // same tier may gently re-nudge, but only after NOTIFY_MIN_REPEAT_MS.
+    // (The old second condition here was `top <= record.notified`, which
+    // made the 6-hour re-nudge unreachable dead code.)
+    if (top < record.notified) continue;
+    if (top === record.notified && Date.now() - (record.at || 0) < NOTIFY_MIN_REPEAT_MS) continue;
 
     const countdown = shortCountdown(bucket.resetsAt);
     const message = countdown

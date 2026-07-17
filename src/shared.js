@@ -360,7 +360,12 @@
   function formatUsd(value) {
     const amount = Number(value || 0);
     if (amount < 0.01 && amount > 0) return `$${amount.toFixed(4)}`;
-    if (amount < 10) return `$${amount.toFixed(2)}`;
+    // Keep cents visible at every realistic magnitude — the UI promises the
+    // figure is "accurate to the cent", so don't round it away at $10+.
+    if (amount < 10_000) {
+      const [whole, cents] = amount.toFixed(2).split(".");
+      return `$${Number(whole).toLocaleString()}.${cents}`;
+    }
     return `$${Math.round(amount).toLocaleString()}`;
   }
 
@@ -518,6 +523,8 @@
     MODEL_PRICES,
     DEFAULT_SETTINGS,
     SPEND_TOKEN_MIX,
+    SPEND_TOKEN_MIX_LOW,
+    SPEND_TOKEN_MIX_HIGH,
     mergeSettings,
     anyNativeLimitPrefVisible,
     resolveModelKey,

@@ -23,7 +23,7 @@ No account, sign-up, API key, or server is required by the extension itself.
 5. The extension appears in the list and its icon appears in the toolbar. Pin it if you like.
 6. Open **https://claude.ai** and sign in. The widget appears docked directly under the chat box.
 
-> **Tip:** put the folder somewhere it won't be touched. If you later enable one-click updates (step 6 below), the extension keeps its own files current in place — no reinstalling.
+> **Tip:** put the folder somewhere it won't be touched — a manually loaded extension reads its files from that folder every time the browser starts. (Once installed from the Chrome Web Store instead, updates arrive automatically.)
 
 ---
 

@@ -157,12 +157,17 @@
     [/\b(?:it(?:'s| is) worth noting that|note that|keep in mind that)\s+/gi, ""]
   ];
 
+  // Placeholders are NUL-fenced: NUL can't be typed into a prompt, is a
+  // non-word character (so the word-boundary-anchored rules still behave at
+  // region edges), and none of tidy()'s whitespace/punctuation rules can
+  // touch it. Written as escaped \u0000 (not raw bytes) so this file stays
+  // plain text for git/grep/reviewers.
   function protectRegions(text) {
     const slots = [];
     let output = text;
     for (const pattern of PROTECT_PATTERNS) {
       output = output.replace(pattern, match => {
-        const key = ` CUC${slots.length} `;
+        const key = `\u0000CUC${slots.length}\u0000`;
         slots.push(match);
         return key;
       });
@@ -171,7 +176,7 @@
   }
 
   function restoreRegions(text, slots) {
-    return text.replace(/ CUC(\d+) /g, (_, index) => slots[Number(index)] ?? "");
+    return text.replace(/\u0000CUC(\d+)\u0000/g, (_, index) => slots[Number(index)] ?? "");
   }
 
   function tidy(text) {
@@ -195,6 +200,9 @@
 
   function fixOrphanedQuestionMarks(text) {
     return text.replace(/(^|[.!?]\s+)([^.!?\n]+)\?/g, (match, boundary, sentence) => {
+      // A sentence starting with a protected-region placeholder is opaque
+      // here — the hidden text may itself be interrogative, so leave it be.
+      if (sentence.trimStart().startsWith("\u0000")) return match;
       if (INTERROGATIVE_STARTERS.test(sentence.trim())) return match;
       return `${boundary}${sentence}.`;
     });

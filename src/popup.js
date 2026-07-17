@@ -113,11 +113,19 @@ function renderTrend(spendDays) {
     const pct = Math.max(day.spendUsd > 0 ? 7 : 0, Math.round((day.spendUsd / max) * 100));
     bar.style.height = `${pct}%`;
     bar.title = `${day.date}: ${CUC.formatUsd(day.spendUsd)}`;
+    // Bars are decorative for assistive tech; the container's label below
+    // carries every day's figure, so title-only hover isn't the sole access.
+    bar.setAttribute("aria-hidden", "true");
     trend.appendChild(bar);
   }
+  const perDay = series
+    .filter(d => d.spendUsd > 0)
+    .map(d => `${d.date} ${CUC.formatUsd(d.spendUsd)}`)
+    .join(", ");
+  trend.setAttribute("role", "img");
   trend.setAttribute(
     "aria-label",
-    `Daily spend, last 14 days. Busiest day ${CUC.formatUsd(max)}. Today ${CUC.formatUsd(series[series.length - 1].spendUsd)}.`
+    `Daily spend, last 14 days. Busiest day ${CUC.formatUsd(max)}. Today ${CUC.formatUsd(series[series.length - 1].spendUsd)}. ${perDay ? `Days with spend: ${perDay}.` : ""}`.trim()
   );
 }
 
