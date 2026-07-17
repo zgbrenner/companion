@@ -4,6 +4,11 @@ All notable changes to Companion. The most recent release is at the top.
 
 ### 1.0.0 (Chrome Web Store)
 
+- **Pre-submission audit fixes (round 2):**
+  - The per-model spend breakdown's cents-vs-dollars unit is now decided once per response using the field name first (`credit` → cents, `usd` → dollars) instead of a per-row magnitude guess that could read a genuine `spend_usd: 1000` as $10 — or even split one response across two units. The monthly-counter sanity check now retries the other unit before rejecting.
+  - Pace projections no longer lose their history to sub-2% downward jitter in Claude's utilization numbers (only a genuine window reset clears them).
+  - Restoring an unsent draft after the Caveman instruction goes out now waits for the composer to actually clear instead of a fixed 900ms timer, and never overwrites text the user typed in the meantime.
+  - The Caveman switch and session-spend meter expose their tooltip explanations to screen readers (`aria-describedby` / visually-hidden text) instead of mouse-only `title` attributes.
 - **Pre-submission audit fixes:**
   - Caveman's send interceptor and draft reading are now scoped strictly to the chat composer — pressing Enter in another editable on claude.ai (a rename field, project instructions) can no longer open the trim preview with that field's text or send it as a chat message.
   - The file-converter's `.txt`/`.md` fast path now applies the same 800k-character output cap as every other format (a 20 MB text file no longer lands whole in the composer) and shows conversion progress.

@@ -463,7 +463,10 @@
     const last = next[next.length - 1];
     if (last) {
       if (sample.at <= last.at) return next; // duplicate/out-of-order poll
-      if (sample.pct < last.pct - 0.5) next = []; // window reset — start fresh
+      // A genuine window reset drops utilization sharply (usually to ~0);
+      // sub-2% dips are server-side rounding jitter and must not wipe the
+      // pace history (that briefly killed the projection on every wobble).
+      if (sample.pct < last.pct - 2) next = []; // window reset — start fresh
     }
     next.push({ at: sample.at, pct: sample.pct });
     const cutoff = sample.at - maxAgeMs;

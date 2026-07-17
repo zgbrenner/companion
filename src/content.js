@@ -243,7 +243,7 @@
         <div class="cuc-body" data-cuc="body">
           <div class="cuc-meter" data-cuc="meter">
             <div class="cuc-meter-label">
-              <span title="Your real usage-credit spend since you opened your browser — read straight from Claude's own monthly counter, accurate to the cent. Covers ALL your Claude activity in that time (every tab and device on your account), not just this chat. Token figures are a range derived from this real spend using current Anthropic pricing.">Spent this session</span>
+              <span title="Your real usage-credit spend since you opened your browser — read straight from Claude's own monthly counter, accurate to the cent. Covers ALL your Claude activity in that time (every tab and device on your account), not just this chat. Token figures are a range derived from this real spend using current Anthropic pricing.">Spent this session<span class="cuc-sr-only"> — real usage-credit spend since the browser opened, from Claude's own counter, covering all activity on your account</span></span>
               <span data-cuc="session-value">—</span>
             </div>
             <div class="cuc-progress" role="progressbar" aria-label="Session spend as a share of the monthly allowance" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
@@ -272,7 +272,8 @@
 
           <div class="cuc-caveman-row" data-cuc="caveman-row">
             <span class="cuc-caveman-label" title="Caveman Mode saves your Claude quota: Claude answers ultra-brief, your prompts get trimmed (you approve a preview first), and dropped files convert to lean Markdown.">🪨 Caveman Mode — stretch your quota</span>
-            <button class="cuc-switch" data-cuc-action="caveman-toggle" role="switch" aria-checked="false" aria-label="Toggle Caveman Mode"><span class="cuc-switch-knob"></span></button>
+            <span class="cuc-sr-only" id="cuc-desc-caveman">Saves your Claude quota: Claude answers ultra-brief, your prompts get trimmed with a preview you approve first, and dropped files convert to lean Markdown.</span>
+            <button class="cuc-switch" data-cuc-action="caveman-toggle" role="switch" aria-checked="false" aria-label="Toggle Caveman Mode" aria-describedby="cuc-desc-caveman"><span class="cuc-switch-knob"></span></button>
           </div>
           <div class="cuc-dropzone" data-cuc="dropzone" role="button" tabindex="0" hidden>
             <span data-cuc="dropzone-label" aria-live="polite">Click to pick a file → Markdown (fewer tokens than raw files)</span>
@@ -487,8 +488,28 @@
       unclaimCavemanInjection(conversationId);
       return;
     }
-    // Put the user's unsent draft back once the instruction has gone out.
-    if (draft) setTimeout(() => setComposerText(draft), 900);
+    // Put the user's unsent draft back once the instruction has gone out —
+    // wait for the composer to actually empty (the editor clears it when the
+    // send lands) instead of a fixed timeout, and never overwrite text the
+    // person typed in the meantime.
+    if (draft) restoreDraftWhenComposerClears(draft);
+  }
+
+  function restoreDraftWhenComposerClears(draft, { intervalMs = 300, timeoutMs = 6000 } = {}) {
+    const startedAt = Date.now();
+    const tick = () => {
+      const current = getComposerText();
+      if (!current) {
+        setComposerText(draft);
+        return;
+      }
+      // Still showing the instruction (or something new the user typed):
+      // only keep waiting while it's our own instruction text in there.
+      if (Date.now() - startedAt >= timeoutMs) return;
+      if (current !== CAVEMAN.CAVEMAN_INSTRUCTION) return; // user typed — leave it alone
+      setTimeout(tick, intervalMs);
+    };
+    setTimeout(tick, intervalMs);
   }
 
   // What must ride along with the NEXT outgoing message: the full instruction
