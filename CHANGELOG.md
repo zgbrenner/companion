@@ -4,6 +4,16 @@ All notable changes to Companion. The most recent release is at the top.
 
 ### 1.0.0 (Chrome Web Store)
 
+- **Pre-submission audit fixes:**
+  - Caveman's send interceptor and draft reading are now scoped strictly to the chat composer — pressing Enter in another editable on claude.ai (a rename field, project instructions) can no longer open the trim preview with that field's text or send it as a chat message.
+  - The file-converter's `.txt`/`.md` fast path now applies the same 800k-character output cap as every other format (a 20 MB text file no longer lands whole in the composer) and shows conversion progress.
+  - Dollar figures keep cent precision at all realistic magnitudes ($15.67 no longer displays as $16).
+  - Hiding "Monthly allowance" now also stops the session-spend bar from filling (and announcing) as a percentage of that hidden monthly cap.
+  - The "at most one repeat nudge per 6 hours" desktop-notification rule actually works (it was unreachable dead code — a limit that stayed hot could never re-notify within a reset window).
+  - `caveman.js` no longer contains raw NUL bytes (the compressor's protected-region placeholders are now written as escaped `\u0000` literals), so git/grep treat it as reviewable text instead of a binary file — same runtime behavior.
+  - Tightened the sandbox CSP (dropped an unused `'unsafe-inline'` for scripts) and the packaging script now refuses to ship dev artifacts (`*.map`, `.env*`, tests).
+  - The popup's 14-day trend is readable by assistive tech (per-day figures in the chart's accessible label, not just hover tooltips).
+  - Added `LICENSE` (MIT) and `CONTRIBUTING.md`; fixed stale docs (version badge, removed-feature references, duplicate SECURITY.md section numbers).
 - **Chrome Web Store release preparation:** removed the built-in self-update mechanism (updates now ship through the Chrome Web Store), dropped the now-unneeded `alarms` permission and GitHub/CDN host permissions and CSP entries — the extension now connects only to claude.ai.
 - Added store submission documents under `store/` and a packaging script `tools/package-webstore.sh`.
 - **Renamed to "Companion"** — the product no longer uses "Claude" in its name, avoiding any trademark concern; all user-facing copy updated.
