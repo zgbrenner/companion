@@ -22,6 +22,16 @@ if grep -qi "updater" "$MANIFEST" || grep -qi "raw.githubusercontent" "$MANIFEST
   exit 1
 fi
 
+# Refuse to package dev artifacts that would otherwise ship silently — the
+# zip below includes src/ verbatim, so anything stray in there goes to the
+# Web Store review queue.
+STRAY="$(find src icons -name '*.map' -o -name '.env*' -o -name '*.test.js' -o -name '__tests__' -o -name '*.orig' -o -name '*.rej' -o -name '*.swp' 2>/dev/null || true)"
+if [ -n "$STRAY" ]; then
+  echo "error: dev artifacts found in the package set — remove them before packaging:" >&2
+  echo "$STRAY" >&2
+  exit 1
+fi
+
 VERSION="$(node -e "console.log(require('./manifest.json').version)" 2>/dev/null || true)"
 if [ -z "$VERSION" ]; then
   # Fallback without node: crude grep/sed extraction of "version": "x.y.z".

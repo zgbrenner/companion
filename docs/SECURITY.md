@@ -143,7 +143,7 @@ img-src 'self' data:; style-src 'self' 'unsafe-inline';
 **Sandbox page** (the file converter):
 
 ```
-sandbox allow-scripts; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob:;
+sandbox allow-scripts; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' blob:;
 worker-src blob:; child-src blob:; connect-src blob: data:; object-src 'none'; base-uri 'none';
 ```
 
@@ -193,7 +193,7 @@ All other code is first-party and unminified. There is no build step that pulls 
 
 ---
 
-## 11. Threat model summary
+## 10. Threat model summary
 
 | Threat | Mitigation |
 | --- | --- |
@@ -211,8 +211,8 @@ All other code is first-party and unminified. There is no build step that pulls 
 
 Everything needed to review the extension is in the repository and observable at runtime:
 
-1. **Read the source.** All first-party code is unminified. Start with `manifest.json` (permissions, CSP, sandbox, content-script worlds), then `src/native-usage.js` (what Claude endpoints are read), and `src/background.js` (message validation).
-2. **Confirm the network surface.** Search the tree for `fetch(` and `XMLHttpRequest`; verify every destination is a host in [§3](#3-network-egress). Then watch **DevTools → Network** on a Claude tab and on the extension's pages during normal use — you should see only Claude usage GETs. No analytics/telemetry calls exist.
+1. **Read the source.** All first-party code is unminified. Start with `manifest.json` (permissions, CSP, sandbox, content-script worlds), then `src/native-usage.js` (what Claude endpoints are read), `src/background.js` (message validation), and `src/injected.js` — the MAIN-world script and highest-trust-boundary code, which observes usage responses by patching `window.fetch`/`XMLHttpRequest.prototype` (so its interception surface won't show up in a `fetch(` call-site grep; verify it only reads/clones responses and never initiates requests).
+2. **Confirm the network surface.** Search the tree for `fetch(` and `XMLHttpRequest`; verify every destination is a host in [§3](#3-network-egress) (and see the `src/injected.js` note in step 1 for the prototype-patching case). Then watch **DevTools → Network** on a Claude tab and on the extension's pages during normal use — you should see only Claude usage GETs. No analytics/telemetry calls exist.
 3. **Verify permissions at install.** `chrome://extensions` → Details lists the exact site access; confirm it is Claude.ai only.
 4. **Confirm read-only.** Search for HTTP methods other than `GET` against `claude.ai` — there are none.
 5. **Confirm no prompt/response storage.** Search for where prompt/response text is written to storage — it is not; only numeric spend totals and settings are persisted.

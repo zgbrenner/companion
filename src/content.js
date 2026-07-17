@@ -243,7 +243,7 @@
         <div class="cuc-body" data-cuc="body">
           <div class="cuc-meter" data-cuc="meter">
             <div class="cuc-meter-label">
-              <span title="Your real usage-credit spend since you opened your browser — read straight from Claude's own monthly counter, accurate to the cent. Covers ALL your Claude activity in that time (every tab and device on your account), not just this chat. Token figures are a range derived from this real spend using current Anthropic pricing.">Spent this session</span>
+              <span title="Your real usage-credit spend since you opened your browser — read straight from Claude's own monthly counter, accurate to the cent. Covers ALL your Claude activity in that time (every tab and device on your account), not just this chat. Token figures are a range derived from this real spend using current Anthropic pricing.">Spent this session<span class="cuc-sr-only"> — real usage-credit spend since the browser opened, from Claude's own counter, covering all activity on your account</span></span>
               <span data-cuc="session-value">—</span>
             </div>
             <div class="cuc-progress" role="progressbar" aria-label="Session spend as a share of the monthly allowance" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
@@ -273,7 +273,8 @@
 
           <div class="cuc-caveman-row" data-cuc="caveman-row">
             <span class="cuc-caveman-label" title="Caveman Mode saves your Claude quota: Claude answers ultra-brief, your prompts get trimmed (you approve a preview first), and dropped files convert to lean Markdown.">🪨 Caveman Mode — stretch your quota</span>
-            <button class="cuc-switch" data-cuc-action="caveman-toggle" role="switch" aria-checked="false" aria-label="Toggle Caveman Mode"><span class="cuc-switch-knob"></span></button>
+            <span class="cuc-sr-only" id="cuc-desc-caveman">Saves your Claude quota: Claude answers ultra-brief, your prompts get trimmed with a preview you approve first, and dropped files convert to lean Markdown.</span>
+            <button class="cuc-switch" data-cuc-action="caveman-toggle" role="switch" aria-checked="false" aria-label="Toggle Caveman Mode" aria-describedby="cuc-desc-caveman"><span class="cuc-switch-knob"></span></button>
           </div>
           <div class="cuc-dropzone" data-cuc="dropzone" role="button" tabindex="0" hidden>
             <span data-cuc="dropzone-label" aria-live="polite">Click to pick a file → Markdown (fewer tokens than raw files)</span>
@@ -353,7 +354,10 @@
       const activeEditable = active?.matches?.(COMPOSER_EDITABLE_SELECTOR)
         ? active
         : (active?.isContentEditable ? active : active?.closest?.(COMPOSER_EDITABLE_SELECTOR));
-      if (activeEditable) return activeEditable;
+      // Only trust the focused element when it actually belongs to the chat
+      // composer — claude.ai has other editables (rename fields, project
+      // instructions) whose text must never be read as "the draft".
+      if (activeEditable && isInsideComposer(activeEditable)) return activeEditable;
     }
     const anchor = findComposerAnchor();
     const scope = anchor?.closest?.("form, [data-testid*='composer']") || anchor || document.body;
@@ -406,9 +410,19 @@
       || document.querySelector("form button[type='submit']:not([disabled])");
   }
 
+  // True only for editables that are part of the actual chat composer.
+  // Matching any textarea/contenteditable on the page (the old behavior) let
+  // the send interceptor fire from unrelated fields — e.g. Enter in a
+  // conversation-rename box would open the trim preview with THAT field's
+  // text and, on confirm, send it as a chat message.
   function isInsideComposer(el) {
     if (!el) return false;
-    return Boolean(el.closest?.("[data-testid*='composer'], textarea, div[contenteditable='true'], [role='textbox']"));
+    const editable = el.closest?.(COMPOSER_EDITABLE_SELECTOR)
+      || (el.isContentEditable ? el : null);
+    if (!editable) return false;
+    const anchor = findComposerAnchor();
+    if (anchor && (anchor.contains(editable) || editable.contains(anchor))) return true;
+    return Boolean(editable.closest?.("[data-testid*='composer'], [data-testid*='chat-input']"));
   }
 
   // Type `text` into the composer and trigger claude.ai's own send. The
@@ -475,8 +489,28 @@
       unclaimCavemanInjection(conversationId);
       return;
     }
-    // Put the user's unsent draft back once the instruction has gone out.
-    if (draft) setTimeout(() => setComposerText(draft), 900);
+    // Put the user's unsent draft back once the instruction has gone out —
+    // wait for the composer to actually empty (the editor clears it when the
+    // send lands) instead of a fixed timeout, and never overwrite text the
+    // person typed in the meantime.
+    if (draft) restoreDraftWhenComposerClears(draft);
+  }
+
+  function restoreDraftWhenComposerClears(draft, { intervalMs = 300, timeoutMs = 6000 } = {}) {
+    const startedAt = Date.now();
+    const tick = () => {
+      const current = getComposerText();
+      if (!current) {
+        setComposerText(draft);
+        return;
+      }
+      // Still showing the instruction (or something new the user typed):
+      // only keep waiting while it's our own instruction text in there.
+      if (Date.now() - startedAt >= timeoutMs) return;
+      if (current !== CAVEMAN.CAVEMAN_INSTRUCTION) return; // user typed — leave it alone
+      setTimeout(tick, intervalMs);
+    };
+    setTimeout(tick, intervalMs);
   }
 
   // What must ride along with the NEXT outgoing message: the full instruction
@@ -676,6 +710,8 @@
   // convert() — an extension the parser only knows under another name (htm →
   // html today) must be aliased THERE, or it passes both gates then fails.
   const CONVERTIBLE_EXTENSIONS = new Set(["pdf", "docx", "pptx", "xlsx", "odt", "odp", "ods", "rtf", "csv", "html", "htm", "md", "txt"]);
+  // Cap for the txt/md fast path — mirrors MAX_MARKDOWN_CHARS in sandbox.js.
+  const MAX_TEXT_MARKDOWN_CHARS = 800_000;
   let dropzoneResetTimer = null;
 
   function setDropzoneLabel(text, revert = false) {
@@ -704,7 +740,14 @@
     try {
       let markdown;
       if (ext === "txt" || ext === "md") {
+        setDropzoneLabel(`Converting ${file.name}…`);
         markdown = await file.text();
+        // Same output cap as the sandbox parser path (sandbox.js's
+        // MAX_MARKDOWN_CHARS) — without it a 20MB text file would be pasted
+        // whole into the composer, the opposite of what this zone promises.
+        if (markdown.length > MAX_TEXT_MARKDOWN_CHARS) {
+          markdown = `${markdown.slice(0, MAX_TEXT_MARKDOWN_CHARS)}\n\n… [truncated: file exceeds ${Math.round(MAX_TEXT_MARKDOWN_CHARS / 1000)}k characters]`;
+        }
       } else {
         setDropzoneLabel(`Converting ${file.name}…`);
         const dataUrl = await new Promise((resolve, reject) => {
@@ -932,8 +975,8 @@
     if (rows && rows.length) {
       // Per-model conversion when the breakdown says which models the money
       // went to; the low/high spread still comes from the mix bounds.
-      const low = rows.reduce((s, r) => s + CUC.estimateTokensFromSpend(r.spendUsd, r.modelKey || modelKey, { inputOutputRatio: 3, cacheReadFraction: 0 }), 0);
-      const high = rows.reduce((s, r) => s + CUC.estimateTokensFromSpend(r.spendUsd, r.modelKey || modelKey, { inputOutputRatio: 12, cacheReadFraction: 0.5 }), 0);
+      const low = rows.reduce((s, r) => s + CUC.estimateTokensFromSpend(r.spendUsd, r.modelKey || modelKey, CUC.SPEND_TOKEN_MIX_LOW), 0);
+      const high = rows.reduce((s, r) => s + CUC.estimateTokensFromSpend(r.spendUsd, r.modelKey || modelKey, CUC.SPEND_TOKEN_MIX_HIGH), 0);
       rangeText = CUC.formatTokenRange({ low, high });
     } else {
       rangeText = CUC.formatTokenRange(CUC.estimateTokenRangeFromSpend(spendUsd, modelKey));
@@ -981,7 +1024,12 @@
       } else {
         sessionValueEl.textContent = spendValueText(deltaUsd, modelKey);
         // Bar: how much of the monthly allowance this session consumed.
-        const limitUsd = nativeUsage?.monthlySpendLimit?.limitUsd;
+        // Respect the "hide monthly allowance" preference here too — a user
+        // who hid that row shouldn't have its scale leak back in via this
+        // bar's fill level and aria text.
+        const limitUsd = settings.showMonthlyCredits !== false
+          ? nativeUsage?.monthlySpendLimit?.limitUsd
+          : null;
         const sessionPct = limitUsd > 0 ? (deltaUsd / limitUsd) * 100 : 0;
         setBar(sessionBar, sessionPct, limitUsd > 0
           ? `${Math.round(CUC.clamp(sessionPct, 0, 100))}% of monthly allowance used this session`

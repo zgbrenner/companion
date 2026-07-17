@@ -185,11 +185,17 @@ function renderTrend(spendDays) {
     bar.className = day.date === todayKey ? "trend-bar today" : "trend-bar";
     const pct = Math.max(day.spendUsd > 0 ? 7 : 0, Math.round((day.spendUsd / max) * 100));
     bar.style.height = `${pct}%`;
+    // Each bar is a real, focusable <button> with its own aria-label and a
+    // visible CSS tooltip — per-day access for keyboard and screen-reader
+    // users, which supersedes main's div-era title/aria-hidden approach
+    // (aria-hidden on a focusable element would be an ARIA violation).
     const label = `${formatDayLabel(day.date)}: ${CUC.formatUsd(day.spendUsd)}`;
     bar.setAttribute("aria-label", label);
     bar.dataset.tooltip = label;
     trend.appendChild(bar);
   }
+  // No role="img"/per-day rollup on the container: the bars are interactive
+  // buttons carrying their own labels, so a group summary is all it needs.
   trend.setAttribute(
     "aria-label",
     `Daily spend, last 14 days. Busiest day ${CUC.formatUsd(max)}. Today ${CUC.formatUsd(series[series.length - 1].spendUsd)}.`

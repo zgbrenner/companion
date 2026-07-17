@@ -612,7 +612,12 @@
   function formatUsd(value) {
     const amount = Number(value || 0);
     if (amount < 0.01 && amount > 0) return `$${amount.toFixed(4)}`;
-    if (amount < 10) return `$${amount.toFixed(2)}`;
+    // Keep cents visible at every realistic magnitude — the UI promises the
+    // figure is "accurate to the cent", so don't round it away at $10+.
+    if (amount < 10_000) {
+      const [whole, cents] = amount.toFixed(2).split(".");
+      return `$${Number(whole).toLocaleString()}.${cents}`;
+    }
     return `$${Math.round(amount).toLocaleString()}`;
   }
 
@@ -710,7 +715,10 @@
     const last = next[next.length - 1];
     if (last) {
       if (sample.at <= last.at) return next; // duplicate/out-of-order poll
-      if (sample.pct < last.pct - 0.5) next = []; // window reset — start fresh
+      // A genuine window reset drops utilization sharply (usually to ~0);
+      // sub-2% dips are server-side rounding jitter and must not wipe the
+      // pace history (that briefly killed the projection on every wobble).
+      if (sample.pct < last.pct - 2) next = []; // window reset — start fresh
     }
     next.push({ at: sample.at, pct: sample.pct });
     const cutoff = sample.at - maxAgeMs;
@@ -770,6 +778,8 @@
     MODEL_PRICES,
     DEFAULT_SETTINGS,
     SPEND_TOKEN_MIX,
+    SPEND_TOKEN_MIX_LOW,
+    SPEND_TOKEN_MIX_HIGH,
     mergeSettings,
     anyNativeLimitPrefVisible,
     resolveModelKey,

@@ -3,7 +3,7 @@
   "name": "Companion",
   "version": "1.1.0",
   "minimum_chrome_version": "111",
-  "description": "Shows your real Claude.ai usage in dollars, tokens, or both, pinned under the chat box while you work.",
+  "description": "See your real Claude.ai usage — dollars, tokens, and limits — pinned under the chat box. 100% local, read-only, no telemetry.",
   "permissions": [
     "storage",
     "activeTab",
@@ -16,7 +16,7 @@
   ],
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'none'; base-uri 'none'; connect-src 'self' https://claude.ai https://*.claude.ai; img-src 'self' data:; style-src 'self' 'unsafe-inline';",
-    "sandbox": "sandbox allow-scripts; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob:; worker-src blob:; child-src blob:; connect-src blob: data:; object-src 'none'; base-uri 'none';"
+    "sandbox": "sandbox allow-scripts; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' blob:; worker-src blob:; child-src blob:; connect-src blob: data:; object-src 'none'; base-uri 'none';"
   },
   "sandbox": {
     "pages": [
