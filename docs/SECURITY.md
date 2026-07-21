@@ -27,7 +27,7 @@ This document describes Companion's security architecture, data handling, permis
 | Session or authentication cookies | Never read | Never | Never |
 | User settings | n/a | Yes | No |
 
-Local data is stored in `chrome.storage.local` and `chrome.storage.session`. Clearing Companion's local data removes settings, usage history, cached readings, and notification deduplication state.
+Local data is stored in `chrome.storage.local` and `chrome.storage.session`. Clearing Companion's local data removes settings, usage history, cached readings, badge ownership, and notification deduplication state.
 
 ## 2. Permissions
 
@@ -39,8 +39,9 @@ From `manifest.json`:
 | `activeTab` | Let the toolbar popup inspect the currently active provider tab after the user opens the popup. |
 | `notifications` | Optional 85% and 95% limit alerts. |
 | `offscreen` | Host the privileged relay used by the sandboxed file-conversion pipeline. |
+| `alarms` | Remove an OpenAI warning badge when its native usage reading becomes more than two hours old, even if no ChatGPT tab remains open. |
 
-Companion does not request the broad `tabs` permission.
+The alarm contains only the provider name and observation timestamp. It does not contain account, conversation, prompt, or usage payload data. Companion does not request the broad `tabs` permission.
 
 Host permissions are limited to:
 
@@ -98,7 +99,8 @@ Provider content scripts
         │ chrome.runtime messages with sender and schema validation
         ▼
 Service worker
-  authoritative local storage, badge, notifications
+  provider backgrounds + serialized badge owner
+  local storage, bounded expiry alarm, badge, notifications
         │
         ▼
 Offscreen relay
@@ -130,6 +132,12 @@ The background then validates again:
 - numeric ranges and size limits
 
 This creates defense in depth. A page script would need the ephemeral random channel and would still have to satisfy the isolated-world and background schemas.
+
+### Shared toolbar badge
+
+Claude and OpenAI retain separate usage adapters, but the browser exposes one shared toolbar badge. `badge-state.js` serializes ownership updates from both providers and stores only `{provider, observedAt, alarmName}` in session storage.
+
+A high OpenAI reading schedules one alarm for two hours after its observation time. When the alarm fires, the badge is cleared only if that exact OpenAI snapshot still owns it. A newer Claude reading, a newer OpenAI reading, or a low reading replaces or removes ownership, so an obsolete alarm cannot clear the wrong provider's badge.
 
 ## 5. Content Security Policy
 
@@ -177,6 +185,8 @@ Caveman Mode is local and user-controlled:
 | Raw OpenAI account data leaks into extension storage | Normalization happens in the page world; only bounded numeric snapshots cross the bridge. |
 | Sensitive URL query values are retained | Source metadata stores the pathname only. |
 | Third-party lookalike endpoint is inspected | Observer accepts exact ChatGPT HTTPS origins only. |
+| Old OpenAI alarm clears a newer Claude or OpenAI badge | Serialized badge ownership requires an exact provider and observation-time match before clearing. |
+| Stale OpenAI badge remains indefinitely | A single bounded alarm clears the badge after two hours if that snapshot still owns it. |
 | Oversized or malformed runtime message | Schema, key, unit, timestamp, numeric, and size validation. |
 | File-parser exploit | Parser is confined to an opaque-origin sandbox with no network or extension privileges. |
 | Prompt, reply, or file exfiltration | No Companion backend; content is not persisted or transmitted; sandbox has no network. |
@@ -189,10 +199,11 @@ Caveman Mode is local and user-controlled:
 1. Review `manifest.json` for permissions, host access, content-script worlds, CSP, and sandbox declarations.
 2. Review `src/openai-observer.js`, `src/openai-channel.js`, and `src/openai-background.js` for OpenAI normalization and validation.
 3. Review `src/injected.js`, `src/native-usage.js`, and `src/background.js` for Claude behavior.
-4. Search for analytics SDKs, telemetry URLs, or remote script loading. None should exist.
-5. Search storage writes for prompt, reply, and file contents. None should exist.
-6. Run the committed Chromium suite. It checks provider isolation, native OpenAI usage rendering, query-string stripping, page-event forgery resistance, sandboxed conversion, and accessibility.
-7. Inspect the conversion sandbox in DevTools. Its origin is `null`, it has no `chrome` object, and its CSP forbids network egress.
+4. Review `src/badge-state.js` and `src/badge-router.js` for cross-provider badge ownership and expiry.
+5. Search for analytics SDKs, telemetry URLs, or remote script loading. None should exist.
+6. Search storage writes for prompt, reply, and file contents. None should exist.
+7. Run the committed Chromium suite. It checks provider isolation, native OpenAI usage rendering, query-string stripping, page-event forgery resistance, freshness, badge ownership, sandboxed conversion, and accessibility.
+8. Inspect the conversion sandbox in DevTools. Its origin is `null`, it has no `chrome` object, and its CSP forbids network egress.
 
 ## 11. Known limitations
 
