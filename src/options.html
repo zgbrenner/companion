@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Companion — Settings</title>
+  <title>Companion Settings</title>
   <link rel="stylesheet" href="options.css" />
 </head>
 <body>
@@ -25,30 +25,34 @@
     <nav class="section-nav" aria-label="Settings sections">
       <a href="#display" data-nav="display" class="active" aria-current="page">Display</a>
       <a href="#alerts" data-nav="alerts">Alerts</a>
-      <a href="#connection" data-nav="connection">Claude connection</a>
+      <a href="#connection" data-nav="connection">Connections</a>
       <a href="#privacy" data-nav="privacy">Data &amp; privacy</a>
     </nav>
 
     <main class="content">
-      <!-- ============ Display ============ -->
       <section class="card" id="display">
         <div class="card-header">
           <h2>Display</h2>
-          <p>How usage appears in the widget.</p>
+          <p>Shared controls for Claude and ChatGPT surfaces.</p>
         </div>
         <div class="card-body">
+          <div class="notice">
+            <div class="notice-title">Automatic surface matching</div>
+            <p>Companion follows the active page. Claude keeps its warm meter design, Chat uses a restrained green accent, Work uses violet, and Codex-aware web surfaces use graphite and indigo.</p>
+          </div>
+
           <div class="row">
             <div class="row-text">
-              <label class="row-label" id="lbl-show-widget" for="showWidget">Show the usage widget on Claude</label>
-              <div class="row-desc" id="desc-show-widget">The meter pinned under the chat box. You can also hide it with its ✕ button.</div>
+              <label class="row-label" id="lbl-show-widget" for="showWidget">Show the in-page Companion widget</label>
+              <div class="row-desc" id="desc-show-widget">Pins beneath supported Claude and ChatGPT composers. You can also hide it from the widget itself.</div>
             </div>
             <button type="button" id="showWidget" class="switch" role="switch" aria-checked="true" data-setting="showWidget" aria-labelledby="lbl-show-widget" aria-describedby="desc-show-widget"><span class="switch-knob"></span></button>
           </div>
 
           <div class="row">
             <div class="row-text">
-              <label class="row-label" id="lbl-display-mode">Show usage as</label>
-              <div class="row-desc" id="desc-display-mode">Dollars are real spend from Claude's counter; tokens are an approximate range derived from it.</div>
+              <label class="row-label" id="lbl-display-mode">Claude usage format</label>
+              <div class="row-desc" id="desc-display-mode">Claude dollars come from its native counter. Token ranges are derived from those dollars. OpenAI surfaces show only native counters that OpenAI exposes.</div>
             </div>
             <div class="segmented" role="group" aria-labelledby="lbl-display-mode" data-setting="displayMode">
               <button type="button" class="segment" data-value="dollars">Dollars</button>
@@ -58,54 +62,36 @@
           </div>
 
           <fieldset class="metrics-group">
-            <legend class="metrics-group-legend">Widget metrics</legend>
-            <p class="metrics-group-desc">Pick exactly which meters the widget and popup show.</p>
+            <legend class="metrics-group-legend">Claude widget metrics</legend>
+            <p class="metrics-group-desc">These controls apply to Claude's richer spend and native-limit view. ChatGPT renders the supported OpenAI counters it actually observes.</p>
 
             <div class="row">
-              <div class="row-text">
-                <label class="row-label" id="lbl-session-spend" for="showSessionSpend">Spent this session</label>
-                <div class="row-desc" id="desc-session-spend">Real usage-credit spend since this browser session began, with the Today line.</div>
-              </div>
+              <div class="row-text"><label class="row-label" id="lbl-session-spend" for="showSessionSpend">Spent this session</label><div class="row-desc" id="desc-session-spend">Real usage-credit spend since this browser session began, with the Today line.</div></div>
               <button type="button" id="showSessionSpend" class="switch" role="switch" aria-checked="true" data-setting="showSessionSpend" aria-labelledby="lbl-session-spend" aria-describedby="desc-session-spend"><span class="switch-knob"></span></button>
             </div>
 
             <div class="row">
-              <div class="row-text">
-                <label class="row-label" id="lbl-week-spend" for="showWeekSpend">This week's spend</label>
-                <div class="row-desc" id="desc-week-spend">Real spend for Claude's current weekly window, next to the Today line.</div>
-              </div>
+              <div class="row-text"><label class="row-label" id="lbl-week-spend" for="showWeekSpend">This week's spend</label><div class="row-desc" id="desc-week-spend">Real Claude spend for the current weekly window.</div></div>
               <button type="button" id="showWeekSpend" class="switch" role="switch" aria-checked="true" data-setting="showWeekSpend" aria-labelledby="lbl-week-spend" aria-describedby="desc-week-spend"><span class="switch-knob"></span></button>
             </div>
 
             <div class="row">
-              <div class="row-text">
-                <label class="row-label" id="lbl-session-limit" for="showSessionLimit">Session limit (5-hour)</label>
-                <div class="row-desc" id="desc-session-limit">The rolling 5-hour allowance that pauses you mid-day.</div>
-              </div>
+              <div class="row-text"><label class="row-label" id="lbl-session-limit" for="showSessionLimit">Session limit</label><div class="row-desc" id="desc-session-limit">Claude's rolling five-hour allowance.</div></div>
               <button type="button" id="showSessionLimit" class="switch" role="switch" aria-checked="true" data-setting="showSessionLimit" aria-labelledby="lbl-session-limit" aria-describedby="desc-session-limit"><span class="switch-knob"></span></button>
             </div>
 
             <div class="row">
-              <div class="row-text">
-                <label class="row-label" id="lbl-weekly-limit" for="showWeeklyLimit">Weekly limit</label>
-                <div class="row-desc" id="desc-weekly-limit">The 7-day allowance across all models.</div>
-              </div>
+              <div class="row-text"><label class="row-label" id="lbl-weekly-limit" for="showWeeklyLimit">Weekly limit</label><div class="row-desc" id="desc-weekly-limit">Claude's seven-day allowance across models.</div></div>
               <button type="button" id="showWeeklyLimit" class="switch" role="switch" aria-checked="true" data-setting="showWeeklyLimit" aria-labelledby="lbl-weekly-limit" aria-describedby="desc-weekly-limit"><span class="switch-knob"></span></button>
             </div>
 
             <div class="row">
-              <div class="row-text">
-                <label class="row-label" id="lbl-opus-limit" for="showOpusLimit">Weekly Opus limit</label>
-                <div class="row-desc" id="desc-opus-limit">The 7-day Opus-specific allowance. Appears only after Opus use.</div>
-              </div>
+              <div class="row-text"><label class="row-label" id="lbl-opus-limit" for="showOpusLimit">Weekly Opus limit</label><div class="row-desc" id="desc-opus-limit">Appears after Claude reports Opus-specific usage.</div></div>
               <button type="button" id="showOpusLimit" class="switch" role="switch" aria-checked="true" data-setting="showOpusLimit" aria-labelledby="lbl-opus-limit" aria-describedby="desc-opus-limit"><span class="switch-knob"></span></button>
             </div>
 
             <div class="row">
-              <div class="row-text">
-                <label class="row-label" id="lbl-monthly-credits" for="showMonthlyCredits">Monthly allowance</label>
-                <div class="row-desc" id="desc-monthly-credits">Monthly usage-credit spend and cap. Most useful on enterprise or usage-credit accounts.</div>
-              </div>
+              <div class="row-text"><label class="row-label" id="lbl-monthly-credits" for="showMonthlyCredits">Monthly allowance</label><div class="row-desc" id="desc-monthly-credits">Claude usage-credit spend and its reported cap.</div></div>
               <button type="button" id="showMonthlyCredits" class="switch" role="switch" aria-checked="true" data-setting="showMonthlyCredits" aria-labelledby="lbl-monthly-credits" aria-describedby="desc-monthly-credits"><span class="switch-knob"></span></button>
             </div>
           </fieldset>
@@ -113,136 +99,86 @@
           <div class="row">
             <div class="row-text">
               <label class="row-label" id="lbl-caveman" for="showCavemanMode">Show Caveman Mode in the widget</label>
-              <div class="row-desc" id="desc-caveman">The quota-stretching controls: ultra-brief replies, prompt trimming, and file&nbsp;→&nbsp;Markdown.</div>
+              <div class="row-desc" id="desc-caveman">Shorter replies, local prompt trimming, and local file-to-Markdown conversion on supported Claude and ChatGPT composers.</div>
             </div>
             <button type="button" id="showCavemanMode" class="switch" role="switch" aria-checked="true" data-setting="showCavemanMode" aria-labelledby="lbl-caveman" aria-describedby="desc-caveman"><span class="switch-knob"></span></button>
           </div>
 
           <div class="row row-stack">
-            <div class="row-text">
-              <label class="row-label" for="defaultModel">Model for token estimates</label>
-              <div class="row-desc" id="desc-default-model">Used to turn dollars into an approximate token range when the active model can't be detected. Real dollar figures never depend on this.</div>
-            </div>
+            <div class="row-text"><label class="row-label" for="defaultModel">Claude model for token ranges</label><div class="row-desc" id="desc-default-model">Used only when converting Claude's real dollar counter into an approximate token range.</div></div>
             <select id="defaultModel" data-setting="defaultModel" aria-describedby="desc-default-model"></select>
           </div>
         </div>
       </section>
 
-      <!-- ============ Alerts ============ -->
       <section class="card" id="alerts">
-        <div class="card-header">
-          <h2>Alerts</h2>
-          <p>Heads-up before you hit a limit.</p>
-        </div>
+        <div class="card-header"><h2>Alerts</h2><p>Heads-up before a trustworthy native limit runs hot.</p></div>
         <div class="card-body">
           <div class="row">
-            <div class="row-text">
-              <label class="row-label" id="lbl-desktop-notifications" for="desktopNotifications">Desktop notification when a limit runs hot</label>
-              <div class="row-desc" id="desc-desktop-notifications">A nudge when any limit crosses 85% or 95%, once per threshold per reset window. The toolbar badge stays on regardless.</div>
-            </div>
+            <div class="row-text"><label class="row-label" id="lbl-desktop-notifications" for="desktopNotifications">Desktop limit notifications</label><div class="row-desc" id="desc-desktop-notifications">A notice at 85 and 95 percent, once per threshold per reset window.</div></div>
             <button type="button" id="desktopNotifications" class="switch" role="switch" aria-checked="true" data-setting="desktopNotifications" aria-labelledby="lbl-desktop-notifications" aria-describedby="desc-desktop-notifications"><span class="switch-knob"></span></button>
           </div>
-
           <div class="row">
-            <div class="row-text">
-              <label class="row-label" id="lbl-pace-warnings" for="showPlainEnglishTips">Plain-English pace warnings</label>
-              <div class="row-desc" id="desc-pace-warnings">An in-widget line like "at this pace you'll hit your session limit around 3:40 PM" when you're burning quota fast.</div>
-            </div>
+            <div class="row-text"><label class="row-label" id="lbl-pace-warnings" for="showPlainEnglishTips">Plain-English Claude pace warnings</label><div class="row-desc" id="desc-pace-warnings">Projects when Claude's session limit may be reached, based on locally observed native utilization.</div></div>
             <button type="button" id="showPlainEnglishTips" class="switch" role="switch" aria-checked="true" data-setting="showPlainEnglishTips" aria-labelledby="lbl-pace-warnings" aria-describedby="desc-pace-warnings"><span class="switch-knob"></span></button>
           </div>
-
           <div class="row">
-            <div class="row-text">
-              <label class="row-label" id="lbl-always-badge" for="alwaysShowBadge">Always show the toolbar badge</label>
-              <div class="row-desc" id="desc-always-badge">Keep the usage badge visible even when nothing is running hot (gray until 80%).</div>
-            </div>
+            <div class="row-text"><label class="row-label" id="lbl-always-badge" for="alwaysShowBadge">Always show the toolbar badge</label><div class="row-desc" id="desc-always-badge">Keep a neutral badge visible below the warning threshold.</div></div>
             <button type="button" id="alwaysShowBadge" class="switch" role="switch" aria-checked="false" data-setting="alwaysShowBadge" aria-labelledby="lbl-always-badge" aria-describedby="desc-always-badge"><span class="switch-knob"></span></button>
           </div>
         </div>
       </section>
 
-      <!-- ============ Claude connection ============ -->
       <section class="card" id="connection">
-        <div class="card-header">
-          <h2>Claude connection</h2>
-          <p>The extension reads Claude's own usage numbers directly — never an estimate.</p>
-        </div>
+        <div class="card-header"><h2>Connections</h2><p>Provider-specific native usage sources remain isolated from each other.</p></div>
         <div class="card-body">
           <div class="panel">
-            <div class="panel-head">
-              <span class="panel-title">Connection status</span>
-              <span class="badge badge-muted" id="connection-badge" aria-live="polite">Checking…</span>
-            </div>
+            <div class="panel-head"><span class="panel-title">ChatGPT, Work, and Codex-aware web surfaces</span><span class="badge badge-ok">Automatic</span></div>
+            <p>Companion detects supported ChatGPT origins and selected modes automatically. It forwards only bounded numeric usage fields that OpenAI exposes. Raw account payloads and conversation text never cross the page bridge.</p>
+            <p>The standalone Codex desktop shell is not a Chrome extension host. Companion supports Codex-aware web surfaces and shared agentic usage exposed on ChatGPT web.</p>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head"><span class="panel-title">Claude connection</span><span class="badge badge-muted" id="connection-badge" aria-live="polite">Checking…</span></div>
             <dl class="panel-grid">
               <dt>Organization</dt>
-              <dd>
-                <span id="detected-organization" class="mono">Not detected yet</span>
-                <span class="mini-actions">
-                  <button type="button" class="btn btn-secondary btn-xs" id="toggle-organization" disabled>Reveal</button>
-                  <button type="button" class="btn btn-secondary btn-xs" id="copy-organization" disabled>Copy</button>
-                </span>
-              </dd>
-              <dt>Monthly cap</dt>
-              <dd id="detected-cap">Not detected yet</dd>
-              <dt>Last detected</dt>
-              <dd id="cache-age">—</dd>
+              <dd><span id="detected-organization" class="mono">Not detected yet</span><span class="mini-actions"><button type="button" class="btn btn-secondary btn-xs" id="toggle-organization" disabled>Reveal</button><button type="button" class="btn btn-secondary btn-xs" id="copy-organization" disabled>Copy</button></span></dd>
+              <dt>Monthly cap</dt><dd id="detected-cap">Not detected yet</dd>
+              <dt>Last detected</dt><dd id="cache-age">Not detected yet</dd>
             </dl>
-            <div class="panel-foot">
-              <button type="button" class="btn btn-secondary btn-sm" id="clear-org-cache">Re-detect account</button>
-              <span class="mini-status" id="account-action-status" aria-live="polite"></span>
-            </div>
+            <div class="panel-foot"><button type="button" class="btn btn-secondary btn-sm" id="clear-org-cache">Re-detect Claude account</button><span class="mini-status" id="account-action-status" aria-live="polite"></span></div>
           </div>
 
           <details class="disclosure">
-            <summary>How the connection works</summary>
-            <div class="disclosure-body">
-              <p>The active organization is discovered from Claude's own <code>lastActiveOrg</code> cookie, falling back to <code>/api/organizations</code>. The monthly cap comes straight from Claude's usage response (<code>/usage</code> or <code>overage_spend_limit</code>) — nothing is hardcoded.</p>
-              <p>Only the non-secret organization identifier is cached locally (up to 48 hours) so limits load instantly. The extension never reads, stores, or transmits your session cookie, and makes only read requests — it can't change your account.</p>
-            </div>
+            <summary>How Claude detection works</summary>
+            <div class="disclosure-body"><p>The organization is discovered from Claude's own active-organization state, with its organizations endpoint as a fallback. The monthly cap comes from Claude's usage response. Nothing is hardcoded.</p><p>Only the non-secret organization identifier is cached locally. Companion never reads, stores, or transmits your session cookie and makes read requests only.</p></div>
           </details>
         </div>
       </section>
 
-      <!-- ============ Data & privacy ============ -->
       <section class="card" id="privacy">
-        <div class="card-header">
-          <h2>Data &amp; privacy</h2>
-          <p>Everything stays on this device.</p>
-        </div>
+        <div class="card-header"><h2>Data &amp; privacy</h2><p>Everything stays on this device.</p></div>
         <div class="card-body">
           <div class="notice notice-privacy">
-            <div class="notice-title">What's stored</div>
+            <div class="notice-title">What is stored</div>
             <ul>
-              <li><strong>Stored locally:</strong> your settings, and daily spend totals (dollar amounts and derived token ranges).</li>
-              <li><strong>Never stored:</strong> the text of your prompts or Claude's replies, file contents, or your login — none of it is saved, and nothing is ever sent to any server but Claude's own.</li>
+              <li><strong>Stored locally:</strong> settings, Claude daily spend totals, bounded OpenAI usage snapshots, and small provider caches.</li>
+              <li><strong>Never stored:</strong> prompt or reply text, file contents, passwords, login cookies, or raw provider account payloads.</li>
+              <li><strong>Never contacted:</strong> Companion has no analytics, telemetry, tracking, or third-party backend.</li>
             </ul>
           </div>
 
           <div class="row row-stack">
-            <div class="row-text">
-              <div class="row-label" id="lbl-export">Export usage history</div>
-              <div class="row-desc">One CSV row per day, week, or month: real dollars plus an approximate token range. Handy for expense notes. No chat text is included.</div>
-            </div>
+            <div class="row-text"><div class="row-label" id="lbl-export">Export Claude usage history</div><div class="row-desc">One CSV row per day, week, or month with real dollars and the derived token range. No chat text is included.</div></div>
             <div class="row-actions">
-              <div class="segmented" data-setting="exportGranularity" role="group" aria-labelledby="lbl-export">
-                <button type="button" class="segment" data-value="daily">Daily</button>
-                <button type="button" class="segment" data-value="weekly">Weekly</button>
-                <button type="button" class="segment" data-value="monthly">Monthly</button>
-              </div>
-              <button type="button" class="btn btn-secondary" id="export-csv">Download CSV</button>
-              <span class="mini-status" id="export-status" aria-live="polite"></span>
+              <div class="segmented" data-setting="exportGranularity" role="group" aria-labelledby="lbl-export"><button type="button" class="segment" data-value="daily">Daily</button><button type="button" class="segment" data-value="weekly">Weekly</button><button type="button" class="segment" data-value="monthly">Monthly</button></div>
+              <button type="button" class="btn btn-secondary" id="export-csv">Download CSV</button><span class="mini-status" id="export-status" aria-live="polite"></span>
             </div>
           </div>
 
           <div class="danger">
-            <div class="danger-head">
-              <div class="row-label">Clear all local data</div>
-              <div class="row-desc">Removes settings, spend history, and caches. Your Claude account is not touched.</div>
-            </div>
-            <div class="row-actions">
-              <button type="button" class="btn btn-danger" id="clear-all-data">Clear all local data</button>
-              <span class="mini-status" id="clear-data-status" aria-live="polite"></span>
-            </div>
+            <div class="danger-head"><div class="row-label">Clear all local data</div><div class="row-desc">Removes settings, usage history, OpenAI snapshots, and caches. Provider accounts and conversations are not touched.</div></div>
+            <div class="row-actions"><button type="button" class="btn btn-danger" id="clear-all-data">Clear all local data</button><span class="mini-status" id="clear-data-status" aria-live="polite"></span></div>
           </div>
         </div>
       </section>
