@@ -1,61 +1,47 @@
 // Runs in ChatGPT's MAIN world at document_start. It observes only first-party
-// OpenAI traffic and emits bounded normalized numeric usage snapshots. Raw
-// account JSON, prompt text, response text, file bodies, authentication
-// material, and URL query strings never cross the page event bridge.
+// OpenAI traffic and emits bounded normalized numeric usage snapshots through a
+// private MessagePort. Raw account JSON, prompt text, response text, file bodies,
+// authentication material, and URL query strings never cross the bridge.
 (() => {
   if (window.__COMPANION_OPENAI_INSTALLED__) return;
   window.__COMPANION_OPENAI_INSTALLED__ = true;
 
   const PLATFORM = globalThis.CompanionPlatform;
-  const CHANNEL_OFFER = "cuc:openai-channel-offer";
-  const CHANNEL_READY = "cuc:openai-channel-ready";
+  const PORT_OFFER = "cuc:openai-port-offer";
   const MAIN_READY = "cuc:openai-main-ready";
   const MAX_PENDING = 50;
   const MAX_JSON_BYTES = 2_000_000;
-  const nativeDispatchEvent = window.dispatchEvent.bind(window);
+  const nativePostMessage = window.postMessage.bind(window);
   const nativeAddEventListener = window.addEventListener.bind(window);
-  const CustomEventCtor = globalThis.CustomEvent;
-  let channel = null;
+  let bridgePort = null;
   let pending = [];
   let requestCounter = 0;
 
-  function channelNames(channelId) {
-    return {
-      usage: `cuc:openai-usage:${channelId}`,
-      network: `cuc:openai-network:${channelId}`,
-    };
-  }
-
-  function validChannelId(value) {
-    return typeof value === "string"
-      && value.length >= 8
-      && value.length <= 200
-      && /^[A-Za-z0-9_-]+$/.test(value);
-  }
-
   function dispatch(kind, detail) {
-    if (!channel) {
+    if (!bridgePort) {
       if (pending.length < MAX_PENDING) pending.push({ kind, detail });
       return;
     }
-    let serialized;
-    try { serialized = JSON.stringify(detail); }
-    catch { return; }
-    if (serialized.length > 2_100_000) return;
-    nativeDispatchEvent(new CustomEventCtor(channel[kind], { detail: serialized }));
+    try { bridgePort.postMessage({ kind, detail }); }
+    catch { /* a closed port only drops optional telemetry */ }
   }
 
-  nativeAddEventListener(CHANNEL_OFFER, event => {
-    if (channel) return;
-    const channelId = typeof event?.detail === "string" ? event.detail : event?.detail?.channelId;
-    if (!validChannelId(channelId)) return;
-    channel = channelNames(channelId);
+  function connectPort(port) {
+    if (bridgePort || !port) return;
+    bridgePort = port;
+    bridgePort.start?.();
+    try { bridgePort.postMessage({ kind: "ready" }); } catch { /* best effort */ }
     const queued = pending;
     pending = [];
     for (const item of queued) dispatch(item.kind, item.detail);
-    nativeDispatchEvent(new CustomEventCtor(CHANNEL_READY));
+  }
+
+  nativeAddEventListener("message", event => {
+    if (event.source !== window || event.origin !== location.origin) return;
+    if (event.data?.type !== PORT_OFFER || bridgePort) return;
+    connectPort(event.ports?.[0]);
   });
-  nativeDispatchEvent(new CustomEventCtor(MAIN_READY));
+  nativePostMessage({ type: MAIN_READY }, location.origin);
 
   function parseUrl(value) {
     try { return new URL(typeof value === "string" ? value : value?.url, location.href); }
