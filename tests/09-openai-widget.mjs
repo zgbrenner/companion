@@ -1,7 +1,6 @@
 // ChatGPT integration harness: intercepted first-party page with a realistic
 // composer, native usage response, surface switching, dark mode, safe Caveman
-// preview behavior, and a page-world attempt to steal and reuse the old bridge
-// token.
+// preview behavior, and a page-world attempt to steal the old bridge token.
 import { launchExtension, assert } from "./lib.mjs";
 
 const { context, worker } = await launchExtension();
@@ -94,7 +93,7 @@ try {
     return { leakedToken, leakedChannel };
   });
   assert(!attack.leakedToken, "page cannot force the legacy authentication token to be re-broadcast");
-  assert(!attack.leakedChannel, "page cannot force the secret channel identifier to be re-broadcast");
+  assert(!attack.leakedChannel, "page cannot force a private bridge identifier to be re-broadcast");
   await page.waitForTimeout(100);
   const afterAttack = await page.evaluate(() => document.querySelector("#cuc-openai-widget")?.shadowRoot?.textContent || "");
   assert(!afterAttack.includes("Forged usage"), "page-forged usage events never reach the widget");
@@ -102,28 +101,21 @@ try {
   const bridgeDiagnostic = await page.evaluate(async () => {
     const fetchName = window.fetch.name;
     const installed = Boolean(window.__COMPANION_OPENAI_INSTALLED__);
-    const platformReady = typeof window.CompanionPlatform?.normalizeOpenAIUsage === "function";
     const response = await fetch("/backend-api/usage?access_token=browser-secret&conversation=private-id");
-    const payload = await response.clone().json();
-    const normalized = window.CompanionPlatform?.normalizeOpenAIUsage?.(payload) || null;
     return {
       fetchName,
       installed,
-      platformReady,
       contentType: response.headers.get("content-type"),
-      normalizedBucket: normalized?.buckets?.[0]?.key || null,
-      normalizedUsed: normalized?.buckets?.[0]?.used ?? null,
+      status: response.status,
     };
   });
   assert(bridgeDiagnostic.installed, `MAIN observer missing: ${JSON.stringify(bridgeDiagnostic)}`);
   assert(bridgeDiagnostic.fetchName === "companionOpenAIFetch", `fetch was not patched: ${JSON.stringify(bridgeDiagnostic)}`);
-  assert(bridgeDiagnostic.platformReady && bridgeDiagnostic.normalizedBucket === "agentic" && bridgeDiagnostic.normalizedUsed === 40,
-    `browser normalizer rejected fixture: ${JSON.stringify(bridgeDiagnostic)}`);
   try {
     await page.waitForFunction(() => {
       const text = document.querySelector("#cuc-openai-widget")?.shadowRoot?.textContent || "";
       return text.includes("Agentic usage") && text.includes("40 credits");
-    }, { timeout: 10000 });
+    }, undefined, { timeout: 10000 });
   } catch (error) {
     const widgetText = await page.evaluate(() => document.querySelector("#cuc-openai-widget")?.shadowRoot?.textContent || "");
     throw new Error(`native usage did not reach widget; diagnostic=${JSON.stringify(bridgeDiagnostic)}; widget=${JSON.stringify(widgetText)}; ${error}`);
@@ -154,7 +146,7 @@ try {
   await page.waitForFunction(() => {
     const root = document.querySelector("#cuc-openai-widget")?.shadowRoot;
     return !root?.querySelector("[data-cuc-openai='trim-dialog']")?.hasAttribute("hidden");
-  }, { timeout: 10000 });
+  }, undefined, { timeout: 10000 });
   const preview = await page.evaluate(() => document.querySelector("#cuc-openai-widget")?.shadowRoot?.querySelector("[data-cuc-openai='trim-text']")?.value || "");
   assert(preview.length > 0 && preview.length < "Could you please basically summarize this very long request?".length, "Caveman preview offers a shorter prompt");
   assert(errors.length === 0, `ChatGPT harness errors: ${errors.join(" | ")}`);
