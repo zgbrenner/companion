@@ -1,7 +1,6 @@
 // OpenAI MAIN-world bridge contract: only first-party traffic is inspected,
 // a transferred private MessagePort carries events, and only bounded normalized
-// numeric data crosses the bridge. The platform normalizer itself is covered by
-// 06-platforms; this test isolates transport and privacy behavior.
+// numeric data crosses the bridge.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { MessageChannel } from "node:worker_threads";
@@ -53,7 +52,7 @@ windowTarget.postMessage = (data, targetOrigin, transfer = []) => {
 };
 
 const reset = new Date(Date.now() + 3600e3).toISOString();
-windowTarget.fetch = async (input, init = {}) => {
+windowTarget.fetch = async input => {
   const url = typeof input === "string" ? input : input.url;
   if (String(url).includes("evil.example")) {
     return new Response(JSON.stringify({ agentic_usage: { used_credits: 99, credit_limit: 100 } }), {
@@ -90,6 +89,7 @@ const context = vm.createContext({
   Math,
   Object,
   Array,
+  Map,
   Number,
   String,
   RegExp,
@@ -102,30 +102,13 @@ windowTarget.location = pageUrl;
 const platform = readFileSync(join(EXT_PATH, "src", "platform.js"), "utf8");
 const injected = readFileSync(join(EXT_PATH, "src", "openai-injected.js"), "utf8");
 vm.runInContext(platform, context, { filename: "src/platform.js" });
-context.CompanionPlatform = {
-  normalizeOpenAIUsage(payload, { sourcePath, observedAt }) {
-    const credits = payload?.agentic_usage;
-    if (!credits || !Number.isFinite(credits.used_credits) || !Number.isFinite(credits.credit_limit)) return null;
-    return {
-      provider: "openai",
-      observedAt,
-      sourcePath,
-      maxUtilizationPct: (credits.used_credits / credits.credit_limit) * 100,
-      buckets: [{
-        key: "agentic",
-        label: "Agentic usage",
-        pct: (credits.used_credits / credits.credit_limit) * 100,
-        resetsAt: credits.resets_at || null,
-        used: credits.used_credits,
-        limit: credits.credit_limit,
-        unit: "credits",
-      }],
-      counters: {},
-    };
-  },
-};
-
 vm.runInContext(injected, context, { filename: "src/openai-injected.js" });
+
+const direct = vm.runInContext(`CompanionPlatform.normalizeOpenAIUsage({
+  agentic_usage: { used_credits: 40, credit_limit: 100, resets_at: ${JSON.stringify(reset)} }
+})`, context);
+assert(direct?.buckets?.[0]?.key === "agentic", "fixture is recognized by the production OpenAI normalizer");
+
 const channel = new MessageChannel();
 const messages = [];
 channel.port1.on("message", message => messages.push(message));
