@@ -37,9 +37,9 @@
     if (provider !== "openai") return null;
 
     const selected = String(selectedModeText || "").trim().toLowerCase();
-    if (/^codex(?:\b|\s)/.test(selected)) return "codex";
-    if (/^work(?:\b|\s)/.test(selected)) return "work";
-    if (/^chat(?:gpt)?(?:\b|\s)/.test(selected)) return "chat";
+    if (/\bcodex\b/.test(selected)) return "codex";
+    if (/\bwork\b/.test(selected)) return "work";
+    if (/\bchat(?:gpt)?\b/.test(selected)) return "chat";
 
     const path = parsed.pathname.toLowerCase();
     const mode = ["mode", "surface", "view"]
