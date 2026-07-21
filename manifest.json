@@ -68,8 +68,10 @@
         "src/shared.js",
         "src/caveman.js",
         "src/platform.js",
+        "src/openai-freshness.js",
         "src/openai-channel.js",
-        "src/openai-content.js"
+        "src/openai-content.js",
+        "src/openai-freshness-ui.js"
       ],
       "run_at": "document_start"
     },
