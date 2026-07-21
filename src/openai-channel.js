@@ -4,7 +4,9 @@
 // token inside each event payload. Repeating that token let a later page script
 // observe it and forge future usage events. This layer keeps the proven content
 // integration unchanged while translating it onto random per-page event names.
-// The legacy token-offer event is swallowed before it reaches the page world.
+// Cross-world payloads use JSON strings, matching Chrome's serializable-message
+// guidance. The legacy token-offer event is swallowed before it reaches the
+// page world.
 (() => {
   if (globalThis.__COMPANION_OPENAI_CHANNEL_INSTALLED__) return;
   globalThis.__COMPANION_OPENAI_CHANNEL_INSTALLED__ = true;
@@ -48,6 +50,16 @@
     return `cuc:openai-${kind}:${channelId}`;
   }
 
+  function parsePayload(value) {
+    if (typeof value !== "string" || value.length > 2_100_000) return null;
+    try {
+      const parsed = JSON.parse(value);
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : null;
+    } catch {
+      return null;
+    }
+  }
+
   function invoke(listener, event) {
     if (typeof listener === "function") {
       listener.call(window, event);
@@ -61,9 +73,11 @@
     const prior = wrappers[kind].get(listener);
     if (prior) nativeRemove(secretName(kind), prior, options);
     const wrapped = event => {
+      const payload = parsePayload(event?.detail);
+      if (!payload) return;
       const legacyEvent = new CustomEventCtor(
         kind === "usage" ? LEGACY_USAGE_EVENT : LEGACY_NETWORK_EVENT,
-        { detail: { ...(event?.detail || {}), token: channelId } },
+        { detail: { ...payload, token: channelId } },
       );
       invoke(listener, legacyEvent);
     };
@@ -80,7 +94,7 @@
 
   function offerChannel() {
     if (!channelId || acknowledged) return;
-    nativeDispatch(new CustomEventCtor(CHANNEL_OFFER, { detail: { channelId } }));
+    nativeDispatch(new CustomEventCtor(CHANNEL_OFFER, { detail: channelId }));
   }
 
   nativeAdd(CHANNEL_READY, () => {
