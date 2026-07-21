@@ -13,6 +13,7 @@
   const LEGACY_TOKEN_OFFER = "cuc:openai-token-offer";
   const PORT_OFFER = "cuc:openai-port-offer";
   const MAIN_READY = "cuc:openai-main-ready";
+  const STATE_ATTRIBUTE = "data-companion-openai-bridge";
 
   const nativeAdd = window.addEventListener.bind(window);
   const nativeRemove = window.removeEventListener.bind(window);
@@ -28,6 +29,11 @@
     usage: new Map(),
     network: new Map(),
   };
+
+  function markState(value) {
+    try { document.documentElement?.setAttribute(STATE_ATTRIBUTE, value); }
+    catch { /* diagnostics must never affect the page */ }
+  }
 
   function kindForLegacyName(type) {
     if (type === LEGACY_USAGE_EVENT) return "usage";
@@ -52,6 +58,7 @@
     const type = kind === "usage" ? LEGACY_USAGE_EVENT : LEGACY_NETWORK_EVENT;
     const event = new CustomEventCtor(type, { detail: { ...detail, token: eventToken } });
     for (const listener of listeners[kind].keys()) invoke(listener, event);
+    markState(kind === "usage" ? "usage" : "network");
   }
 
   function handlePortMessage(event) {
@@ -60,6 +67,7 @@
     if (message.kind === "ready") {
       acknowledged = true;
       pendingOffer = false;
+      markState("ready");
       return;
     }
     if ((message.kind === "usage" || message.kind === "network") && message.detail) {
@@ -70,6 +78,7 @@
   function offerPort() {
     if (!eventToken || acknowledged || pendingOffer) return;
     pendingOffer = true;
+    markState("offered");
     try { bridgePort?.close?.(); } catch { /* best effort */ }
     const channel = new MessageChannel();
     bridgePort = channel.port1;
@@ -79,6 +88,7 @@
       nativePostMessage({ type: PORT_OFFER }, location.origin, [channel.port2]);
     } catch {
       pendingOffer = false;
+      markState("error");
       try { bridgePort.close(); } catch { /* best effort */ }
       bridgePort = null;
     }
@@ -88,6 +98,7 @@
     if (event.source !== window || event.origin !== location.origin) return;
     if (event.data?.type !== MAIN_READY || acknowledged) return;
     pendingOffer = false;
+    markState("main-ready");
     offerPort();
   });
 
@@ -110,6 +121,7 @@
     const offered = event?.detail?.token;
     if (!validToken(offered)) return true;
     if (!eventToken) eventToken = offered;
+    markState("token");
     if (offered === eventToken) offerPort();
     return true;
   };
