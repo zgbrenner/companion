@@ -58,11 +58,24 @@ try {
   await page.waitForFunction(() => document.querySelector("#cuc-openai-widget")?.classList.contains("cuc-openai-dark"));
 
   await page.locator("#prompt-textarea").fill("Could you please basically summarize this very long request?");
-  await page.locator("#prompt-textarea").press("Enter");
+  const intercepted = await page.evaluate(() => {
+    const editable = document.querySelector("#prompt-textarea");
+    const event = new KeyboardEvent("keydown", {
+      key: "Enter",
+      code: "Enter",
+      keyCode: 13,
+      which: 13,
+      bubbles: true,
+      cancelable: true,
+    });
+    const dispatched = editable.dispatchEvent(event);
+    return !dispatched && event.defaultPrevented;
+  });
+  assert(intercepted, "Caveman Mode intercepts the composer Enter event before native submission");
   await page.waitForFunction(() => {
     const root = document.querySelector("#cuc-openai-widget")?.shadowRoot;
     return !root?.querySelector("[data-cuc-openai='trim-dialog']")?.hasAttribute("hidden");
-  });
+  }, { timeout: 10000 });
   const preview = await page.evaluate(() => document.querySelector("#cuc-openai-widget")?.shadowRoot?.querySelector("[data-cuc-openai='trim-text']")?.value || "");
   assert(preview.length > 0 && preview.length < "Could you please basically summarize this very long request?".length, "Caveman preview offers a shorter prompt");
   assert(errors.length === 0, `ChatGPT harness errors: ${errors.join(" | ")}`);
