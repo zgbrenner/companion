@@ -1,44 +1,55 @@
 // Runs in ChatGPT's MAIN world at document_start. It observes only first-party
 // OpenAI traffic and emits bounded normalized numeric usage snapshots. Raw
-// account JSON, prompt text, response text, and file bodies never cross the
-// page event bridge.
+// account JSON, prompt text, response text, file bodies, authentication
+// material, and URL query strings never cross the page event bridge.
 (() => {
   if (window.__COMPANION_OPENAI_INSTALLED__) return;
   window.__COMPANION_OPENAI_INSTALLED__ = true;
 
   const PLATFORM = globalThis.CompanionPlatform;
-  const NETWORK_EVENT = "cuc:openai-network-event";
-  const USAGE_EVENT = "cuc:openai-usage-snapshot";
-  const TOKEN_OFFER = "cuc:openai-token-offer";
+  const CHANNEL_OFFER = "cuc:openai-channel-offer";
   const MAIN_READY = "cuc:openai-main-ready";
   const MAX_PENDING = 50;
   const MAX_JSON_BYTES = 2_000_000;
-  let authToken = null;
+  const nativeDispatchEvent = window.dispatchEvent.bind(window);
+  const nativeAddEventListener = window.addEventListener.bind(window);
+  const CustomEventCtor = globalThis.CustomEvent;
+  let channel = null;
   let pending = [];
   let requestCounter = 0;
 
-  function dispatch(name, detail) {
-    window.dispatchEvent(new CustomEvent(name, { detail: { ...detail, token: authToken } }));
+  function channelNames(channelId) {
+    return {
+      usage: `cuc:openai-usage:${channelId}`,
+      network: `cuc:openai-network:${channelId}`,
+    };
   }
 
-  function emit(name, detail) {
-    if (!authToken) {
-      if (pending.length < MAX_PENDING) pending.push({ name, detail });
+  function validChannelId(value) {
+    return typeof value === "string"
+      && value.length >= 8
+      && value.length <= 200
+      && /^[A-Za-z0-9_-]+$/.test(value);
+  }
+
+  function dispatch(kind, detail) {
+    if (!channel) {
+      if (pending.length < MAX_PENDING) pending.push({ kind, detail });
       return;
     }
-    dispatch(name, detail);
+    nativeDispatchEvent(new CustomEventCtor(channel[kind], { detail }));
   }
 
-  window.addEventListener(TOKEN_OFFER, event => {
-    if (authToken) return;
-    const token = event?.detail?.token;
-    if (typeof token !== "string" || token.length < 8 || token.length > 200) return;
-    authToken = token;
+  nativeAddEventListener(CHANNEL_OFFER, event => {
+    if (channel) return;
+    const channelId = event?.detail?.channelId;
+    if (!validChannelId(channelId)) return;
+    channel = channelNames(channelId);
     const queued = pending;
     pending = [];
-    for (const item of queued) dispatch(item.name, item.detail);
+    for (const item of queued) dispatch(item.kind, item.detail);
   });
-  window.dispatchEvent(new CustomEvent(MAIN_READY));
+  nativeDispatchEvent(new CustomEventCtor(MAIN_READY));
 
   function parseUrl(value) {
     try { return new URL(typeof value === "string" ? value : value?.url, location.href); }
@@ -55,12 +66,13 @@
   function isUsageLikeUrl(value) {
     const url = parseUrl(value);
     if (!url || !isOpenAIUrl(url)) return false;
-    return /usage|limit|quota|credit|billing|subscription|agentic|codex|workspace|account/i.test(`${url.pathname}${url.search}`);
+    const target = `${url.pathname}${url.search}`;
+    return /usage|limits?|quota|credits?|billing|subscription|rate[_-]?limits?|agentic[_-]?(?:usage|credits?)/i.test(target);
   }
 
   function safePath(value) {
     const url = parseUrl(value);
-    return url && isOpenAIUrl(url) ? `${url.pathname}${url.search}`.slice(0, 240) : null;
+    return url && isOpenAIUrl(url) ? url.pathname.slice(0, 240) : null;
   }
 
   function contentLengthAllowed(response) {
@@ -81,7 +93,7 @@
   function emitNormalizedUsage(payload, sourcePath) {
     const snapshot = PLATFORM?.normalizeOpenAIUsage?.(payload, { sourcePath, observedAt: Date.now() });
     if (!snapshot) return;
-    emit(USAGE_EVENT, { snapshot });
+    dispatch("usage", { snapshot });
   }
 
   async function inspectUsageResponse(response, requestUrl) {
@@ -108,8 +120,9 @@
   }
 
   async function watchGeneration(response, requestUrl, requestId) {
+    const sourcePath = safePath(requestUrl);
     if (!response?.body) {
-      emit(NETWORK_EVENT, { kind: "generation-complete", requestId, sourcePath: safePath(requestUrl), at: Date.now() });
+      dispatch("network", { kind: "generation-complete", requestId, sourcePath, at: Date.now() });
       return;
     }
     const reader = response.body.getReader();
@@ -122,16 +135,16 @@
           carry += decoder.decode(value, { stream: !done });
           const lines = carry.split(/\r?\n/);
           carry = lines.pop() || "";
-          for (const line of lines) scanUsageFrame(line, safePath(requestUrl));
+          for (const line of lines) scanUsageFrame(line, sourcePath);
           if (carry.length > 120_000) carry = carry.slice(-120_000);
         }
         if (done) break;
       }
-      if (carry) scanUsageFrame(carry, safePath(requestUrl));
+      if (carry) scanUsageFrame(carry, sourcePath);
     } catch {
       // A cancelled stream is still a completed request from the meter's view.
     } finally {
-      emit(NETWORK_EVENT, { kind: "generation-complete", requestId, sourcePath: safePath(requestUrl), at: Date.now() });
+      dispatch("network", { kind: "generation-complete", requestId, sourcePath, at: Date.now() });
     }
   }
 
@@ -148,18 +161,32 @@
 
       const modelId = safeModelHeader(response);
       if (modelId) {
-        emit(NETWORK_EVENT, { kind: "model-detected", modelId, sourcePath: safePath(requestUrl), at: Date.now() });
+        dispatch("network", { kind: "model-detected", modelId, sourcePath: safePath(requestUrl), at: Date.now() });
       }
 
       const contentType = response.headers?.get?.("content-type") || "";
       if (method === "POST" && /event-stream/i.test(contentType)) {
         requestCounter += 1;
         const requestId = `${Date.now()}-${requestCounter}-${Math.random().toString(36).slice(2, 10)}`;
-        emit(NETWORK_EVENT, { kind: "generation-start", requestId, sourcePath: safePath(requestUrl), at: Date.now() });
+        dispatch("network", { kind: "generation-start", requestId, sourcePath: safePath(requestUrl), at: Date.now() });
         watchGeneration(response.clone(), requestUrl, requestId);
       }
       return response;
     };
+  }
+
+  function readXhrJson(xhr) {
+    const responseType = String(xhr?.responseType || "");
+    if (responseType === "json") {
+      return xhr.response && typeof xhr.response === "object" ? xhr.response : null;
+    }
+    if (responseType && responseType !== "text") return null;
+    let text;
+    try { text = xhr.responseText; }
+    catch { return null; }
+    if (typeof text !== "string" || text.length > MAX_JSON_BYTES) return null;
+    try { return JSON.parse(text); }
+    catch { return null; }
   }
 
   const XHR = globalThis.XMLHttpRequest;
@@ -177,14 +204,16 @@
       const meta = xhrMeta.get(this);
       if (meta && isOpenAIUrl(meta.url)) {
         this.addEventListener("load", () => {
-          const contentType = this.getResponseHeader?.("content-type") || "";
-          if (isUsageLikeUrl(meta.url) && /json/i.test(contentType) && typeof this.responseText === "string" && this.responseText.length <= MAX_JSON_BYTES) {
-            try { emitNormalizedUsage(JSON.parse(this.responseText), safePath(meta.url)); }
-            catch { /* non-JSON or changed shape */ }
+          let contentType = "";
+          try { contentType = this.getResponseHeader?.("content-type") || ""; }
+          catch { /* unreadable headers */ }
+          if (isUsageLikeUrl(meta.url) && /json/i.test(contentType)) {
+            const payload = readXhrJson(this);
+            if (payload) emitNormalizedUsage(payload, safePath(meta.url));
           }
           if (meta.method === "POST" && /event-stream/i.test(contentType)) {
             requestCounter += 1;
-            emit(NETWORK_EVENT, {
+            dispatch("network", {
               kind: "generation-complete",
               requestId: `xhr-${Date.now()}-${requestCounter}`,
               sourcePath: safePath(meta.url),
