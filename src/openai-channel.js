@@ -1,12 +1,9 @@
 // Isolated-world compatibility layer for the OpenAI page bridge.
 //
-// openai-content.js originally listened on fixed DOM event names and expected a
-// token inside each event payload. Repeating that token let a later page script
-// observe it and forge future usage events. This layer keeps the proven content
-// integration unchanged while translating it onto random per-page event names.
-// Cross-world payloads use JSON strings, matching Chrome's serializable-message
-// guidance. The legacy token-offer event is swallowed before it reaches the
-// page world.
+// The one-time port transfer happens at document_start, before host-page scripts
+// run. All later usage and generation messages travel through the private
+// MessagePort rather than public DOM events. The legacy token-offer event is
+// swallowed and used only inside the extension's isolated world.
 (() => {
   if (globalThis.__COMPANION_OPENAI_CHANNEL_INSTALLED__) return;
   globalThis.__COMPANION_OPENAI_CHANNEL_INSTALLED__ = true;
@@ -14,31 +11,23 @@
   const LEGACY_USAGE_EVENT = "cuc:openai-usage-snapshot";
   const LEGACY_NETWORK_EVENT = "cuc:openai-network-event";
   const LEGACY_TOKEN_OFFER = "cuc:openai-token-offer";
-  const CHANNEL_OFFER = "cuc:openai-channel-offer";
-  const CHANNEL_READY = "cuc:openai-channel-ready";
+  const PORT_OFFER = "cuc:openai-port-offer";
+  const MAIN_READY = "cuc:openai-main-ready";
 
   const nativeAdd = window.addEventListener.bind(window);
   const nativeRemove = window.removeEventListener.bind(window);
   const nativeDispatch = window.dispatchEvent.bind(window);
+  const nativePostMessage = window.postMessage.bind(window);
   const CustomEventCtor = globalThis.CustomEvent;
 
-  let channelId = null;
+  let eventToken = null;
+  let bridgePort = null;
   let acknowledged = false;
-  const pending = {
-    usage: [],
-    network: [],
-  };
-  const wrappers = {
+  let pendingOffer = false;
+  const listeners = {
     usage: new Map(),
     network: new Map(),
   };
-
-  function validChannelId(value) {
-    return typeof value === "string"
-      && value.length >= 8
-      && value.length <= 200
-      && /^[A-Za-z0-9_-]+$/.test(value);
-  }
 
   function kindForLegacyName(type) {
     if (type === LEGACY_USAGE_EVENT) return "usage";
@@ -46,91 +35,82 @@
     return null;
   }
 
-  function secretName(kind) {
-    return `cuc:openai-${kind}:${channelId}`;
-  }
-
-  function parsePayload(value) {
-    if (typeof value !== "string" || value.length > 2_100_000) return null;
-    try {
-      const parsed = JSON.parse(value);
-      return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : null;
-    } catch {
-      return null;
-    }
+  function validToken(value) {
+    return typeof value === "string"
+      && value.length >= 8
+      && value.length <= 200
+      && /^[A-Za-z0-9_-]+$/.test(value);
   }
 
   function invoke(listener, event) {
-    if (typeof listener === "function") {
-      listener.call(window, event);
-    } else if (listener && typeof listener.handleEvent === "function") {
-      listener.handleEvent(event);
+    if (typeof listener === "function") listener.call(window, event);
+    else if (listener && typeof listener.handleEvent === "function") listener.handleEvent(event);
+  }
+
+  function deliver(kind, detail) {
+    if (!eventToken || !detail || typeof detail !== "object" || Array.isArray(detail)) return;
+    const type = kind === "usage" ? LEGACY_USAGE_EVENT : LEGACY_NETWORK_EVENT;
+    const event = new CustomEventCtor(type, { detail: { ...detail, token: eventToken } });
+    for (const listener of listeners[kind].keys()) invoke(listener, event);
+  }
+
+  function handlePortMessage(event) {
+    const message = event?.data;
+    if (!message || typeof message !== "object" || Array.isArray(message)) return;
+    if (message.kind === "ready") {
+      acknowledged = true;
+      pendingOffer = false;
+      return;
+    }
+    if ((message.kind === "usage" || message.kind === "network") && message.detail) {
+      deliver(message.kind, message.detail);
     }
   }
 
-  function installListener(kind, listener, options) {
-    if (!listener || !channelId) return;
-    const prior = wrappers[kind].get(listener);
-    if (prior) nativeRemove(secretName(kind), prior, options);
-    const wrapped = event => {
-      const payload = parsePayload(event?.detail);
-      if (!payload) return;
-      const legacyEvent = new CustomEventCtor(
-        kind === "usage" ? LEGACY_USAGE_EVENT : LEGACY_NETWORK_EVENT,
-        { detail: { ...payload, token: channelId } },
-      );
-      invoke(listener, legacyEvent);
-    };
-    wrappers[kind].set(listener, wrapped);
-    nativeAdd(secretName(kind), wrapped, options);
-  }
-
-  function installPending() {
-    for (const kind of ["usage", "network"]) {
-      const entries = pending[kind].splice(0);
-      for (const entry of entries) installListener(kind, entry.listener, entry.options);
+  function offerPort() {
+    if (!eventToken || acknowledged || pendingOffer) return;
+    pendingOffer = true;
+    try { bridgePort?.close?.(); } catch { /* best effort */ }
+    const channel = new MessageChannel();
+    bridgePort = channel.port1;
+    bridgePort.addEventListener("message", handlePortMessage);
+    bridgePort.start?.();
+    try {
+      nativePostMessage({ type: PORT_OFFER }, location.origin, [channel.port2]);
+    } catch {
+      pendingOffer = false;
+      try { bridgePort.close(); } catch { /* best effort */ }
+      bridgePort = null;
     }
   }
 
-  function offerChannel() {
-    if (!channelId || acknowledged) return;
-    nativeDispatch(new CustomEventCtor(CHANNEL_OFFER, { detail: channelId }));
-  }
-
-  nativeAdd(CHANNEL_READY, () => {
-    acknowledged = true;
+  nativeAdd("message", event => {
+    if (event.source !== window || event.origin !== location.origin) return;
+    if (event.data?.type !== MAIN_READY || acknowledged) return;
+    pendingOffer = false;
+    offerPort();
   });
 
   window.addEventListener = function companionChannelAdd(type, listener, options) {
     const kind = kindForLegacyName(type);
     if (!kind) return nativeAdd(type, listener, options);
-    if (!channelId) {
-      pending[kind].push({ listener, options });
-      return undefined;
-    }
-    installListener(kind, listener, options);
+    if (listener) listeners[kind].set(listener, options);
     return undefined;
   };
 
   window.removeEventListener = function companionChannelRemove(type, listener, options) {
     const kind = kindForLegacyName(type);
     if (!kind) return nativeRemove(type, listener, options);
-    pending[kind] = pending[kind].filter(entry => entry.listener !== listener);
-    const wrapped = wrappers[kind].get(listener);
-    if (wrapped && channelId) nativeRemove(secretName(kind), wrapped, options);
-    wrappers[kind].delete(listener);
+    listeners[kind].delete(listener);
     return undefined;
   };
 
   window.dispatchEvent = function companionChannelDispatch(event) {
     if (event?.type !== LEGACY_TOKEN_OFFER) return nativeDispatch(event);
     const offered = event?.detail?.token;
-    if (!validChannelId(offered)) return true;
-    if (!channelId) {
-      channelId = offered;
-      installPending();
-    }
-    if (offered === channelId) offerChannel();
+    if (!validToken(offered)) return true;
+    if (!eventToken) eventToken = offered;
+    if (offered === eventToken) offerPort();
     return true;
   };
 })();
