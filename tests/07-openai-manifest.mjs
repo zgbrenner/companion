@@ -46,14 +46,12 @@ assert(JSON.stringify(openaiIsolated.js) === JSON.stringify([
   "src/platform.js",
   "src/openai-channel.js",
   "src/openai-content.js",
-]), "OpenAI private-port adapter loads immediately before the content script");
+]), "OpenAI secret-channel adapter loads immediately before the content script");
 
-const openaiMain = scripts.find(entry => entry.world === "MAIN" && entry.js?.includes("src/openai-injected.js"));
+const openaiMain = scripts.find(entry => entry.world === "MAIN" && entry.js?.includes("src/openai-observer.js"));
 assert(openaiMain, "OpenAI MAIN-world observer exists");
-assert(JSON.stringify(openaiMain.js) === JSON.stringify([
-  "src/openai-ready.js",
-  "src/openai-injected.js",
-]), "bounded readiness beacon loads before the self-contained OpenAI observer");
+assert(JSON.stringify(openaiMain.js) === JSON.stringify(["src/openai-observer.js"]),
+  "OpenAI MAIN observer is self-contained and has no cross-world helper dependency");
 for (const match of openaiMain.matches || []) {
   assert(/chatgpt\.com|chat\.openai\.com/.test(match), `unexpected OpenAI match ${match}`);
 }
