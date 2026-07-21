@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Companion</title>
+  <style>
+    html, body { margin: 0; width: 320px; min-height: 160px; color-scheme: light dark; }
+    body { display: grid; place-items: center; background: Canvas; color: CanvasText; font: 13px ui-sans-serif, system-ui, sans-serif; }
+    .loading { display: flex; align-items: center; gap: 9px; color: GrayText; }
+    .dot { width: 9px; height: 9px; border-radius: 50%; background: #10a37f; animation: pulse 900ms ease-in-out infinite alternate; }
+    @keyframes pulse { to { opacity: .35; transform: scale(.8); } }
+    @media (prefers-reduced-motion: reduce) { .dot { animation: none; } }
+  </style>
+</head>
+<body>
+  <div class="loading"><span class="dot" aria-hidden="true"></span><span>Opening Companion…</span></div>
+  <script src="popup-router.js"></script>
+</body>
+</html>

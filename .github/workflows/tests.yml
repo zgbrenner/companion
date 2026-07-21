@@ -19,4 +19,17 @@ jobs:
           npm install --no-save playwright axe-core
           npx playwright install --with-deps chromium
       - name: Run extension test suite
-        run: node tests/run.mjs
+        shell: bash
+        run: |
+          set +e
+          node tests/run.mjs 2>&1 | tee extension-test-output.log
+          status=${PIPESTATUS[0]}
+          exit "$status"
+      - name: Upload extension test transcript
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: extension-test-output
+          path: extension-test-output.log
+          if-no-files-found: error
+          retention-days: 14

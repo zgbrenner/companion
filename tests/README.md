@@ -1,13 +1,10 @@
 # Tests
 
-Plain-node test scripts — no test framework, no build step, matching the
-extension itself. Each `NN-*.mjs` file loads the unpacked extension into
-headless Chromium via Playwright and exits non-zero on failure;
-`run.mjs` runs them all and prints a summary.
+Plain Node test scripts with no test framework or build step, matching the extension itself. Each `NN-*.mjs` file either exercises pure modules in a VM or loads the unpacked extension into headless Chromium through Playwright. `run.mjs` runs them all and prints a summary.
 
 ## Run locally
 
-With Playwright installed globally or via npm:
+With Playwright installed globally or through npm:
 
 ```sh
 npm install --no-save playwright axe-core
@@ -15,7 +12,7 @@ npx playwright install chromium
 node tests/run.mjs
 ```
 
-Or point at an existing Playwright/Chromium install:
+Or point at an existing Playwright and Chromium installation:
 
 ```sh
 PLAYWRIGHT_MODULE=/path/to/node_modules/playwright/index.mjs \
@@ -23,19 +20,21 @@ CHROMIUM_BIN=/path/to/chromium \
 node tests/run.mjs
 ```
 
-`05-a11y.mjs` skips itself when `axe-core` isn't installed; everything else
-has zero dependencies beyond Playwright and python3 (used to assemble a
-minimal DOCX fixture).
+`05-a11y.mjs` skips itself when `axe-core` is not installed. The remaining browser tests need Playwright and Chromium. The converter test also uses Python 3 to assemble a minimal DOCX fixture.
 
-## What's covered
+## What is covered
 
 | Test | Covers |
-|---|---|
-| `01-boot` | Extension loads; service worker starts; options + popup open with zero console errors |
+| --- | --- |
+| `01-boot` | Extension service worker, Settings, and legacy Claude popup load with zero console errors |
 | `02-settings` | Every settings switch persists to `cuc:settings`; legacy `showNativeLimits` migration |
-| `03-popup-render` | Popup renders seeded usage state: spend figures, limit rows, burn rate, insights, accessible trend bars |
-| `04-converter` | Caveman file conversion end-to-end through the real background → offscreen → sandbox pipeline (DOCX, CSV, empty-file error path) |
-| `05-a11y` | axe-core: zero serious/critical violations on options + popup |
+| `03-popup-render` | Claude popup renders seeded spend, limits, burn rate, insights, and accessible trend bars |
+| `04-converter` | File conversion through the real background, offscreen document, and sandbox pipeline |
+| `05-a11y` | Zero serious or critical axe-core violations on Settings and the Claude popup |
+| `06-platforms` | Exact provider origins, Chat/Work/Codex detection, conversation IDs, and OpenAI usage normalization |
+| `07-openai-manifest` | Provider isolation, exact host permissions, service worker composition, and script ordering |
+| `08-openai-network` | Authenticated OpenAI event bridge, first-party filtering, and numeric-only usage snapshots |
+| `09-openai-widget` | ChatGPT composer mounting, width, surface switching, dark mode, and Caveman preview |
+| `10-popup-routing` | Active-provider popup routing and native OpenAI usage rendering |
 
-CI runs the full suite on every push and pull request
-(`.github/workflows/tests.yml`).
+CI runs the full suite on every push to `main` and every pull request through `.github/workflows/tests.yml`.
