@@ -42,8 +42,9 @@ assert(JSON.stringify(openaiIsolated.js) === JSON.stringify([
   "src/shared.js",
   "src/caveman.js",
   "src/platform.js",
+  "src/openai-channel.js",
   "src/openai-content.js",
-]), "OpenAI isolated script order is correct");
+]), "OpenAI secret-channel adapter loads immediately before the content script");
 
 const openaiMain = scripts.find(entry => entry.world === "MAIN" && entry.js?.includes("src/openai-injected.js"));
 assert(openaiMain, "OpenAI MAIN-world observer exists");
