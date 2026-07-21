@@ -8,6 +8,7 @@
 
   const PLATFORM = globalThis.CompanionPlatform;
   const CHANNEL_OFFER = "cuc:openai-channel-offer";
+  const CHANNEL_READY = "cuc:openai-channel-ready";
   const MAIN_READY = "cuc:openai-main-ready";
   const MAX_PENDING = 50;
   const MAX_JSON_BYTES = 2_000_000;
@@ -48,6 +49,7 @@
     const queued = pending;
     pending = [];
     for (const item of queued) dispatch(item.kind, item.detail);
+    nativeDispatchEvent(new CustomEventCtor(CHANNEL_READY));
   });
   nativeDispatchEvent(new CustomEventCtor(MAIN_READY));
 
