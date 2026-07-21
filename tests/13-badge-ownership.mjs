@@ -43,12 +43,17 @@ const chrome = {
   },
 };
 
-const context = vm.createContext({ chrome, globalThis: {}, Date, Math, Number, String, Object, Array, JSON, Promise, console });
+const context = vm.createContext({ chrome, globalThis: {}, Date, Math, Number, String, Object, Array, Set, JSON, Promise, console });
 const source = readFileSync(join(EXT_PATH, "src", "badge-state.js"), "utf8");
 vm.runInContext(source, context, { filename: "src/badge-state.js" });
 const badge = context.globalThis.CompanionBadgeState;
 assert(badge, "shared badge-state helper is exported");
 assert(alarmListeners.length === 1, "badge-state registers one alarm handler");
+
+const routerSource = readFileSync(join(EXT_PATH, "src", "badge-router.js"), "utf8");
+assert(routerSource.includes('message.type === "cuc:native-usage-updated"'), "badge router handles Claude usage messages");
+assert(routerSource.includes('message.type === "cuc:openai-usage-updated"'), "badge router handles OpenAI usage messages");
+assert(routerSource.includes("OPENAI_EXPIRES_MS"), "OpenAI badge expiry is bounded in the router");
 
 const t1 = Date.parse("2026-07-21T20:00:00Z");
 const t2 = t1 + 60_000;
