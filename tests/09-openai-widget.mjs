@@ -83,15 +83,7 @@ try {
             observedAt: Date.now(),
             sourcePath: "/forged",
             maxUtilizationPct: 99,
-            buckets: [{
-              key: "agentic",
-              label: "Forged usage",
-              pct: 99,
-              resetsAt: null,
-              used: 99,
-              limit: 100,
-              unit: "credits",
-            }],
+            buckets: [{ key: "agentic", label: "Forged usage", pct: 99, resetsAt: null, used: 99, limit: 100, unit: "credits" }],
             counters: {},
           },
         },
@@ -107,11 +99,35 @@ try {
   const afterAttack = await page.evaluate(() => document.querySelector("#cuc-openai-widget")?.shadowRoot?.textContent || "");
   assert(!afterAttack.includes("Forged usage"), "page-forged usage events never reach the widget");
 
-  await page.evaluate(() => fetch("/backend-api/usage?access_token=browser-secret&conversation=private-id"));
-  await page.waitForFunction(() => {
-    const text = document.querySelector("#cuc-openai-widget")?.shadowRoot?.textContent || "";
-    return text.includes("Agentic usage") && text.includes("40 credits");
-  }, { timeout: 10000 });
+  const bridgeDiagnostic = await page.evaluate(async () => {
+    const fetchName = window.fetch.name;
+    const installed = Boolean(window.__COMPANION_OPENAI_INSTALLED__);
+    const platformReady = typeof window.CompanionPlatform?.normalizeOpenAIUsage === "function";
+    const response = await fetch("/backend-api/usage?access_token=browser-secret&conversation=private-id");
+    const payload = await response.clone().json();
+    const normalized = window.CompanionPlatform?.normalizeOpenAIUsage?.(payload) || null;
+    return {
+      fetchName,
+      installed,
+      platformReady,
+      contentType: response.headers.get("content-type"),
+      normalizedBucket: normalized?.buckets?.[0]?.key || null,
+      normalizedUsed: normalized?.buckets?.[0]?.used ?? null,
+    };
+  });
+  assert(bridgeDiagnostic.installed, `MAIN observer missing: ${JSON.stringify(bridgeDiagnostic)}`);
+  assert(bridgeDiagnostic.fetchName === "companionOpenAIFetch", `fetch was not patched: ${JSON.stringify(bridgeDiagnostic)}`);
+  assert(bridgeDiagnostic.platformReady && bridgeDiagnostic.normalizedBucket === "agentic" && bridgeDiagnostic.normalizedUsed === 40,
+    `browser normalizer rejected fixture: ${JSON.stringify(bridgeDiagnostic)}`);
+  try {
+    await page.waitForFunction(() => {
+      const text = document.querySelector("#cuc-openai-widget")?.shadowRoot?.textContent || "";
+      return text.includes("Agentic usage") && text.includes("40 credits");
+    }, { timeout: 10000 });
+  } catch (error) {
+    const widgetText = await page.evaluate(() => document.querySelector("#cuc-openai-widget")?.shadowRoot?.textContent || "");
+    throw new Error(`native usage did not reach widget; diagnostic=${JSON.stringify(bridgeDiagnostic)}; widget=${JSON.stringify(widgetText)}; ${error}`);
+  }
   const afterNativeUsage = await page.evaluate(() => document.querySelector("#cuc-openai-widget")?.shadowRoot?.textContent || "");
   assert(!afterNativeUsage.includes("Browser Fixture"), "profile names never reach the widget");
   assert(!afterNativeUsage.includes("fixture@example.com"), "profile emails never reach the widget");
@@ -130,14 +146,7 @@ try {
   await page.locator("#prompt-textarea").fill("Could you please basically summarize this very long request?");
   const intercepted = await page.evaluate(() => {
     const editable = document.querySelector("#prompt-textarea");
-    const event = new KeyboardEvent("keydown", {
-      key: "Enter",
-      code: "Enter",
-      keyCode: 13,
-      which: 13,
-      bubbles: true,
-      cancelable: true,
-    });
+    const event = new KeyboardEvent("keydown", { key: "Enter", code: "Enter", keyCode: 13, which: 13, bubbles: true, cancelable: true });
     const dispatched = editable.dispatchEvent(event);
     return !dispatched && event.defaultPrevented;
   });
