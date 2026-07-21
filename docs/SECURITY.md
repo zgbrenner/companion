@@ -1,231 +1,204 @@
-# Security & Privacy Documentation
+# Security and Privacy
 
-This document describes the security architecture, data handling, permissions, network behavior, threat model, and audit steps for **Companion**, an unofficial usage meter for Claude.ai distributed as a Chromium (Chrome/Edge) browser extension (Manifest V3). It is written for IT administrators and information-security reviewers evaluating the extension for use.
+This document describes Companion's security architecture, data handling, permissions, network behavior, threat model, and audit steps. Companion is an unofficial Manifest V3 extension for Claude.ai and ChatGPT web surfaces, including Chat, Work, and Codex-aware routes.
 
-- **Type:** Manifest V3 browser extension, distributed via Chrome Web Store (updates handled by the browser).
-- **Source:** all first-party code ships **unminified and human-readable**. The only compiled/minified artifacts are two vendored third-party files (see [§8](#8-third-party-dependencies)).
-- **External services contacted:** Claude.ai only (to read your own usage). **No analytics, telemetry, tracking, or third-party servers.**
-- **Account impact:** strictly **read-only** against your Claude account. No request the extension issues can modify conversations, settings, billing, or organization data.
+## Security summary
 
----
+- All first-party code ships unminified and reviewable.
+- There is no Companion server, analytics SDK, telemetry endpoint, remote logger, or tracker.
+- Host access is limited to exact Claude and ChatGPT HTTPS origins.
+- The extension uses `activeTab`, not the broad `tabs` permission.
+- Provider access is read-only.
+- Prompt and reply text are never persisted or transmitted by Companion.
+- User-selected files are converted locally in an opaque-origin sandbox with no extension API access and no network access.
+- Raw OpenAI account responses never cross from the page world into the extension.
 
-## Table of contents
+## 1. Data handling
 
-1. [Data handling & privacy](#1-data-handling--privacy)
-2. [Permissions and why each is needed](#2-permissions-and-why-each-is-needed)
-3. [Network egress](#3-network-egress)
-4. [Architecture & trust boundaries](#4-architecture--trust-boundaries)
-5. [Content Security Policy](#5-content-security-policy)
-6. [Claude session & credentials](#6-claude-session--credentials)
-7. [File-conversion sandbox](#7-file-conversion-sandbox)
-8. [Third-party dependencies](#8-third-party-dependencies)
-9. [Prompt handling (Caveman Mode)](#9-prompt-handling-caveman-mode)
-10. [Threat model summary](#10-threat-model-summary)
-11. [How to audit / verify](#11-how-to-audit--verify)
-12. [Known limitations & residual risks](#12-known-limitations--residual-risks)
-
----
-
-## 1. Data handling & privacy
-
-The extension's purpose is to display usage numbers that come from Claude itself. It does **not** collect, transmit, or retain the content of your work.
-
-| Data | Read? | Stored locally? | Sent off-device? |
+| Data | Read? | Stored locally? | Sent off-device by Companion? |
 | --- | --- | --- | --- |
-| Your prompt text | Only transiently, in-page, to offer a *local* trim preview (Caveman Mode) | **No** | **No** |
-| Claude's reply text | Not read at all (only the presence of a `message_limit` frame and a "generation finished" signal are observed) | **No** | **No** |
-| Uploaded file contents (Caveman file→Markdown) | Parsed locally in an isolated sandbox | **No** | **No** |
-| Your Claude usage numbers (dollars, %, limits) | Yes, from Claude's own endpoint | Yes — daily spend totals and short-lived caches | **No** |
-| Organization UUID | Yes, from the non-secret `lastActiveOrg` cookie / org list | Yes, cached up to 48 h | **No** (used only to address Claude's own usage endpoint) |
-| Session / authentication cookie | **Never read** | **Never** | **Never** |
-| Settings you choose | n/a | Yes | **No** |
+| Prompt text | Transiently, only for an optional local Caveman preview | No | No |
+| Claude or ChatGPT reply text | No | No | No |
+| User-selected file contents | Parsed locally in the conversion sandbox | No | No |
+| Claude usage numbers | Yes, from Claude's own usage endpoints | Daily history and short-lived caches | No |
+| OpenAI usage numbers | Yes, when first-party ChatGPT responses expose supported numeric fields | Latest normalized snapshot | No |
+| Raw OpenAI account response | Inspected transiently in the page world | No | No |
+| Claude organization UUID | Yes, to address the account's own usage endpoint | Cached locally for a bounded period | No |
+| Session or authentication cookies | Never read | Never | Never |
+| User settings | n/a | Yes | No |
 
-**Where local data lives:**
+Local data is stored in `chrome.storage.local` and `chrome.storage.session`. Clearing Companion's local data removes settings, usage history, cached readings, and notification deduplication state.
 
-- `chrome.storage.local` — settings, daily spend totals (dollar amounts + derived token ranges), the detected organization UUID and monthly-cap cache, and notification-dedupe state.
-- `chrome.storage.session` — memory-backed, cleared when the browser closes: the current usage reading, the session-spend baseline, and pace samples.
-
-There is **no server-side component**. Nothing is uploaded. "Download CSV" (Settings → Data & privacy) writes a local file containing daily dollar totals and token ranges only — never chat text.
-
----
-
-## 2. Permissions and why each is needed
+## 2. Permissions
 
 From `manifest.json`:
 
-| Permission | Purpose | Notes |
-| --- | --- | --- |
-| `storage` | Persist settings and spend history locally | Local only; no sync storage. |
-| `activeTab` | Read the active tab's URL to find a Claude tab from the popup | No broad `tabs` permission. |
-| `notifications` | Desktop alert when a Claude limit crosses 85% / 95% | Opt-out in Settings. |
-| `offscreen` | Host the file-conversion relay/sandbox | Only used while converting a dropped file. |
-
-**Host permissions** (the only origins the extension may script or fetch):
-
-| Host pattern | Purpose |
+| Permission | Purpose |
 | --- | --- |
-| `https://claude.ai/*`, `https://*.claude.ai/*` | Run the widget and read your usage from Claude's own endpoints. |
+| `storage` | Store settings and numeric usage history locally. |
+| `activeTab` | Let the toolbar popup inspect the currently active provider tab after the user opens the popup. |
+| `notifications` | Optional 85% and 95% limit alerts. |
+| `offscreen` | Host the privileged relay used by the sandboxed file-conversion pipeline. |
 
-There is **no `<all_urls>`** and no wildcard host access. The extension cannot read or act on any site other than Claude.ai.
+Companion does not request the broad `tabs` permission.
 
----
+Host permissions are limited to:
 
-## 3. Network egress
+- `https://claude.ai/*`
+- `https://*.claude.ai/*`
+- `https://chatgpt.com/*`
+- `https://*.chatgpt.com/*`
+- `https://chat.openai.com/*`
 
-Every network request the extension makes, and the only hosts it can reach (enforced by host permissions **and** the Content-Security-Policy `connect-src`, [§5](#5-content-security-policy)):
+There is no `<all_urls>` permission.
 
-| Destination | Method | Purpose | Payload sent |
-| --- | --- | --- | --- |
-| `claude.ai/api/organizations/{org}/usage` | GET | Read rolling limits + monthly credit spend | None (credentialed same-origin GET) |
-| `claude.ai/api/organizations/{org}/overage_spend_limit` | GET | Monthly credit cap fallback | None |
-| `claude.ai/api/organizations` | GET | Discover the org UUID when the cookie is absent | None |
+## 3. Network behavior
 
-- No request carries a body of your data. Usage reads are plain GETs; the browser attaches your existing Claude session automatically because they originate same-origin from a Claude.ai page.
-- **No analytics/telemetry endpoint exists anywhere in the code.** You can confirm this by searching the source for `fetch(`/`XMLHttpRequest` — every hit targets claude.ai only.
-- The MAIN-world network observer (`injected.js`) *reads* Claude's own responses in place to detect the active model and notice when a reply finishes; it never originates a new request and never forwards response bodies or account payloads across the extension boundary.
-- **Updates are delivered via the Chrome Web Store.** The extension no longer checks for or applies its own updates.
+### Claude
 
----
+Companion issues read-only same-origin requests to Claude usage endpoints, including organization usage and the optional overage-spend limit. The browser attaches the user's existing Claude session because the request is same-origin. Companion never reads or stores the session cookie.
 
-## 4. Architecture & trust boundaries
+### OpenAI
 
-The extension is split into isolated components so that the least-trusted code has the least access:
+The OpenAI page observer does not create account or billing requests. It passively observes first-party ChatGPT responses whose path suggests usage, limits, quota, credits, billing, subscription, rate limits, or agentic usage.
 
+Before anything crosses the page boundary, the observer reduces the response to supported numeric fields:
+
+- utilization percentages
+- used and limit values
+- reset timestamps
+- supported token counters
+- a short source pathname
+
+Query strings are removed from source metadata. Raw response bodies, profile fields, conversation content, and URL query values are not forwarded.
+
+### Third parties
+
+Companion has no third-party runtime endpoint. Store updates are handled by the browser or by the user's unpacked-extension workflow.
+
+## 4. Architecture and trust boundaries
+
+```text
+Claude page world
+  injected.js observes model and generation signals
+        │ narrow authenticated events
+        ▼
+Claude isolated content script
+  UI, native usage reads, Caveman Mode
+
+ChatGPT page world
+  openai-observer.js observes first-party usage responses
+        │ normalized JSON on random per-page event names
+        ▼
+OpenAI isolated content script
+  openai-channel.js validates channel + payload
+  openai-content.js renders UI and forwards validated numbers
+
+Provider content scripts
+        │ chrome.runtime messages with sender and schema validation
+        ▼
+Service worker
+  authoritative local storage, badge, notifications
+        │
+        ▼
+Offscreen relay
+        │ bytes in / Markdown out
+        ▼
+Opaque-origin sandbox
+  office and PDF parser, no chrome.* APIs, no network
 ```
- ┌──────────────────────────── claude.ai tab ────────────────────────────┐
- │                                                                        │
- │  MAIN world (page):   injected.js  — patches fetch/XHR to OBSERVE       │
- │      │  sanitized events (model id, "reply finished", limit %) only     │
- │      │  guarded by a random one-time handshake token                    │
- │      ▼                                                                   │
- │  Isolated world:      content.js + shared.js + native-usage.js +        │
- │                       caveman.js  — widget UI, reads Claude usage,       │
- │                       local prompt trim. No access to page JS variables. │
- └───────────────┬────────────────────────────────────────────────────────┘
-                 │ chrome.runtime messaging (sender + shape validated)
-                 ▼
-      background.js (service worker) — single writer of spend state,
-      badge, notifications. Validates every message.
-                 │ chrome.runtime messaging
-                 ▼
-      offscreen.html/js (extension origin) — PRIVILEGED relay for file
-      conversion. Reads bytes + the pdf worker, but does NOT parse.
-                 │ postMessage (bytes in / Markdown out)
-                 ▼
-      sandbox.html/js (OPAQUE origin, no chrome.*, no network) —
-      third-party officeparser runs here, fully isolated.
-```
 
-Key boundaries:
+### Claude bridge
 
-- **MAIN world vs. isolated world.** `injected.js` runs in the page's world (so it can wrap `fetch`) but is the *least* trusted; it can only *emit* narrowly-shaped events, each stamped with a random token minted by the isolated-world script at `document_start` (before any page script runs). Events without the token are dropped, so a hostile page script cannot forge usage events.
-- **Content script vs. background.** Content scripts never write the authoritative spend state directly; they send deltas to the background service worker, which is the single serialized writer. The background validates the **sender** (must be the extension's own content script on `https://claude.ai`, top frame) and the **exact shape** of every message (allow-listed keys, numeric bounds, UUID-shaped conversation ids, file-type/size caps) before acting.
-- **Offscreen vs. sandbox.** The offscreen document has extension privileges but does not run the third-party parser; it relays bytes to the opaque-origin sandbox and returns Markdown. See [§8](#8-file-conversion-sandbox).
+The existing Claude adapter uses its own page-world observer and authenticated event contract. Claude and OpenAI message names, storage keys, and background handlers remain separate.
 
----
+### OpenAI bridge
+
+At `document_start`, the isolated OpenAI script creates a random channel identifier in a temporary DOM mailbox. The MAIN-world observer reads and removes the mailbox immediately, then emits later usage and generation events on event names derived from that random identifier.
+
+The mailbox contains no account data and exists only during startup. Later event payloads are JSON strings containing normalized numeric data. The isolated adapter rejects malformed, oversized, or unexpected payloads before forwarding anything to the background.
+
+The background then validates again:
+
+- extension sender identity
+- top-frame origin
+- exact trusted HTTPS host
+- allowed message keys
+- allowed surface and bucket names
+- units
+- timestamps
+- numeric ranges and size limits
+
+This creates defense in depth. A page script would need the ephemeral random channel and would still have to satisfy the isolated-world and background schemas.
 
 ## 5. Content Security Policy
 
-Two policies are declared in `manifest.json`.
+Extension pages allow only packaged scripts and exact provider network destinations. Remote scripts and `eval` are not permitted in privileged extension pages.
 
-**Extension pages** (popup, options, background, offscreen):
+The file-conversion sandbox intentionally has a separate CSP. It permits the bundled parser and local blob worker, but has an opaque origin, no `chrome.*` access, and no HTTP, HTTPS, or WebSocket egress.
 
-```
-script-src 'self'; object-src 'none'; base-uri 'none';
-connect-src 'self' https://claude.ai https://*.claude.ai;
-img-src 'self' data:; style-src 'self' 'unsafe-inline';
-```
+## 6. Credentials and sessions
 
-- `script-src 'self'` — no remote scripts, no `eval`, no inline script. All executable code ships in the package.
-- `connect-src` — network egress is limited to exactly the hosts in [§3](#3-network-egress).
-- `object-src 'none'`, `base-uri 'none'` — no plugins; no `<base>` hijacking.
+Companion never reads, stores, logs, or transmits provider passwords, authentication tokens, or session cookies.
 
-**Sandbox page** (the file converter):
+Claude usage reads are same-origin and credentialed by the browser. The only Claude identifier cached by Companion is the non-secret organization UUID needed to address the user's own usage endpoint.
 
-```
-sandbox allow-scripts; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' blob:;
-worker-src blob:; child-src blob:; connect-src blob: data:; object-src 'none'; base-uri 'none';
-```
-
-- The `sandbox` directive gives the page an **opaque origin** with no `chrome.*` access and no extension-origin privileges.
-- `connect-src blob: data:` permits only local blob/data handling — **no `http`/`https`/`ws` egress at all**, so the parser cannot exfiltrate anything. `'unsafe-eval'` is confined to this powerless origin and is required by the bundled PDF engine.
-
----
-
-## 6. Claude session & credentials
-
-- Usage requests are ordinary same-origin `GET`s issued from a Claude.ai page; the browser attaches your existing session automatically. The extension **never reads, stores, or transmits your authentication/session cookie**, and never handles your password or any token.
-- The only cookie value the code reads is `lastActiveOrg` — a **non-secret organization UUID** that tells the extension which organization's usage to query. It is used solely to build the usage URL and is cached locally (≤48 h); it is never sent anywhere but Claude's own endpoint.
-- All Claude requests are **read-only**. There is no `POST`/`PUT`/`DELETE` to any Claude API in the codebase; nothing can change your account, conversations, or settings.
-
----
+The OpenAI adapter does not retain request headers, cookies, query strings, or raw account responses.
 
 ## 7. File-conversion sandbox
 
-Caveman Mode's file→Markdown feature parses user-selected office files with a vendored third-party library (`officeparser`). Parsing untrusted file formats is a classic exploitation surface, so the parser runs with **no privileges**:
+Caveman Mode's file-to-Markdown feature accepts user-selected formats such as PDF, DOCX, PPTX, XLSX, CSV, HTML, text, and OpenDocument files.
 
-- It executes in a **manifest-declared sandbox page** (`src/sandbox.html`) — an **opaque origin** with **no `chrome.*` APIs** and, per the sandbox CSP, **no network egress** (`connect-src blob: data:` only).
-- The privileged **offscreen document** never parses anything itself. It reads the file bytes and (for PDFs) the bundled worker source, hands them to the sandbox over `postMessage`, and returns the resulting Markdown. Because a sandboxed opaque origin cannot load a cross-origin worker, the PDF engine's worker is passed in and run from a **same-origin blob** inside the sandbox.
-- Net effect: even a hypothetical remote-code-execution bug in the parser is confined to a powerless origin — it cannot touch extension storage, reach the network, read your Claude session, or access any `chrome.*` API. The file's bytes never leave your machine.
+The privileged offscreen page relays bytes but does not run the third-party parser. Parsing occurs inside a manifest-declared sandbox page with:
 
-This isolation is verified end-to-end in a real Chromium engine (opaque origin confirmed; DOCX, CSV, and PDF all convert through the sandbox).
+- opaque origin
+- no extension APIs
+- no provider-session access
+- no network egress
+- no persistent file storage
 
----
+The resulting Markdown is returned to the active composer only after the user selects a file.
 
-## 8. Third-party dependencies
+## 8. Prompt handling
 
-The extension has **no runtime package dependencies** and loads **no code from any CDN at runtime**. Two third-party files are vendored (committed in-repo, served locally):
+Caveman Mode is local and user-controlled:
 
-| File | What | Isolation |
-| --- | --- | --- |
-| `src/vendor/officeparser.browser.slim.iife.js` | Office/PDF → Markdown parser (the "slim" build: **no remote-code URLs, no OCR engine**) | Runs only in the no-privilege sandbox ([§7](#7-file-conversion-sandbox)) |
-| `src/vendor/pdf.worker.min.mjs` | pdf.js worker (version-matched to the parser) | Runs as a blob worker inside the sandbox |
+- A fixed visible instruction requests concise replies.
+- Prompt compression is deterministic and extractive-only.
+- Protected content such as code blocks, quotes, URLs, and email addresses is not paraphrased.
+- The user reviews the preview before sending.
+- Prompt text is not written to extension storage.
 
-All other code is first-party and unminified. There is no build step that pulls dependencies at release time beyond these vendored files, reducing supply-chain surface.
-
----
-
-## 9. Prompt handling (Caveman Mode)
-
-- **Brevity instruction.** A fixed, compact instruction (in `src/caveman.js`, human-readable) is sent **as an ordinary chat message**, once per conversation. It is not hidden and uses no private API.
-- **Local trimming.** Prompt trimming is 100% local, deterministic, and **extractive-only** — it deletes known filler and shortens fixed verbose phrases; it never paraphrases, and it never alters text inside code blocks, quotes, URLs, or emails. A safety valve restores the original if the rules would remove too much.
-- **Preview + confirm.** Trimming never happens silently: on send you see the trimmed text (editable), the original, and the savings, and choose to send the trimmed version, edit it, or send the original. Nothing is auto-sent, and prompt text is never persisted.
-
----
-
-## 10. Threat model summary
+## 9. Threat model
 
 | Threat | Mitigation |
 | --- | --- |
-| Exploit in the third-party file parser | Runs in an opaque-origin sandbox: no `chrome.*`, no network, no session access |
-| Hostile page script forging usage events | Random one-time handshake token; content script drops untokened events; MV3 world isolation |
-| Forged/oversized messages to the background or offscreen worker | Sender identity + strict shape/size/range validation on every message |
-| Exfiltration of prompts, replies, or files | None is stored or transmitted; sandbox has no network; no analytics endpoint exists |
-| Session-cookie theft | Cookie never read; only the non-secret org UUID is used |
-| Account modification | Read-only; no state-changing Claude request exists in the code |
-| Over-broad site access | Host permissions limited to Claude.ai; no `<all_urls>` |
+| Hostile page script forges usage data | Random per-page channel, temporary mailbox removed at startup, strict isolated and background validation. |
+| Raw OpenAI account data leaks into extension storage | Normalization happens in the page world; only bounded numeric snapshots cross the bridge. |
+| Sensitive URL query values are retained | Source metadata stores the pathname only. |
+| Third-party lookalike endpoint is inspected | Observer accepts exact ChatGPT HTTPS origins only. |
+| Oversized or malformed runtime message | Schema, key, unit, timestamp, numeric, and size validation. |
+| File-parser exploit | Parser is confined to an opaque-origin sandbox with no network or extension privileges. |
+| Prompt, reply, or file exfiltration | No Companion backend; content is not persisted or transmitted; sandbox has no network. |
+| Session-cookie theft | Cookies are never read. |
+| Account modification | Provider behavior is read-only; Companion issues no state-changing account request. |
+| Over-broad site access | Exact Claude and ChatGPT hosts only; no `<all_urls>` and no broad `tabs` permission. |
 
----
+## 10. How to audit
 
-## 11. How to audit / verify
+1. Review `manifest.json` for permissions, host access, content-script worlds, CSP, and sandbox declarations.
+2. Review `src/openai-observer.js`, `src/openai-channel.js`, and `src/openai-background.js` for OpenAI normalization and validation.
+3. Review `src/injected.js`, `src/native-usage.js`, and `src/background.js` for Claude behavior.
+4. Search for analytics SDKs, telemetry URLs, or remote script loading. None should exist.
+5. Search storage writes for prompt, reply, and file contents. None should exist.
+6. Run the committed Chromium suite. It checks provider isolation, native OpenAI usage rendering, query-string stripping, page-event forgery resistance, sandboxed conversion, and accessibility.
+7. Inspect the conversion sandbox in DevTools. Its origin is `null`, it has no `chrome` object, and its CSP forbids network egress.
 
-Everything needed to review the extension is in the repository and observable at runtime:
+## 11. Known limitations
 
-1. **Read the source.** All first-party code is unminified. Start with `manifest.json` (permissions, CSP, sandbox, content-script worlds), then `src/native-usage.js` (what Claude endpoints are read), `src/background.js` (message validation), and `src/injected.js` — the MAIN-world script and highest-trust-boundary code, which observes usage responses by patching `window.fetch`/`XMLHttpRequest.prototype` (so its interception surface won't show up in a `fetch(` call-site grep; verify it only reads/clones responses and never initiates requests).
-2. **Confirm the network surface.** Search the tree for `fetch(` and `XMLHttpRequest`; verify every destination is a host in [§3](#3-network-egress) (and see the `src/injected.js` note in step 1 for the prototype-patching case). Then watch **DevTools → Network** on a Claude tab and on the extension's pages during normal use — you should see only Claude usage GETs. No analytics/telemetry calls exist.
-3. **Verify permissions at install.** `chrome://extensions` → Details lists the exact site access; confirm it is Claude.ai only.
-4. **Confirm read-only.** Search for HTTP methods other than `GET` against `claude.ai` — there are none.
-5. **Confirm no prompt/response storage.** Search for where prompt/response text is written to storage — it is not; only numeric spend totals and settings are persisted.
-6. **Check the sandbox.** In DevTools, the conversion sandbox frame is an opaque origin (`null`); it has no `chrome` object and its CSP forbids network egress.
+- Claude and OpenAI expose internal web response shapes that can change. Companion fails closed by omitting unsupported usage rows rather than guessing.
+- A browser extension cannot inject into the standalone native Codex desktop shell unless that shell provides an extension-enabled browser surface.
+- When loaded unpacked, the extension is only as trustworthy as the local repository folder. Restrict write access to that folder.
+- The vendored office and PDF parser should be reviewed and updated periodically even though it runs inside the sandbox.
 
----
-
-## 12. Known limitations & residual risks
-
-- **Undocumented Claude endpoints.** Usage is read from Claude.ai's own internal endpoints, which are not a published API and can change or disappear. If they do, the limits section shows an error and the rest of the extension keeps working; no security exposure results.
-- **Unpacked/developer-mode distribution.** When loaded unpacked, the extension is only as trustworthy as the folder on disk. Restrict write access to that folder; anyone who can write to it can alter the extension.
-- **Third-party parser.** The vendored `officeparser`/pdf.js code is trusted to the extent of its sandbox — which is designed to contain it (no privileges, no network). Keep the vendored files updated from their upstream sources as part of routine maintenance.
-
----
-
-*For installation and everyday use, see [QUICKSTART.md](QUICKSTART.md). For version history, see [../CHANGELOG.md](../CHANGELOG.md).*
+For installation and everyday use, see [QUICKSTART.md](QUICKSTART.md). For OpenAI-specific semantics, see [OPENAI_SUPPORT.md](OPENAI_SUPPORT.md). For version history, see [../CHANGELOG.md](../CHANGELOG.md).
