@@ -11,7 +11,16 @@ assert(manifest.action?.default_popup === "src/popup-router.html", "provider-awa
 
 const permissions = new Set(manifest.permissions || []);
 assert(permissions.has("activeTab"), "popup routing retains temporary active-tab access");
+assert(permissions.has("alarms"), "bounded stale-badge cleanup has the alarms permission it requires");
 assert(!permissions.has("tabs"), "broad tabs permission is unnecessary with activeTab and exact host permissions");
+
+const serviceWorker = readFileSync(join(EXT_PATH, "src", "service-worker.js"), "utf8");
+const badgeStateAt = serviceWorker.indexOf('import "./badge-state.js"');
+const claudeAt = serviceWorker.indexOf('import "./background.js"');
+const openaiAt = serviceWorker.indexOf('import "./openai-background.js"');
+const badgeRouterAt = serviceWorker.indexOf('import "./badge-router.js"');
+assert(badgeStateAt >= 0 && badgeStateAt < claudeAt && claudeAt < openaiAt && openaiAt < badgeRouterAt,
+  "shared badge ownership wraps both provider backgrounds in dependency order");
 
 const hosts = new Set(manifest.host_permissions || []);
 for (const host of [
