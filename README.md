@@ -58,7 +58,7 @@ Claude's own usage-credit counter is the source of truth. Dollar values are exac
 
 ### On OpenAI surfaces
 
-Companion watches only first-party ChatGPT responses that appear to contain usage, limits, credits, billing, agentic, or Codex state. It extracts supported numeric fields inside the page and forwards only the normalized numbers to the extension.
+Companion passively inspects only first-party ChatGPT responses whose path suggests usage, limits, quota, credits, billing, subscriptions, rate limits, or agentic usage. It extracts supported numeric fields inside the page and forwards only normalized numbers to the extension.
 
 Depending on the account and surface, this can include:
 
@@ -107,16 +107,18 @@ Your prompt ── optional local Caveman preview ──► your explicit send a
 Your file   ── sandboxed local parser ──► Markdown in the active composer
 ```
 
-The Claude and OpenAI adapters are separate. A tiny service-worker entry point composes them, while each provider keeps its own origin validation, event names, storage keys, network observer, and page integration.
+The Claude and OpenAI adapters are separate. A tiny service-worker entry point composes them, while each provider keeps its own origin validation, storage keys, network observer, and page integration.
 
 ## Security and privacy
 
 Companion is designed to survive a serious extension review.
 
 - **Exact origins only:** Permissions are limited to Claude and ChatGPT HTTPS hosts. There is no `<all_urls>` access.
+- **Least privilege:** The extension uses `activeTab`, not the broad `tabs` permission.
 - **Read only:** Companion never changes provider account data, conversations, subscriptions, or settings.
-- **Authenticated page bridge:** Each page-world observer accepts the first random token offered by its isolated extension script at `document_start`. Events without that token are ignored.
-- **Sanitized OpenAI data:** Raw account JSON never crosses the page bridge. Only bounded numeric counters, utilization, reset times, and short source metadata are emitted.
+- **One-time OpenAI channel:** At `document_start`, the isolated extension script creates a random channel identifier in a temporary DOM mailbox. The MAIN-world observer reads and removes it immediately. Later events use unguessable channel names.
+- **Sanitized OpenAI data:** Raw account responses never cross the bridge. Only bounded numeric counters, utilization, reset times, and a source path with its query string removed are emitted.
+- **Defense in depth:** The background validates the extension sender, top frame, exact HTTPS origin, allowed keys, value bounds, units, bucket names, and timestamps again before storing anything.
 - **No conversation collection:** Prompt and reply text are never stored or transmitted by Companion.
 - **Sandboxed document parsing:** The office parser runs in an opaque-origin sandbox with no extension API access and no network access.
 - **No telemetry:** There are no analytics SDKs, trackers, remote logs, or Companion servers.
@@ -182,7 +184,7 @@ Claude dollar figures are exact because they come from Claude's own counter. Ope
 <details>
 <summary><strong>Can a website forge a usage event?</strong></summary>
 <br/>
-The page bridge requires a random token established between the two extension worlds at document start. The privileged background then validates the extension sender, top frame, exact HTTPS origin, message keys, value bounds, units, bucket names, and timestamps again before storing anything.
+Companion creates a random per-page channel during `document_start`, removes its temporary mailbox immediately, and accepts later page-world events only on the unguessable channel names. The privileged background then validates the sender, top frame, exact HTTPS origin, message keys, value bounds, units, bucket names, and timestamps again before storing anything.
 </details>
 
 ---

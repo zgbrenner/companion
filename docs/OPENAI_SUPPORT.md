@@ -30,7 +30,7 @@ Claude and OpenAI expose different account data. Companion keeps their adapters 
 
 On Claude, the dollar counter remains the source of truth, exactly as before.
 
-On OpenAI surfaces, Companion watches only first-party responses that look like usage, limits, credits, billing, agentic, or Codex state. It extracts supported numeric fields inside the page and sends only the normalized numbers to the extension. Depending on the account and surface, this can include:
+On OpenAI surfaces, Companion passively inspects only first-party responses whose path suggests usage, limits, quota, credits, billing, subscription, rate limits, or agentic usage. It extracts supported numeric fields inside the page and forwards only the normalized numbers to the extension. Depending on the account and surface, this can include:
 
 - agentic credits used and available
 - rolling session, daily, weekly, or monthly utilization
@@ -41,17 +41,22 @@ Companion does not invent a limit, estimate a dollar figure, or scrape messages 
 
 Work and Codex may draw from the same agentic usage pool. Companion labels that counter `Agentic usage` so it does not imply that the pool belongs exclusively to one surface.
 
-## Privacy design
+## Privacy and bridge design
 
 The OpenAI adapter follows the same local-only design as the Claude adapter:
 
-- Only ChatGPT HTTPS origins are permitted.
+- Only exact ChatGPT HTTPS origins are permitted.
 - The privileged background accepts messages only from the extension's own top-frame content script on an exact trusted origin.
-- The page-world observer and isolated content script establish a random token handshake at document start.
-- Raw account JSON never crosses the page event bridge.
+- At `document_start`, the isolated extension script creates a random channel name in a temporary DOM mailbox.
+- The MAIN-world observer reads and removes that mailbox immediately, before host-page scripts run.
+- Later usage and generation events use the unguessable channel names and JSON-string payloads.
+- Raw account responses never cross the bridge. Only bounded numeric counters, utilization, reset timestamps, and a path without its query string are emitted.
+- The background validates the sender, origin, top frame, allowed keys, bucket names, units, numeric bounds, and timestamps again before storage or alerts.
 - Prompts and replies are never stored or transmitted by Companion.
 - File conversion stays in the existing sandboxed offscreen pipeline.
 - No analytics, telemetry, or third-party service is added.
+
+The channel mailbox exists only during extension startup. It is removed as soon as the MAIN-world observer claims it. Query parameters are excluded from retained source metadata, so identifiers or access values in a usage URL are not stored or shown.
 
 ## Why standalone Codex desktop is different
 

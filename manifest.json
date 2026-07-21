@@ -8,8 +8,7 @@
     "storage",
     "activeTab",
     "notifications",
-    "offscreen",
-    "tabs"
+    "offscreen"
   ],
   "host_permissions": [
     "https://claude.ai/*",
@@ -69,6 +68,7 @@
         "src/shared.js",
         "src/caveman.js",
         "src/platform.js",
+        "src/openai-channel.js",
         "src/openai-content.js"
       ],
       "run_at": "document_start"
@@ -80,8 +80,7 @@
         "https://chat.openai.com/*"
       ],
       "js": [
-        "src/platform.js",
-        "src/openai-injected.js"
+        "src/openai-observer.js"
       ],
       "run_at": "document_start",
       "world": "MAIN"
