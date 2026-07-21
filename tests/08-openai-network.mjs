@@ -24,6 +24,15 @@ class FakeXHR extends EventTarget {
   getResponseHeader() { return "application/json"; }
 }
 
+async function waitFor(predicate, message, timeoutMs = 1000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (predicate()) return;
+    await new Promise(resolve => setTimeout(resolve, 10));
+  }
+  throw new Error(`ASSERT FAILED: ${message}`);
+}
+
 const windowTarget = new EventTarget();
 const reset = new Date(Date.now() + 3600e3).toISOString();
 windowTarget.fetch = async (input, init = {}) => {
@@ -83,16 +92,18 @@ const usageEvents = [];
 const networkEvents = [];
 const publicUsageEvents = [];
 const publicNetworkEvents = [];
+const readyEvents = [];
 windowTarget.addEventListener(usageEventName, event => usageEvents.push(event.detail));
 windowTarget.addEventListener(networkEventName, event => networkEvents.push(event.detail));
 windowTarget.addEventListener("cuc:openai-usage-snapshot", event => publicUsageEvents.push(event.detail));
 windowTarget.addEventListener("cuc:openai-network-event", event => publicNetworkEvents.push(event.detail));
+windowTarget.addEventListener("cuc:openai-channel-ready", event => readyEvents.push(event));
 vm.runInContext(injected, context, { filename: "src/openai-injected.js" });
 windowTarget.dispatchEvent(new MiniCustomEvent("cuc:openai-channel-offer", { detail: { channelId } }));
+assert(readyEvents.length === 1, "MAIN-world observer acknowledges the offered secret channel");
 
 await windowTarget.fetch("https://chatgpt.com/backend-api/usage?access_token=secret-value&conversation=private-id");
-await new Promise(resolve => setTimeout(resolve, 25));
-assert(usageEvents.length === 1, `expected one secret-channel usage event, got ${usageEvents.length}`);
+await waitFor(() => usageEvents.length === 1, `expected one secret-channel usage event, got ${usageEvents.length}`);
 assert(publicUsageEvents.length === 0, "fixed public usage event name is never used");
 assert(!Object.hasOwn(usageEvents[0], "token") && !Object.hasOwn(usageEvents[0], "channelId"), "secret values are not repeated in emitted payloads");
 assert(usageEvents[0].snapshot?.buckets?.[0]?.key === "agentic", "usage event contains normalized agentic bucket");
@@ -103,12 +114,11 @@ assert(!serialized.includes("ada@example.com"), "profile email never crosses the
 assert(!serialized.includes("secret-value"), "query-string secrets never cross the bridge");
 
 await windowTarget.fetch("https://evil.example/backend-api/usage");
-await new Promise(resolve => setTimeout(resolve, 10));
+await new Promise(resolve => setTimeout(resolve, 20));
 assert(usageEvents.length === 1, "third-party lookalike traffic is ignored");
 
 await windowTarget.fetch("https://chatgpt.com/backend-api/conversation", { method: "POST" });
-await new Promise(resolve => setTimeout(resolve, 25));
-assert(networkEvents.some(event => event.kind === "generation-complete"), "generation completion is emitted without reading conversation text");
+await waitFor(() => networkEvents.some(event => event.kind === "generation-complete"), "generation completion is emitted without reading conversation text");
 assert(publicNetworkEvents.length === 0, "fixed public network event name is never used");
 
 console.log("08-openai-network PASS");
