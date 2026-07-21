@@ -1,5 +1,6 @@
 // ChatGPT integration harness: intercepted first-party page with a realistic
-// composer, surface switching, dark mode, and safe Caveman preview behavior.
+// composer, surface switching, dark mode, safe Caveman preview behavior, and a
+// page-world attempt to steal and reuse the old bridge token.
 import { launchExtension, assert } from "./lib.mjs";
 
 const { context, worker } = await launchExtension();
@@ -46,6 +47,48 @@ try {
   assert(initial.text.includes("Companion"), "widget renders Companion title");
   assert(initial.text.includes("Chat"), "widget detects Chat surface");
   assert(initial.width > 600 && initial.width < 720, `widget follows composer width, got ${initial.width}`);
+
+  const attack = await page.evaluate(async () => {
+    let leakedToken = null;
+    let leakedChannel = null;
+    const tokenListener = event => { leakedToken = event?.detail?.token || null; };
+    const channelListener = event => { leakedChannel = event?.detail?.channelId || null; };
+    window.addEventListener("cuc:openai-token-offer", tokenListener);
+    window.addEventListener("cuc:openai-channel-offer", channelListener);
+    window.dispatchEvent(new CustomEvent("cuc:openai-main-ready"));
+    await new Promise(resolve => setTimeout(resolve, 80));
+    if (leakedToken) {
+      window.dispatchEvent(new CustomEvent("cuc:openai-usage-snapshot", {
+        detail: {
+          token: leakedToken,
+          snapshot: {
+            provider: "openai",
+            observedAt: Date.now(),
+            sourcePath: "/forged",
+            maxUtilizationPct: 99,
+            buckets: [{
+              key: "agentic",
+              label: "Forged usage",
+              pct: 99,
+              resetsAt: null,
+              used: 99,
+              limit: 100,
+              unit: "credits",
+            }],
+            counters: {},
+          },
+        },
+      }));
+    }
+    window.removeEventListener("cuc:openai-token-offer", tokenListener);
+    window.removeEventListener("cuc:openai-channel-offer", channelListener);
+    return { leakedToken, leakedChannel };
+  });
+  assert(!attack.leakedToken, "page cannot force the legacy authentication token to be re-broadcast");
+  assert(!attack.leakedChannel, "page cannot force the secret channel identifier to be re-broadcast");
+  await page.waitForTimeout(100);
+  const afterAttack = await page.evaluate(() => document.querySelector("#cuc-openai-widget")?.shadowRoot?.textContent || "");
+  assert(!afterAttack.includes("Forged usage"), "page-forged usage events never reach the widget");
 
   await page.evaluate(() => {
     history.pushState({}, "", "/?mode=work");
