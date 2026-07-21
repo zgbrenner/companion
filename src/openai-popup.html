@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Companion for ChatGPT</title>
+  <link rel="stylesheet" href="openai-popup.css" />
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div class="brand">
+        <span class="mark" aria-hidden="true">◆</span>
+        <div><h1>Companion</h1><p>ChatGPT</p></div>
+      </div>
+      <span class="surface" id="surface"><span aria-hidden="true"></span>Chat</span>
+    </header>
+
+    <section class="hero" aria-labelledby="hero-title">
+      <div>
+        <p class="eyebrow">Native usage</p>
+        <h2 id="hero-title">Watching for OpenAI data</h2>
+        <p id="hero-note">Companion shows only numeric usage that OpenAI exposes. No estimates and no message scraping.</p>
+      </div>
+      <span class="freshness" id="freshness">Not observed yet</span>
+    </section>
+
+    <section class="rows" id="rows" aria-live="polite">
+      <div class="empty">Use Chat, Work, or a Codex-aware web surface. Usage appears here as soon as OpenAI returns a supported counter or limit.</div>
+    </section>
+
+    <section class="privacy">
+      <span class="privacy-icon" aria-hidden="true">✓</span>
+      <div><strong>Local and read-only</strong><p>Prompts, replies, and files never leave your device through Companion.</p></div>
+    </section>
+
+    <footer>
+      <button type="button" class="button" id="settings">Settings</button>
+      <span>Unofficial · not affiliated with OpenAI</span>
+    </footer>
+  </main>
+  <script src="openai-popup.js"></script>
+</body>
+</html>
