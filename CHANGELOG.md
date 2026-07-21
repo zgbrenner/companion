@@ -13,8 +13,11 @@ All notable changes to Companion. The most recent release is at the top.
 - Added shared OpenAI freshness states across the in-page widget and toolbar popup: fresh under five minutes, aging through fifteen minutes, visibly stale through two hours, and hidden after expiry.
 - Missing or implausibly future observation timestamps now fail closed instead of presenting untrustworthy values.
 - Freshness labels update automatically while the page or popup remains open.
-- Added end-to-end Chromium coverage for native OpenAI usage rendering, profile-field exclusion, query-string stripping, event-forgery resistance, bridge startup timing, stale warnings, and expired-value hiding.
-- Rewrote the OpenAI and security documentation to match the multi-provider architecture, freshness policy, and Codex desktop boundary.
+- Added serialized provider ownership for the shared toolbar badge. Old OpenAI cleanup can no longer erase a newer Claude badge or a newer OpenAI reading.
+- Reintroduced the narrow `alarms` permission solely to remove a high OpenAI warning badge after its native reading becomes two hours old, even when no ChatGPT tab remains open. Alarm names contain only provider and observation time.
+- Added a Chromium privacy regression test proving that Clear all local data removes Claude and OpenAI local state, session state, caches, and the toolbar badge.
+- Added end-to-end coverage for native OpenAI usage rendering, profile-field exclusion, query-string stripping, event-forgery resistance, bridge startup timing, stale warnings, expired-value hiding, data reset, and badge ownership.
+- Rewrote the OpenAI and security documentation to match the multi-provider architecture, freshness policy, badge expiry, and Codex desktop boundary.
 
 ### 1.1.0 (insights)
 
@@ -45,5 +48,5 @@ Built from a broad open-source research pass (ccusage, Claude-Code-Usage-Monitor
   - Tightened the sandbox CSP (dropped an unused `'unsafe-inline'` for scripts) and the packaging script now refuses to ship dev artifacts (`*.map`, `.env*`, tests).
   - The popup's 14-day trend is readable by assistive tech (per-day figures in the chart's accessible label, not just hover tooltips).
   - Added `LICENSE` (MIT) and `CONTRIBUTING.md`; fixed stale docs (version badge, removed-feature references, duplicate SECURITY.md section numbers).
-- **Chrome Web Store release preparation:** removed the built-in self-update mechanism (updates now ship through the Chrome Web Store), dropped the now-unneeded `alarms` permission and GitHub/CDN host permissions and CSP entries — the extension now connects only to claude.ai.
+- **Chrome Web Store release preparation:** removed the built-in self-update mechanism (updates now ship through the Chrome Web Store), dropped the then-unneeded `alarms` permission and GitHub/CDN host permissions and CSP entries — the extension connected only to claude.ai at that release.
 - Added store submission documents under `store/` and a packaging script `tools/package-webstore.sh`.
