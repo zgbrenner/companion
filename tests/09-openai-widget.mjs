@@ -38,7 +38,7 @@ try {
             <header><button aria-pressed="true" data-testid="mode-selector">Chat</button></header>
             <main style="min-height:100vh;display:flex;flex-direction:column;justify-content:flex-end;align-items:center">
               <section id="composer-shell" style="width:680px;border:1px solid #ddd;border-radius:26px;background:white;padding:10px;box-sizing:border-box">
-                <form data-testid="composer" style="display:flex;gap:8px">
+                <form data-testid="composer" style="display:flex;gap:8px" onsubmit="event.preventDefault()">
                   <div id="prompt-textarea" role="textbox" contenteditable="true" style="flex:1;min-height:42px"></div>
                   <button type="submit" data-testid="send-button" aria-label="Send prompt">Send</button>
                 </form>
@@ -140,6 +140,10 @@ try {
   await page.evaluate(() => document.documentElement.classList.add("dark"));
   await page.waitForFunction(() => document.querySelector("#cuc-openai-widget")?.classList.contains("cuc-openai-dark"));
 
+  // Widget creation completes immediately before installObservers() attaches the
+  // capture-phase composer listeners. Give that synchronous startup tail one
+  // deterministic beat before exercising the keyboard path.
+  await page.waitForTimeout(250);
   await page.locator("#prompt-textarea").fill("Could you please basically summarize this very long request?");
   const intercepted = await page.evaluate(() => {
     const editable = document.querySelector("#prompt-textarea");
