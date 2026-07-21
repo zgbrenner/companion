@@ -6,11 +6,12 @@
   if (window.__COMPANION_OPENAI_INSTALLED__) return;
   window.__COMPANION_OPENAI_INSTALLED__ = true;
 
-  const PLATFORM = globalThis.CompanionPlatform;
   const PORT_OFFER = "cuc:openai-port-offer";
   const MAIN_READY = "cuc:openai-main-ready";
   const MAX_PENDING = 50;
   const MAX_JSON_BYTES = 2_000_000;
+  const MAX_DEPTH = 7;
+  const MAX_VISITED = 500;
   const nativePostMessage = window.postMessage.bind(window);
   const nativeAddEventListener = window.addEventListener.bind(window);
   let bridgePort = null;
@@ -23,7 +24,7 @@
       return;
     }
     try { bridgePort.postMessage({ kind, detail }); }
-    catch { /* a closed port only drops optional telemetry */ }
+    catch { /* a closed port only drops optional usage telemetry */ }
   }
 
   function connectPort(port) {
@@ -42,6 +43,150 @@
     connectPort(event.ports?.[0]);
   });
   nativePostMessage({ type: MAIN_READY }, location.origin);
+
+  function canonical(value) {
+    return String(value || "")
+      .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+      .replace(/[^A-Za-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "")
+      .toLowerCase();
+  }
+
+  function numeric(value) {
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    if (typeof value === "string" && /^\s*\d+(?:\.\d+)?\s*$/.test(value)) return Number(value);
+    return null;
+  }
+
+  function firstNumber(entries, aliases) {
+    for (const [rawKey, value] of entries) {
+      const key = canonical(rawKey);
+      if (!aliases.has(key)) continue;
+      const number = numeric(value);
+      if (number != null) return { key, value: number };
+    }
+    return null;
+  }
+
+  function firstString(entries, aliases) {
+    for (const [rawKey, value] of entries) {
+      if (!aliases.has(canonical(rawKey)) || typeof value !== "string") continue;
+      const text = value.trim();
+      if (text && text.length <= 160) return text;
+    }
+    return null;
+  }
+
+  const USED = new Set(["used", "usage", "consumed", "spent", "amount_used", "usage_used", "used_credits", "credits_used", "credit_used", "used_tokens", "tokens_used", "used_messages", "messages_used", "used_usd", "usd_used", "cost_used"]);
+  const LIMIT = new Set(["limit", "quota", "allowance", "total", "maximum", "max", "usage_limit", "credit_limit", "credits_limit", "total_credits", "token_limit", "tokens_limit", "message_limit", "messages_limit", "usd_limit", "budget", "budget_usd"]);
+  const PCT = new Set(["pct", "percent", "percentage", "utilization", "utilisation", "usage_percent", "used_percent", "percent_used", "utilization_pct", "utilisation_pct", "usage_pct", "ratio", "fraction"]);
+  const RESET = new Set(["reset_at", "resets_at", "reset_time", "resets_time", "reset_date", "resets_date", "next_reset_at", "window_end", "period_end", "expires_at"]);
+  const NAME = new Set(["name", "label", "type", "window", "bucket", "period", "product"]);
+
+  function bucketFor(text) {
+    const key = canonical(text);
+    if (/(?:agentic|workspace_agent|workspace_agents|codex|work_usage|work_credit)/.test(key)) return { key: "agentic", label: "Agentic usage" };
+    if (/(?:five_hour|5_hour|5h|session|primary_window|short_window)/.test(key)) return { key: "five-hour", label: "Session limit" };
+    if (/(?:daily|one_day|1_day|24_hour|24h)/.test(key)) return { key: "daily", label: "Daily limit" };
+    if (/(?:seven_day|7_day|7d|weekly|week|secondary_window|long_window)/.test(key)) return { key: "seven-day", label: "Weekly limit" };
+    if (/(?:monthly|month|billing_period)/.test(key)) return { key: "monthly", label: "Monthly allowance" };
+    return null;
+  }
+
+  function unitFor(text) {
+    const key = canonical(text);
+    if (/(?:credit|agentic)/.test(key)) return "credits";
+    if (/(?:usd|dollar|cost|spend|budget)/.test(key)) return "usd";
+    if (/token/.test(key)) return "tokens";
+    if (/(?:message|request|task|run)/.test(key)) return "messages";
+    return null;
+  }
+
+  function resetValue(value) {
+    if (typeof value !== "string" || value.length > 160) return null;
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? new Date(parsed).toISOString() : null;
+  }
+
+  function percentage(value, key) {
+    if (!Number.isFinite(value) || value < 0) return null;
+    let pct = value;
+    if (pct <= 1 && !/(?:pct|percent|percentage)/.test(canonical(key))) pct *= 100;
+    return pct <= 1000 ? Number(pct.toFixed(4)) : null;
+  }
+
+  function normalizeUsage(payload, sourcePath) {
+    if (!payload || typeof payload !== "object") return null;
+    const buckets = new Map();
+    const counters = {};
+    let visited = 0;
+    let tokenInput = null;
+    let tokenOutput = null;
+    let tokenTotal = null;
+
+    function keepCounter(unit, used, limit, resetsAt) {
+      if (!unit || used == null || !Number.isFinite(used) || used < 0) return;
+      const safeLimit = Number.isFinite(limit) && limit > 0 ? limit : null;
+      const candidate = { used, limit: safeLimit, resetsAt: resetsAt || null };
+      const existing = counters[unit];
+      const score = item => (item?.limit != null ? 2 : 1) + (item?.resetsAt ? 1 : 0);
+      if (!existing || score(candidate) > score(existing)) counters[unit] = candidate;
+    }
+
+    function walk(node, path, depth) {
+      if (!node || typeof node !== "object" || depth > MAX_DEPTH || visited >= MAX_VISITED) return;
+      visited += 1;
+      if (Array.isArray(node)) {
+        for (let index = 0; index < Math.min(node.length, 100); index += 1) walk(node[index], path.concat(String(index)), depth + 1);
+        return;
+      }
+      const entries = Object.entries(node).slice(0, 150);
+      const contextParts = path.slice(-3);
+      const name = firstString(entries, NAME);
+      if (name) contextParts.push(name);
+      const context = contextParts.join("_");
+      const bucket = bucketFor(context);
+      const used = firstNumber(entries, USED);
+      const limit = firstNumber(entries, LIMIT);
+      const pctEntry = firstNumber(entries, PCT);
+      const reset = resetValue(firstString(entries, RESET));
+      const unit = unitFor(`${context}_${used?.key || ""}_${limit?.key || ""}`);
+      let pct = pctEntry ? percentage(pctEntry.value, pctEntry.key) : null;
+      if (pct == null && used && limit?.value > 0) pct = percentage((used.value / limit.value) * 100, "percent");
+      if (used) keepCounter(unit, used.value, limit?.value, reset);
+      if (bucket && pct != null) {
+        const candidate = { key: bucket.key, label: bucket.label, pct, resetsAt: reset, used: used?.value ?? null, limit: limit?.value ?? null, unit };
+        const existing = buckets.get(bucket.key);
+        const score = item => (item?.used != null ? 2 : 0) + (item?.limit != null ? 2 : 0) + (item?.resetsAt ? 1 : 0) + (item?.unit ? 1 : 0);
+        if (!existing || score(candidate) > score(existing)) buckets.set(bucket.key, candidate);
+      }
+      for (const [rawKey, rawValue] of entries) {
+        const key = canonical(rawKey);
+        const number = numeric(rawValue);
+        if (number != null && number >= 0) {
+          if (["input_tokens", "prompt_tokens", "tokens_input"].includes(key)) tokenInput = Math.max(tokenInput ?? 0, number);
+          if (["output_tokens", "completion_tokens", "tokens_output"].includes(key)) tokenOutput = Math.max(tokenOutput ?? 0, number);
+          if (["total_tokens", "tokens_total"].includes(key)) tokenTotal = Math.max(tokenTotal ?? 0, number);
+        }
+        if (rawValue && typeof rawValue === "object") walk(rawValue, path.concat(key), depth + 1);
+      }
+    }
+
+    walk(payload, [], 0);
+    if (tokenInput != null || tokenOutput != null || tokenTotal != null) {
+      counters.tokens = { input: tokenInput, output: tokenOutput, total: tokenTotal ?? ((tokenInput ?? 0) + (tokenOutput ?? 0)) };
+    }
+    const normalizedBuckets = Array.from(buckets.values());
+    if (!normalizedBuckets.length && !Object.keys(counters).length) return null;
+    return {
+      provider: "openai",
+      observedAt: Date.now(),
+      sourcePath,
+      buckets: normalizedBuckets,
+      counters,
+      maxUtilizationPct: normalizedBuckets.length ? Math.max(...normalizedBuckets.map(item => item.pct)) : null,
+    };
+  }
 
   function parseUrl(value) {
     try { return new URL(typeof value === "string" ? value : value?.url, location.href); }
@@ -83,9 +228,8 @@
   }
 
   function emitNormalizedUsage(payload, sourcePath) {
-    const snapshot = PLATFORM?.normalizeOpenAIUsage?.(payload, { sourcePath, observedAt: Date.now() });
-    if (!snapshot) return;
-    dispatch("usage", { snapshot });
+    const snapshot = normalizeUsage(payload, sourcePath);
+    if (snapshot) dispatch("usage", { snapshot });
   }
 
   async function inspectUsageResponse(response, requestUrl) {
@@ -96,19 +240,15 @@
       const text = await response.text();
       if (text.length > MAX_JSON_BYTES) return;
       emitNormalizedUsage(JSON.parse(text), safePath(requestUrl));
-    } catch {
-      // Undocumented response shapes are best effort and never affect ChatGPT.
-    }
+    } catch { /* changed or unreadable response shape */ }
   }
 
   function scanUsageFrame(line, sourcePath) {
     const trimmed = String(line || "").trim();
     if (!trimmed.startsWith("data:")) return;
     const body = trimmed.slice(5).trim();
-    if (!body || body === "[DONE]" || body.length > 100_000) return;
-    if (!/usage|limit|quota|credit|token/i.test(body)) return;
-    try { emitNormalizedUsage(JSON.parse(body), sourcePath); }
-    catch { /* ordinary generation frames are not usage JSON */ }
+    if (!body || body === "[DONE]" || body.length > 100_000 || !/usage|limit|quota|credit|token/i.test(body)) return;
+    try { emitNormalizedUsage(JSON.parse(body), sourcePath); } catch { /* ordinary frame */ }
   }
 
   async function watchGeneration(response, requestUrl, requestId) {
@@ -133,11 +273,8 @@
         if (done) break;
       }
       if (carry) scanUsageFrame(carry, sourcePath);
-    } catch {
-      // A cancelled stream is still a completed request from the meter's view.
-    } finally {
-      dispatch("network", { kind: "generation-complete", requestId, sourcePath, at: Date.now() });
-    }
+    } catch { /* cancelled stream */ }
+    finally { dispatch("network", { kind: "generation-complete", requestId, sourcePath, at: Date.now() }); }
   }
 
   const originalFetch = window.fetch;
@@ -145,17 +282,11 @@
     window.fetch = async function companionOpenAIFetch(input, init) {
       const requestUrl = typeof input === "string" ? input : input?.url;
       const method = String(init?.method || input?.method || "GET").toUpperCase();
-      const firstParty = isOpenAIUrl(requestUrl);
       const response = await originalFetch.apply(this, arguments);
-      if (!firstParty) return response;
-
+      if (!isOpenAIUrl(requestUrl)) return response;
       if (isUsageLikeUrl(requestUrl)) inspectUsageResponse(response.clone(), requestUrl);
-
       const modelId = safeModelHeader(response);
-      if (modelId) {
-        dispatch("network", { kind: "model-detected", modelId, sourcePath: safePath(requestUrl), at: Date.now() });
-      }
-
+      if (modelId) dispatch("network", { kind: "model-detected", modelId, sourcePath: safePath(requestUrl), at: Date.now() });
       const contentType = response.headers?.get?.("content-type") || "";
       if (method === "POST" && /event-stream/i.test(contentType)) {
         requestCounter += 1;
@@ -169,16 +300,12 @@
 
   function readXhrJson(xhr) {
     const responseType = String(xhr?.responseType || "");
-    if (responseType === "json") {
-      return xhr.response && typeof xhr.response === "object" ? xhr.response : null;
-    }
+    if (responseType === "json") return xhr.response && typeof xhr.response === "object" ? xhr.response : null;
     if (responseType && responseType !== "text") return null;
     let text;
-    try { text = xhr.responseText; }
-    catch { return null; }
+    try { text = xhr.responseText; } catch { return null; }
     if (typeof text !== "string" || text.length > MAX_JSON_BYTES) return null;
-    try { return JSON.parse(text); }
-    catch { return null; }
+    try { return JSON.parse(text); } catch { return null; }
   }
 
   const XHR = globalThis.XMLHttpRequest;
@@ -186,31 +313,23 @@
     const xhrMeta = new WeakMap();
     const originalOpen = XHR.prototype.open;
     const originalSend = XHR.prototype.send;
-
     XHR.prototype.open = function companionOpenAIXhrOpen(method, url, ...rest) {
       xhrMeta.set(this, { method: String(method || "GET").toUpperCase(), url: String(url || "") });
       return originalOpen.call(this, method, url, ...rest);
     };
-
     XHR.prototype.send = function companionOpenAIXhrSend(...args) {
       const meta = xhrMeta.get(this);
       if (meta && isOpenAIUrl(meta.url)) {
         this.addEventListener("load", () => {
           let contentType = "";
-          try { contentType = this.getResponseHeader?.("content-type") || ""; }
-          catch { /* unreadable headers */ }
+          try { contentType = this.getResponseHeader?.("content-type") || ""; } catch { /* unreadable headers */ }
           if (isUsageLikeUrl(meta.url) && /json/i.test(contentType)) {
             const payload = readXhrJson(this);
             if (payload) emitNormalizedUsage(payload, safePath(meta.url));
           }
           if (meta.method === "POST" && /event-stream/i.test(contentType)) {
             requestCounter += 1;
-            dispatch("network", {
-              kind: "generation-complete",
-              requestId: `xhr-${Date.now()}-${requestCounter}`,
-              sourcePath: safePath(meta.url),
-              at: Date.now(),
-            });
+            dispatch("network", { kind: "generation-complete", requestId: `xhr-${Date.now()}-${requestCounter}`, sourcePath: safePath(meta.url), at: Date.now() });
           }
         }, { once: true });
       }
