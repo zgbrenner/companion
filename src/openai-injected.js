@@ -38,12 +38,16 @@
       if (pending.length < MAX_PENDING) pending.push({ kind, detail });
       return;
     }
-    nativeDispatchEvent(new CustomEventCtor(channel[kind], { detail }));
+    let serialized;
+    try { serialized = JSON.stringify(detail); }
+    catch { return; }
+    if (serialized.length > 2_100_000) return;
+    nativeDispatchEvent(new CustomEventCtor(channel[kind], { detail: serialized }));
   }
 
   nativeAddEventListener(CHANNEL_OFFER, event => {
     if (channel) return;
-    const channelId = event?.detail?.channelId;
+    const channelId = typeof event?.detail === "string" ? event.detail : event?.detail?.channelId;
     if (!validChannelId(channelId)) return;
     channel = channelNames(channelId);
     const queued = pending;
