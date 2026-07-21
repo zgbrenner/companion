@@ -80,6 +80,7 @@
         "https://chat.openai.com/*"
       ],
       "js": [
+        "src/openai-ready.js",
         "src/openai-injected.js"
       ],
       "run_at": "document_start",
