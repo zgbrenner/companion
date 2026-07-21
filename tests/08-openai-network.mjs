@@ -137,3 +137,4 @@ await waitFor(
 
 channel.port1.close();
 console.log("08-openai-network PASS");
+process.exit(0);
