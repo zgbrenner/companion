@@ -91,10 +91,10 @@
 
   chrome.alarms?.onAlarm?.addListener(alarm => {
     const name = String(alarm?.name || "");
-    if (!name.startsWith(ALARM_PREFIX)) return;
+    if (!name.startsWith(ALARM_PREFIX)) return undefined;
     const observedAt = Number(name.slice(ALARM_PREFIX.length));
-    if (!Number.isFinite(observedAt)) return;
-    clearIfCurrent("openai", observedAt).catch(() => {});
+    if (!Number.isFinite(observedAt)) return undefined;
+    return clearIfCurrent("openai", observedAt).catch(() => false);
   });
 
   globalThis.CompanionBadgeState = Object.freeze({
