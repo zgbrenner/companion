@@ -1,10 +1,12 @@
 (() => {
   const USAGE_KEY = "cuc:openai-usage";
+  const FRESHNESS = globalThis.CompanionOpenAIFreshness;
   const SURFACES = {
     chat: { label: "Chat", title: "ChatGPT native usage" },
     work: { label: "Work", title: "Work agentic usage" },
     codex: { label: "Codex", title: "Codex-aware usage" },
   };
+  let currentSnapshot = null;
 
   function escapeHtml(value) {
     return String(value ?? "")
@@ -41,16 +43,8 @@
     return `Resets in ${Math.floor(hours / 24)}d ${hours % 24}h`;
   }
 
-  function freshnessText(observedAt) {
-    const ageSeconds = Math.max(0, Math.round((Date.now() - observedAt) / 1000));
-    if (ageSeconds < 10) return "Observed just now";
-    if (ageSeconds < 60) return `Observed ${ageSeconds}s ago`;
-    const minutes = Math.round(ageSeconds / 60);
-    if (minutes < 60) return `Observed ${minutes}m ago`;
-    return `Observed ${Math.round(minutes / 60)}h ago`;
-  }
-
   function render(snapshot) {
+    currentSnapshot = snapshot || null;
     const surfaceKey = ["chat", "work", "codex"].includes(snapshot?.surface) ? snapshot.surface : "chat";
     const meta = SURFACES[surfaceKey];
     document.body.dataset.surface = surfaceKey;
@@ -60,18 +54,36 @@
     const note = document.getElementById("hero-note");
     const freshness = document.getElementById("freshness");
     const rows = document.getElementById("rows");
+    const descriptor = FRESHNESS?.describe?.(snapshot?.observedAt) || {
+      state: snapshot ? "expired" : "missing",
+      label: snapshot ? "Timestamp unavailable" : "Not observed yet",
+      showValues: false,
+      warn: Boolean(snapshot),
+    };
+
+    freshness.dataset.state = descriptor.state;
+    freshness.textContent = descriptor.label;
 
     if (!snapshot) {
       title.textContent = "Watching for OpenAI data";
       note.textContent = "Companion shows only numeric usage that OpenAI exposes. No estimates and no message scraping.";
-      freshness.textContent = "Not observed yet";
       rows.innerHTML = `<div class="empty">Use Chat, Work, or a Codex-aware web surface. Usage appears here as soon as OpenAI returns a supported counter or limit.</div>`;
       return;
     }
 
-    title.textContent = meta.title;
-    note.textContent = "Read from OpenAI's own first-party usage responses and stored locally on this device.";
-    freshness.textContent = freshnessText(snapshot.observedAt);
+    if (!descriptor.showValues) {
+      title.textContent = `${meta.label} usage needs refresh`;
+      note.textContent = descriptor.state === "expired"
+        ? "The last native reading is too old to present as current, so Companion is hiding it."
+        : "This native usage reading has no trustworthy observation time, so Companion is hiding it.";
+      rows.innerHTML = `<div class="empty">Use ChatGPT, Work, or a Codex-aware web surface to collect a fresh native usage reading.</div>`;
+      return;
+    }
+
+    title.textContent = descriptor.state === "stale" ? `${meta.label} usage may be stale` : meta.title;
+    note.textContent = descriptor.state === "stale"
+      ? `${descriptor.label}. Use ChatGPT to refresh the native reading.`
+      : "Read from OpenAI's own first-party usage responses and stored locally on this device.";
 
     const buckets = Array.isArray(snapshot.buckets) ? snapshot.buckets : [];
     const tokenCounter = snapshot.counters?.tokens;
@@ -111,4 +123,5 @@
     if ((area === "session" || area === "local") && changes[USAGE_KEY]) render(changes[USAGE_KEY].newValue || null);
   });
   readUsage().then(render).catch(() => render(null));
+  setInterval(() => render(currentSnapshot), 30_000);
 })();
