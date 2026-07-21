@@ -2,190 +2,197 @@
 
 <h1>Companion</h1>
 
-<h3>An unofficial usage meter for Claude.ai — know exactly how much you're using, in <em>real dollars</em>, right under the chat box.</h3>
+<h3>A private usage meter and efficiency layer for Claude, ChatGPT, Work, and Codex-aware web surfaces.</h3>
 
-<p>No token-counting guesswork. No spreadsheets. No surprises when you hit a limit.</p>
+<p>Know what the provider actually reports. Stretch your limits when they run low. Keep every prompt, reply, and file on your device.</p>
 
 <p>
-  <img alt="Chrome & Edge · Manifest V3" src="https://img.shields.io/badge/Chrome%20%26%20Edge-Manifest%20V3-3d7a5c?style=for-the-badge&logo=googlechrome&logoColor=white" />
-  <img alt="100% local & private" src="https://img.shields.io/badge/100%25-local%20%26%20private-3d7a5c?style=for-the-badge" />
-  <img alt="your account · read-only" src="https://img.shields.io/badge/your%20account-read--only-b4791f?style=for-the-badge" />
-  <img alt="version 1.1.0" src="https://img.shields.io/badge/version-1.1.0-2b3648?style=for-the-badge" />
+  <img alt="Chrome and Edge, Manifest V3" src="https://img.shields.io/badge/Chrome%20%26%20Edge-Manifest%20V3-3d7a5c?style=for-the-badge&logo=googlechrome&logoColor=white" />
+  <img alt="Claude and ChatGPT" src="https://img.shields.io/badge/Claude%20%2B%20ChatGPT-auto--detect-2b3648?style=for-the-badge" />
+  <img alt="100 percent local and private" src="https://img.shields.io/badge/100%25-local%20%26%20private-3d7a5c?style=for-the-badge" />
+  <img alt="version 1.2.0" src="https://img.shields.io/badge/version-1.2.0-7c5cff?style=for-the-badge" />
 </p>
 
 <p>
   <img alt="no telemetry" src="https://img.shields.io/badge/telemetry-none-3d7a5c?style=flat-square" />
   <img alt="no trackers" src="https://img.shields.io/badge/trackers-zero-3d7a5c?style=flat-square" />
   <img alt="sandboxed file parser" src="https://img.shields.io/badge/file%20parser-sandboxed-3d7a5c?style=flat-square" />
-  <img alt="PRs welcome" src="https://img.shields.io/badge/PRs-welcome-2b3648?style=flat-square" />
+  <img alt="read only provider access" src="https://img.shields.io/badge/provider%20access-read--only-b4791f?style=flat-square" />
 </p>
 
 <br/>
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/widget-dark.png">
-  <img alt="The Companion widget docked under the Claude.ai chat box, showing real session spend and Claude's own limits" src="docs/images/widget.png" width="760">
+  <img alt="Companion docked beneath a chat composer" src="docs/images/widget.png" width="760">
 </picture>
 
 <br/>
-<sub>The widget lives under the chat box — real spend up top, Claude's own limits below, Caveman Mode on tap.</sub>
+<sub>Companion docks beneath the active composer, follows the page theme, and changes its visual language for Claude, Chat, Work, and Codex.</sub>
 
 </div>
 
 ---
 
-> [!NOTE]
-> **Every dollar figure is real.** It's read straight from Claude's own usage-credit counter — accurate to the cent, never estimated from text. Tokens are the only derived number, and they're shown as an honest range instead of fake precision.
+## One extension, four surfaces
 
-## The Problem
+Companion auto-detects where it is running. It does not ask you to choose a provider, install a second extension, or keep separate settings.
 
-Claude.ai tells you *almost* nothing about your usage until you slam into a limit mid-thought. Existing "token counter" extensions just **guess** — they scrape your text, estimate tokens, and multiply by a price they hope is right. The number is fiction, and it never matches reality.
+| Surface | What Companion does |
+| --- | --- |
+| **Claude.ai** | Shows Claude's exact usage-credit spend, rolling session and weekly limits, Opus usage, reset times, pace warnings, and local history. |
+| **ChatGPT Chat** | Adds a native-looking Chat widget, Caveman Mode, prompt trimming, local file conversion, and any numeric usage counters OpenAI exposes to the page. |
+| **ChatGPT Work** | Switches to a restrained violet treatment and shows the shared agentic usage pool when OpenAI exposes it. |
+| **Codex-aware web surfaces** | Switches to a graphite and indigo interface with selective monospace details and shows shared agentic usage when available. |
 
-## The Fix
+> [!IMPORTANT]
+> The standalone Codex desktop shell is not a Chrome extension host. Companion cannot inject into that native shell through Manifest V3. It can support Codex-aware web routes and display shared Work or Codex agentic usage that OpenAI exposes on ChatGPT web.
 
-Companion reads the **same numbers Claude's own settings page uses** and pins them under the chat box while you work:
+## The rule: native numbers or nothing
 
-- **Real spend**, to the cent — because it comes from Claude, not a guess.
-- **Claude's actual limits** — 5-hour session, weekly, Opus, and monthly credits, each with a live reset countdown.
-- **A heads-up before you hit the wall** — a badge and an optional desktop nudge at 85% / 95%.
+Most usage extensions scrape conversation text, estimate tokens, multiply by a price, and present the result as fact. Companion does not.
+
+### On Claude
+
+Claude's own usage-credit counter is the source of truth. Dollar values are exact to the cent. Session and daily spend are deltas from that real counter. Token figures are the only derived values, and they appear as a range rather than fake precision.
+
+### On OpenAI surfaces
+
+Companion watches only first-party ChatGPT responses that appear to contain usage, limits, credits, billing, agentic, or Codex state. It extracts supported numeric fields inside the page and forwards only the normalized numbers to the extension.
+
+Depending on the account and surface, this can include:
+
+- agentic credits used and available
+- rolling session, daily, weekly, or monthly utilization
+- reset timestamps
+- exact input, output, or total token counters returned by OpenAI
+
+When OpenAI does not expose a trustworthy counter, Companion says it is waiting for native usage data. It does not invent a quota or inspect messages to fill the gap.
 
 ---
 
 ## Features
 
 | | |
-|---|---|
-| **Real-dollar tracking** | Session spend and daily spend sampled straight from Claude's own counter — not a token estimate. |
-| **Claude's real limits** | Session (5-hour), weekly, Opus, and monthly-credit bars with reset countdowns, exactly as Claude reports them. |
-| **Before-the-wall alerts** | Toolbar badge + optional desktop nudge when any limit runs hot, plus "at this pace you'll hit your limit around 3:40 PM". |
-| **Caveman Mode** | Stretch your quota when it's running low — ultra-brief replies, local prompt-trimming, and file→Markdown. |
-| **Only what you want** | Every meter is individually toggleable — session spend, each limit, monthly allowance, Caveman Mode — so the widget shows exactly the metrics you care about. |
-| **Looks native** | Docks under the chat box, matches its width, and follows Claude's own light/dark theme. |
-| **Private by design** | Your prompts and replies are never stored or sent anywhere. Read-only. No telemetry. |
+| --- | --- |
+| **Automatic provider detection** | Claude, Chat, Work, and Codex styling switch automatically from the current origin, route, and selected mode. |
+| **Native usage meters** | Exact Claude spend and limits, plus supported numeric OpenAI counters when exposed. |
+| **Caveman Mode** | Ask for maximally concise replies, preview a locally trimmed prompt, and convert files to lean Markdown. |
+| **Before-the-wall alerts** | Toolbar badge and optional desktop notice when a trustworthy limit reaches 85 or 95 percent. |
+| **Native visual fit** | Shadow DOM widget, exact composer width, page-level light and dark theme following, keyboard focus, and reduced-motion support. |
+| **Only what you want** | Hide the widget, Caveman Mode, or individual Claude metrics from Settings. |
+| **Private by design** | No telemetry, no analytics, no prompt storage, and no third-party backend. |
 
----
+## Caveman Mode
 
-## 📸 See It
+Running low and still need to finish something important? Turn on Caveman Mode.
 
-<table>
-<tr>
-<td width="50%" valign="top" align="center">
-<strong>Toolbar popup</strong><br/>
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/popup-dark.png">
-  <img alt="Toolbar popup: session spend, today, this month, a 14-day trend, and Claude's limits" src="docs/images/popup.png" width="330">
-</picture>
-</td>
-<td width="50%" valign="top" align="center">
-<strong>Settings</strong><br/>
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/settings-dark.png">
-  <img alt="Settings page: Display, Alerts, Claude connection, Data & privacy" src="docs/images/settings.png" width="420">
-</picture>
-</td>
-</tr>
-</table>
+- **Shorter replies:** A one-time visible instruction asks the assistant to answer in the fewest words that preserve every important fact, step, and caveat.
+- **Prompt trimming:** Before send, Companion offers a conservative local rewrite that removes filler without paraphrasing protected content. You approve every send.
+- **File to Markdown:** Pick a PDF, DOCX, PPTX, XLSX, CSV, HTML, text, or OpenDocument file and convert it locally into lean Markdown before it enters the chat box.
 
----
-
-## Caveman Mode — stretch your quota
-
-Running low and need to squeeze out more work before the reset? Flip the red switch:
-
-- **Brief replies** — Claude answers in the fewest words that fully resolve your request. Filler-free, never at the cost of substance.
-- **Prompt trimming** — on send, a preview shows a *locally*-trimmed version of your prompt with the savings. Send it, edit it, or send the original — nothing is ever auto-sent, and it never rewrites your meaning.
-- **File → Markdown** — drop in a PDF/DOCX/PPTX/XLSX/CSV and it's converted to lean Markdown *locally* (Claude ingests Markdown far more efficiently than a raw file).
-
-Don't want it? One switch hides the whole feature.
+Nothing is silently sent. The preview always lets you send the trimmed version, edit it, send the original, or cancel.
 
 ---
 
 ## How it works
 
+```text
+Claude usage counter ── sampled locally ──► exact spend and native limits
+
+OpenAI first-party response ── normalize numeric fields in-page ──►
+  bounded usage snapshot only ──► local widget, popup, badge, and alerts
+
+Your prompt ── optional local Caveman preview ──► your explicit send action
+Your file   ── sandboxed local parser ──► Markdown in the active composer
 ```
-Claude's usage counter ──sample every ~60s──►  Session spend = now − when you opened your browser
-        (real $, to the cent)                   Daily spend   = the counter's movement per day
 
-Real dollars ──÷ blended price──►  ≈ token range   (shown as a range, because the real split is uncertain)
-```
+The Claude and OpenAI adapters are separate. A tiny service-worker entry point composes them, while each provider keeps its own origin validation, event names, storage keys, network observer, and page integration.
 
-Dollars are ground truth. Tokens are the *only* derived value — and they're shown as `≈2.1–4.7M` rather than a single fake-precise number. The rolling limits come from Claude's own endpoint, unchanged.
+## Security and privacy
 
-## Security & privacy
+Companion is designed to survive a serious extension review.
 
-Built to survive an IT/infosec review — the full write-up is in **[docs/SECURITY.md](docs/SECURITY.md)**. The short version:
+- **Exact origins only:** Permissions are limited to Claude and ChatGPT HTTPS hosts. There is no `<all_urls>` access.
+- **Read only:** Companion never changes provider account data, conversations, subscriptions, or settings.
+- **Authenticated page bridge:** Each page-world observer accepts the first random token offered by its isolated extension script at `document_start`. Events without that token are ignored.
+- **Sanitized OpenAI data:** Raw account JSON never crosses the page bridge. Only bounded numeric counters, utilization, reset times, and short source metadata are emitted.
+- **No conversation collection:** Prompt and reply text are never stored or transmitted by Companion.
+- **Sandboxed document parsing:** The office parser runs in an opaque-origin sandbox with no extension API access and no network access.
+- **No telemetry:** There are no analytics SDKs, trackers, remote logs, or Companion servers.
 
-- **Read-only.** No request the extension makes can change your account, chats, or settings.
-- **Nothing leaves your device.** Prompts, replies, and file contents are never stored or transmitted. The extension only contacts Claude's own servers to read your usage. **Zero analytics or telemetry.**
-- **Least privilege.** Access is scoped to `claude.ai` — no `<all_urls>`. Your session cookie is never read.
-- **Sandboxed file parsing.** The third-party document parser runs in an opaque-origin sandbox with no `chrome.*` access and no network.
-
-## ⚔️ vs. token-counting extensions
-
-| | Token counters | **Companion** |
-|---|:---:|:---:|
-| Dollar amounts | 🤷 estimated from scraped text | ✅ **real, from Claude's counter** |
-| Claude's actual limits | ❌ | ✅ session / weekly / Opus / monthly |
-| Stores your prompts | ⚠️ often | ✅ **never** |
-| Sends data to a server | ⚠️ sometimes | ✅ **never** |
+See **[Security and Privacy](docs/SECURITY.md)** and **[OpenAI Support](docs/OPENAI_SUPPORT.md)** for the full architecture.
 
 ---
 
 ## Quick start
 
-1. `chrome://extensions` → enable **Developer mode** → **Load unpacked** → pick this folder.
-2. Open **[claude.ai](https://claude.ai)** and sign in. The widget appears under the chat box. That's it.
+1. Open `chrome://extensions`.
+2. Enable **Developer mode**.
+3. Choose **Load unpacked** and select this repository folder.
+4. Open or reload **Claude.ai** or **ChatGPT.com**.
+5. Start a normal chat. Companion appears beneath the composer automatically.
 
-Full walkthrough (settings tour, Caveman Mode, troubleshooting): **[docs/QUICKSTART.md](docs/QUICKSTART.md)**. Chrome Web Store availability is coming (submission in progress).
+The toolbar popup routes itself to the correct provider. Claude keeps the full spend and history dashboard. ChatGPT gets a dedicated native usage view for Chat, Work, and Codex-aware state.
+
+Full walkthrough: **[Quick Start](docs/QUICKSTART.md)**
 
 ## Documentation
 
 | | |
 | --- | --- |
-| 🚀 **[Quick Start](docs/QUICKSTART.md)** | Install, setup, and everyday use. |
-| 🔒 **[Security & Privacy](docs/SECURITY.md)** | Architecture, data handling, permissions, threat model, audit steps. |
-| 📝 **[Changelog](CHANGELOG.md)** | Version history. |
+| **[Quick Start](docs/QUICKSTART.md)** | Installation, everyday use, and troubleshooting. |
+| **[OpenAI Support](docs/OPENAI_SUPPORT.md)** | Chat, Work, Codex behavior, usage semantics, and the desktop boundary. |
+| **[Security and Privacy](docs/SECURITY.md)** | Permissions, data handling, threat model, and audit steps. |
+| **[Changelog](CHANGELOG.md)** | Version history. |
+| **[Contributing](CONTRIBUTING.md)** | Development and review guidance. |
 
 ## FAQ
 
 <details>
-<summary><strong>Does it work on Free / Pro / Max / Team / Enterprise?</strong></summary>
+<summary><strong>Does it work on Claude Free, Pro, Max, Team, and Enterprise?</strong></summary>
 <br/>
-Yes. It reads whatever usage data your account exposes. Personal-plan users can hide the monthly-credit view in Settings for a cleaner look.
+Yes. Companion reads whatever native usage data the account exposes. Personal-plan users can hide the monthly-credit view for a cleaner Claude widget.
 </details>
 
 <details>
-<summary><strong>Does it send my prompts or chats anywhere?</strong></summary>
+<summary><strong>Does it work on ChatGPT Chat and Work?</strong></summary>
 <br/>
-No. Prompt and reply text is never stored or transmitted. The extension only reads numeric usage from Claude's own endpoint. There is no analytics or telemetry of any kind.
+Yes. The widget, Caveman Mode, prompt preview, and file conversion work on supported ChatGPT web composers. Usage rows appear only when OpenAI exposes supported numeric data for the current account and surface.
+</details>
+
+<details>
+<summary><strong>Does it work inside the standalone Codex desktop app?</strong></summary>
+<br/>
+Not as a Chrome content script. Native desktop shells do not automatically host Manifest V3 extensions. Companion is ready for Codex-aware ChatGPT web routes and can show shared agentic usage that appears on the web.
+</details>
+
+<details>
+<summary><strong>Does Companion send my prompts or chats anywhere?</strong></summary>
+<br/>
+No. Prompt and reply text are never stored or transmitted by Companion. The extension contacts only the provider pages you opened and has no analytics or telemetry backend.
 </details>
 
 <details>
 <summary><strong>How accurate are the numbers?</strong></summary>
 <br/>
-Dollar figures are exact — they come straight from Claude's usage-credit counter. Tokens are the only estimate, and they're deliberately shown as a range because the real input/output/cache split isn't knowable client-side.
+Claude dollar figures are exact because they come from Claude's own counter. OpenAI figures are shown only when OpenAI returns the numeric field directly. Companion labels unavailable data instead of replacing it with an estimate.
 </details>
 
 <details>
-<summary><strong>Could this get my account flagged?</strong></summary>
+<summary><strong>Can a website forge a usage event?</strong></summary>
 <br/>
-It only issues the same read-only requests Claude's own settings page makes, using your existing session — nothing that modifies your account. See <a href="docs/SECURITY.md">docs/SECURITY.md</a>.
-</details>
-
-<details>
-<summary><strong>Is it really "real dollars" if I'm on a flat plan?</strong></summary>
-<br/>
-Yes — Claude meters your usage in credit-equivalent dollars under the hood, which is exactly what the counter reports. For flat plans it's the truest available measure of how much you're consuming; for usage-credit/overage billing it's your literal spend.
+The page bridge requires a random token established between the two extension worlds at document start. The privileged background then validates the extension sender, top frame, exact HTTPS origin, message keys, value bounds, units, bucket names, and timestamps again before storing anything.
 </details>
 
 ---
 
 <div align="center">
 
-**Built for people who think in budgets, not tokens.**
+**Built for people who would rather finish the work than discover a limit halfway through it.**
 
-⭐ Star it if it saved you from hitting a limit mid-sentence.
+⭐ Star the project if Companion saved a session.
 
-<sub>Not affiliated with or endorsed by Anthropic. "Claude" is a trademark of Anthropic, PBC.</sub>
+<sub>Not affiliated with or endorsed by Anthropic or OpenAI. Claude, ChatGPT, Work, and Codex are trademarks of their respective owners.</sub>
 
 </div>
