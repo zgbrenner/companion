@@ -53,13 +53,14 @@ windowTarget.postMessage = (data, targetOrigin, transfer = []) => {
 
 const reset = new Date(Date.now() + 3600e3).toISOString();
 windowTarget.fetch = async input => {
-  const url = typeof input === "string" ? input : input.url;
-  if (String(url).includes("evil.example")) {
+  const rawUrl = typeof input === "string" ? input : input.url;
+  const parsed = new URL(rawUrl, pageUrl);
+  if (parsed.hostname === "evil.example") {
     return new Response(JSON.stringify({ agentic_usage: { used_credits: 99, credit_limit: 100 } }), {
       headers: { "content-type": "application/json" },
     });
   }
-  if (String(url).includes("conversation")) {
+  if (parsed.pathname === "/backend-api/conversation") {
     return new Response("data: {\"type\":\"done\"}\n\n", {
       headers: { "content-type": "text/event-stream" },
     });
