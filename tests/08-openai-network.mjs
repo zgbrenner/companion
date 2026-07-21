@@ -1,6 +1,7 @@
 // OpenAI MAIN-world bridge contract: only first-party traffic is inspected,
 // secret per-page event channels are used, and only bounded normalized numeric
-// data crosses the DOM event bus.
+// data crosses the DOM event bus. The platform normalizer itself is covered by
+// 06-platforms; this test isolates transport and privacy behavior.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import vm from "node:vm";
@@ -84,6 +85,28 @@ windowTarget.CustomEvent = MiniCustomEvent;
 const platform = readFileSync(join(EXT_PATH, "src", "platform.js"), "utf8");
 const injected = readFileSync(join(EXT_PATH, "src", "openai-injected.js"), "utf8");
 vm.runInContext(platform, context, { filename: "src/platform.js" });
+context.CompanionPlatform = {
+  normalizeOpenAIUsage(payload, { sourcePath, observedAt }) {
+    const credits = payload?.agentic_usage;
+    if (!credits || !Number.isFinite(credits.used_credits) || !Number.isFinite(credits.credit_limit)) return null;
+    return {
+      provider: "openai",
+      observedAt,
+      sourcePath,
+      maxUtilizationPct: (credits.used_credits / credits.credit_limit) * 100,
+      buckets: [{
+        key: "agentic",
+        label: "Agentic usage",
+        pct: (credits.used_credits / credits.credit_limit) * 100,
+        resetsAt: credits.resets_at || null,
+        used: credits.used_credits,
+        limit: credits.credit_limit,
+        unit: "credits",
+      }],
+      counters: {},
+    };
+  },
+};
 
 const channelId = "unit-test-channel-123456";
 const usageEventName = `cuc:openai-usage:${channelId}`;
