@@ -34,6 +34,11 @@ async function waitFor(predicate, message, timeoutMs = 1000) {
   throw new Error(`ASSERT FAILED: ${message}`);
 }
 
+function decodeDetail(event) {
+  assert(typeof event.detail === "string", "secret-channel payload is serialized text");
+  return JSON.parse(event.detail);
+}
+
 const windowTarget = new EventTarget();
 const reset = new Date(Date.now() + 3600e3).toISOString();
 windowTarget.fetch = async (input, init = {}) => {
@@ -116,13 +121,13 @@ const networkEvents = [];
 const publicUsageEvents = [];
 const publicNetworkEvents = [];
 const readyEvents = [];
-windowTarget.addEventListener(usageEventName, event => usageEvents.push(event.detail));
-windowTarget.addEventListener(networkEventName, event => networkEvents.push(event.detail));
+windowTarget.addEventListener(usageEventName, event => usageEvents.push(decodeDetail(event)));
+windowTarget.addEventListener(networkEventName, event => networkEvents.push(decodeDetail(event)));
 windowTarget.addEventListener("cuc:openai-usage-snapshot", event => publicUsageEvents.push(event.detail));
 windowTarget.addEventListener("cuc:openai-network-event", event => publicNetworkEvents.push(event.detail));
 windowTarget.addEventListener("cuc:openai-channel-ready", event => readyEvents.push(event));
 vm.runInContext(injected, context, { filename: "src/openai-injected.js" });
-windowTarget.dispatchEvent(new MiniCustomEvent("cuc:openai-channel-offer", { detail: { channelId } }));
+windowTarget.dispatchEvent(new MiniCustomEvent("cuc:openai-channel-offer", { detail: channelId }));
 assert(readyEvents.length === 1, "MAIN-world observer acknowledges the offered secret channel");
 
 await windowTarget.fetch("https://chatgpt.com/backend-api/usage?access_token=secret-value&conversation=private-id");
