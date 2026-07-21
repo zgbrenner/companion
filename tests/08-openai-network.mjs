@@ -1,5 +1,6 @@
-// OpenAI MAIN-world bridge contract: only first-party traffic is inspected and
-// only bounded normalized numeric data crosses the authenticated DOM event bus.
+// OpenAI MAIN-world bridge contract: only first-party traffic is inspected,
+// secret per-page event channels are used, and only bounded normalized numeric
+// data crosses the DOM event bus.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import vm from "node:vm";
@@ -75,21 +76,31 @@ const platform = readFileSync(join(EXT_PATH, "src", "platform.js"), "utf8");
 const injected = readFileSync(join(EXT_PATH, "src", "openai-injected.js"), "utf8");
 vm.runInContext(platform, context, { filename: "src/platform.js" });
 
+const channelId = "unit-test-channel-123456";
+const usageEventName = `cuc:openai-usage:${channelId}`;
+const networkEventName = `cuc:openai-network:${channelId}`;
 const usageEvents = [];
 const networkEvents = [];
-windowTarget.addEventListener("cuc:openai-usage-snapshot", event => usageEvents.push(event.detail));
-windowTarget.addEventListener("cuc:openai-network-event", event => networkEvents.push(event.detail));
+const publicUsageEvents = [];
+const publicNetworkEvents = [];
+windowTarget.addEventListener(usageEventName, event => usageEvents.push(event.detail));
+windowTarget.addEventListener(networkEventName, event => networkEvents.push(event.detail));
+windowTarget.addEventListener("cuc:openai-usage-snapshot", event => publicUsageEvents.push(event.detail));
+windowTarget.addEventListener("cuc:openai-network-event", event => publicNetworkEvents.push(event.detail));
 vm.runInContext(injected, context, { filename: "src/openai-injected.js" });
-windowTarget.dispatchEvent(new MiniCustomEvent("cuc:openai-token-offer", { detail: { token: "unit-test-token" } }));
+windowTarget.dispatchEvent(new MiniCustomEvent("cuc:openai-channel-offer", { detail: { channelId } }));
 
-await windowTarget.fetch("https://chatgpt.com/backend-api/usage");
+await windowTarget.fetch("https://chatgpt.com/backend-api/usage?access_token=secret-value&conversation=private-id");
 await new Promise(resolve => setTimeout(resolve, 25));
-assert(usageEvents.length === 1, `expected one usage event, got ${usageEvents.length}`);
-assert(usageEvents[0].token === "unit-test-token", "usage event carries the authenticated token");
+assert(usageEvents.length === 1, `expected one secret-channel usage event, got ${usageEvents.length}`);
+assert(publicUsageEvents.length === 0, "fixed public usage event name is never used");
+assert(!Object.hasOwn(usageEvents[0], "token") && !Object.hasOwn(usageEvents[0], "channelId"), "secret values are not repeated in emitted payloads");
 assert(usageEvents[0].snapshot?.buckets?.[0]?.key === "agentic", "usage event contains normalized agentic bucket");
+assert(usageEvents[0].snapshot?.sourcePath === "/backend-api/usage", "source path excludes query strings and their sensitive values");
 const serialized = JSON.stringify(usageEvents[0]);
 assert(!serialized.includes("Ada Lovelace"), "profile name never crosses the bridge");
 assert(!serialized.includes("ada@example.com"), "profile email never crosses the bridge");
+assert(!serialized.includes("secret-value"), "query-string secrets never cross the bridge");
 
 await windowTarget.fetch("https://evil.example/backend-api/usage");
 await new Promise(resolve => setTimeout(resolve, 10));
@@ -98,5 +109,6 @@ assert(usageEvents.length === 1, "third-party lookalike traffic is ignored");
 await windowTarget.fetch("https://chatgpt.com/backend-api/conversation", { method: "POST" });
 await new Promise(resolve => setTimeout(resolve, 25));
 assert(networkEvents.some(event => event.kind === "generation-complete"), "generation completion is emitted without reading conversation text");
+assert(publicNetworkEvents.length === 0, "fixed public network event name is never used");
 
 console.log("08-openai-network PASS");
