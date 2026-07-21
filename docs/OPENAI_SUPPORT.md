@@ -41,6 +41,18 @@ Companion does not invent a limit, estimate a dollar figure, or scrape messages 
 
 Work and Codex may draw from the same agentic usage pool. Companion labels that counter `Agentic usage` so it does not imply that the pool belongs exclusively to one surface.
 
+## Freshness and stale readings
+
+Each OpenAI snapshot carries the time it was observed. The in-page widget and toolbar popup use the same freshness policy:
+
+- **Fresh:** less than five minutes old.
+- **Aging:** five to fifteen minutes old. Values remain visible with their exact age.
+- **Stale:** fifteen minutes to two hours old. Values remain visible, but Companion clearly warns that they may be out of date.
+- **Expired:** more than two hours old. Companion hides the old numbers instead of presenting them as current.
+- **Missing or implausible timestamp:** values fail closed and remain hidden.
+
+Freshness labels update automatically while the page or popup remains open. Using ChatGPT, Work, or a Codex-aware web surface allows Companion to observe a new native reading when OpenAI returns one.
+
 ## Privacy and bridge design
 
 The OpenAI adapter follows the same local-only design as the Claude adapter:
@@ -75,4 +87,4 @@ If the widget does not appear:
 
 If Caveman Mode opens a preview but the message does not send, review the preview and use the ChatGPT send button once. Companion deliberately never sends hidden text without a visible user action.
 
-If usage rows are empty, the current OpenAI response may not expose supported counters for that account or surface. Caveman Mode and file conversion still work normally.
+If usage rows are empty, the current OpenAI response may not expose supported counters, or the last reading may have expired. Caveman Mode and file conversion still work normally.

@@ -10,8 +10,11 @@ All notable changes to Companion. The most recent release is at the top.
 - Narrowed usage-endpoint matching and hardened XHR handling for JSON response types and unreadable response bodies.
 - Removed the broad `tabs` permission. Provider-aware popup routing now relies on `activeTab` and exact host permissions.
 - Made the OpenAI observer self-contained so it no longer depends on helper state crossing JavaScript worlds.
-- Added end-to-end Chromium coverage for native OpenAI usage rendering, profile-field exclusion, query-string stripping, event-forgery resistance, and bridge startup timing.
-- Rewrote the OpenAI and security documentation to match the multi-provider architecture and Codex desktop boundary.
+- Added shared OpenAI freshness states across the in-page widget and toolbar popup: fresh under five minutes, aging through fifteen minutes, visibly stale through two hours, and hidden after expiry.
+- Missing or implausibly future observation timestamps now fail closed instead of presenting untrustworthy values.
+- Freshness labels update automatically while the page or popup remains open.
+- Added end-to-end Chromium coverage for native OpenAI usage rendering, profile-field exclusion, query-string stripping, event-forgery resistance, bridge startup timing, stale warnings, and expired-value hiding.
+- Rewrote the OpenAI and security documentation to match the multi-provider architecture, freshness policy, and Codex desktop boundary.
 
 ### 1.1.0 (insights)
 
