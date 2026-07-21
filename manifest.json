@@ -69,6 +69,7 @@
         "src/shared.js",
         "src/caveman.js",
         "src/platform.js",
+        "src/openai-channel.js",
         "src/openai-content.js"
       ],
       "run_at": "document_start"
