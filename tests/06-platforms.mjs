@@ -30,6 +30,8 @@ assert(P.detectProvider("https://example.com/chatgpt.com") === null, "rejects lo
 assert(P.detectSurface({ url: "https://chatgpt.com/c/abc" }) === "chat", "defaults ChatGPT to Chat");
 assert(P.detectSurface({ url: "https://chatgpt.com/?mode=work" }) === "work", "detects Work from URL state");
 assert(P.detectSurface({ url: "https://chatgpt.com/c/abc", selectedModeText: "Work" }) === "work", "detects selected Work toggle");
+assert(P.detectSurface({ url: "https://chatgpt.com/c/abc", selectedModeText: "ChatGPT Work" }) === "work", "detects compound Work labels");
+assert(P.detectSurface({ url: "https://chatgpt.com/c/abc", selectedModeText: "OpenAI Codex" }) === "codex", "detects compound Codex labels");
 assert(P.detectSurface({ url: "https://chatgpt.com/codex/tasks/abc" }) === "codex", "detects Codex route");
 assert(P.detectSurface({ url: "https://claude.ai/chat/abc" }) === "claude", "keeps Claude surface distinct");
 
