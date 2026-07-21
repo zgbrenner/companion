@@ -1,6 +1,7 @@
 // ChatGPT integration harness: intercepted first-party page with a realistic
-// composer, surface switching, dark mode, safe Caveman preview behavior, and a
-// page-world attempt to steal and reuse the old bridge token.
+// composer, native usage response, surface switching, dark mode, safe Caveman
+// preview behavior, and a page-world attempt to steal and reuse the old bridge
+// token.
 import { launchExtension, assert } from "./lib.mjs";
 
 const { context, worker } = await launchExtension();
@@ -12,6 +13,22 @@ try {
   });
 
   await context.route("https://chatgpt.com/**", async route => {
+    const url = new URL(route.request().url());
+    if (url.pathname === "/backend-api/usage") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          profile: { name: "Browser Fixture", email: "fixture@example.com" },
+          agentic_usage: {
+            used_credits: 40,
+            credit_limit: 100,
+            resets_at: new Date(Date.now() + 3600e3).toISOString(),
+          },
+        }),
+      });
+      return;
+    }
     await route.fulfill({
       status: 200,
       contentType: "text/html",
@@ -89,6 +106,16 @@ try {
   await page.waitForTimeout(100);
   const afterAttack = await page.evaluate(() => document.querySelector("#cuc-openai-widget")?.shadowRoot?.textContent || "");
   assert(!afterAttack.includes("Forged usage"), "page-forged usage events never reach the widget");
+
+  await page.evaluate(() => fetch("/backend-api/usage?access_token=browser-secret&conversation=private-id"));
+  await page.waitForFunction(() => {
+    const text = document.querySelector("#cuc-openai-widget")?.shadowRoot?.textContent || "";
+    return text.includes("Agentic usage") && text.includes("40 credits");
+  }, { timeout: 10000 });
+  const afterNativeUsage = await page.evaluate(() => document.querySelector("#cuc-openai-widget")?.shadowRoot?.textContent || "");
+  assert(!afterNativeUsage.includes("Browser Fixture"), "profile names never reach the widget");
+  assert(!afterNativeUsage.includes("fixture@example.com"), "profile emails never reach the widget");
+  assert(!afterNativeUsage.includes("browser-secret"), "usage URL query values never reach the widget");
 
   await page.evaluate(() => {
     history.pushState({}, "", "/?mode=work");
