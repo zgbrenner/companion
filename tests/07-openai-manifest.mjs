@@ -50,8 +50,10 @@ assert(JSON.stringify(openaiIsolated.js) === JSON.stringify([
 
 const openaiMain = scripts.find(entry => entry.world === "MAIN" && entry.js?.includes("src/openai-injected.js"));
 assert(openaiMain, "OpenAI MAIN-world observer exists");
-assert(JSON.stringify(openaiMain.js) === JSON.stringify(["src/openai-injected.js"]),
-  "OpenAI MAIN observer is self-contained and has no cross-world helper dependency");
+assert(JSON.stringify(openaiMain.js) === JSON.stringify([
+  "src/openai-ready.js",
+  "src/openai-injected.js",
+]), "bounded readiness beacon loads before the self-contained OpenAI observer");
 for (const match of openaiMain.matches || []) {
   assert(/chatgpt\.com|chat\.openai\.com/.test(match), `unexpected OpenAI match ${match}`);
 }
