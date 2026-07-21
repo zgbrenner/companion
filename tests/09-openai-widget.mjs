@@ -99,14 +99,18 @@ try {
   assert(!afterAttack.includes("Forged usage"), "page-forged usage events never reach the widget");
 
   const bridgeDiagnostic = await page.evaluate(async () => {
+    const beforeState = document.documentElement.getAttribute("data-companion-openai-bridge");
     const fetchName = window.fetch.name;
     const installed = Boolean(window.__COMPANION_OPENAI_INSTALLED__);
     const response = await fetch("/backend-api/usage?access_token=browser-secret&conversation=private-id");
+    await new Promise(resolve => setTimeout(resolve, 200));
     return {
       fetchName,
       installed,
       contentType: response.headers.get("content-type"),
       status: response.status,
+      beforeState,
+      afterState: document.documentElement.getAttribute("data-companion-openai-bridge"),
     };
   });
   assert(bridgeDiagnostic.installed, `MAIN observer missing: ${JSON.stringify(bridgeDiagnostic)}`);
@@ -117,8 +121,9 @@ try {
       return text.includes("Agentic usage") && text.includes("40 credits");
     }, undefined, { timeout: 10000 });
   } catch (error) {
+    const finalState = await page.evaluate(() => document.documentElement.getAttribute("data-companion-openai-bridge"));
     const widgetText = await page.evaluate(() => document.querySelector("#cuc-openai-widget")?.shadowRoot?.textContent || "");
-    throw new Error(`native usage did not reach widget; diagnostic=${JSON.stringify(bridgeDiagnostic)}; widget=${JSON.stringify(widgetText)}; ${error}`);
+    throw new Error(`native usage did not reach widget; diagnostic=${JSON.stringify({ ...bridgeDiagnostic, finalState })}; widget=${JSON.stringify(widgetText)}; ${error}`);
   }
   const afterNativeUsage = await page.evaluate(() => document.querySelector("#cuc-openai-widget")?.shadowRoot?.textContent || "");
   assert(!afterNativeUsage.includes("Browser Fixture"), "profile names never reach the widget");
