@@ -38,4 +38,4 @@ Warning and danger colors remain semantic and must not be replaced by mint or ir
 
 ## Implementation
 
-The extension bundles the approved font binaries, the source Orbit C SVG, and four size-specific Chrome toolbar PNGs. The popup, settings page, Claude widget, ChatGPT widget, Work surface, and Codex-aware web surface share the same core identity while retaining restrained provider-context accents.
+The extension ships only the optimized local WOFF2 font assets, the source Orbit C SVG, and four size-specific Chrome toolbar PNGs. Development TTF sources and temporary download workflows are excluded from the production branch. The popup, settings page, Claude widget, ChatGPT widget, Work surface, and Codex-aware web surface share the same core identity while retaining restrained provider-context accents.
