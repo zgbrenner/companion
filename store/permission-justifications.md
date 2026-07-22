@@ -1,126 +1,124 @@
-# Chrome Web Store — Privacy Practices Tab
+# Chrome Web Store Privacy Practices — COMPANION
 
-Paste-ready answers for the "Privacy practices" tab of the CWS Developer Dashboard listing for **Companion**.
-
----
+Paste-ready answers for the Chrome Web Store developer dashboard. Re-check the dashboard wording before submission because Google can change field labels and data categories.
 
 ## Single purpose description
 
 ```
-Companion shows the signed-in user their own Claude.ai usage — spend in dollars, token
-estimates, and Claude's own rolling usage limits (session, weekly, Opus, and monthly credits) —
-in a widget under the claude.ai chat box and in a toolbar popup, with optional alerts as limits
-are approached. All functionality serves this single purpose of surfacing the user's existing
-Claude.ai usage data to them at a glance.
+COMPANION gives signed-in Claude and ChatGPT web users one local efficiency layer for viewing provider-reported numeric usage and limits when available, receiving optional threshold warnings, preparing concise prompts and replies, and converting user-selected files to Markdown locally. All features serve the single purpose of helping users understand and stretch their AI usage while keeping handled content on-device.
 ```
-
----
 
 ## Permission justifications
 
 ### storage
 
 ```
-Used to save the user's own settings (display and alert preferences) and locally computed spend
-history on-device, so they persist across browser sessions. No sync storage is used; nothing
-stored is transmitted anywhere.
+Used to store the user's settings, Claude numeric spend history, the latest normalized OpenAI usage snapshot, freshness timestamps, bounded provider caches, notification-deduplication state, Caveman conversation state, and shared toolbar-badge ownership. This storage remains on the user's device and can be erased from COMPANION Settings. chrome.storage.sync is not used and no stored value is sent to the developer.
 ```
 
 ### activeTab
 
 ```
-Used only when the user opens the toolbar popup, to identify whether the active tab is a
-claude.ai tab so the popup can display that tab's live usage data. The extension does not use
-the broader "tabs" permission and does not track browsing across sites.
+Used only after the user opens the toolbar popup, so COMPANION can identify whether the active tab is a supported Claude or ChatGPT web surface and route the popup to the correct provider view. COMPANION does not request the broader tabs permission and does not read the user's browser history.
 ```
 
 ### notifications
 
 ```
-Used to show an optional, user-configurable desktop notification when a Claude usage limit
-crosses 85% or 95%, so the user gets a heads-up before hitting a wall mid-conversation. Users can
-disable this at any time in Settings.
+Used for optional, user-configurable desktop warnings when a trustworthy native Claude or OpenAI limit reaches 85% or 95%. Notifications contain only the relevant usage label, utilization percentage, and reset countdown when available. They do not contain prompts, replies, files, account identifiers, or raw provider responses. Users can disable notifications in Settings.
 ```
 
 ### offscreen
 
 ```
-Used to host the local file-conversion pipeline for the optional "Caveman Mode" feature, which
-converts a user-selected file (PDF/Office document) to Markdown entirely on-device. The offscreen
-document relays file bytes to a sandboxed, network-isolated page and returns the converted text;
-it does not itself parse untrusted file formats and has no network access for this purpose.
+Used only for the user-initiated file-to-Markdown feature. The offscreen document acts as a privileged relay between the content script and a manifest-declared sandbox. Untrusted file parsing occurs in the opaque-origin sandbox, which has no extension API access and no HTTP, HTTPS, or WebSocket network access. File bytes and converted Markdown are not stored after the conversion flow completes.
 ```
 
-### Host permission justification (https://claude.ai/*, https://*.claude.ai/*)
+### alarms
 
 ```
-The extension's entire purpose is to read and display the signed-in user's own Claude.ai usage
-data and to run its widget UI on claude.ai. Host access is scoped exclusively to claude.ai and
-its subdomains — no other origin is requested. All requests are read-only GETs to claude.ai's own
-usage endpoints, authenticated by the user's existing browser session; no request can modify the
-user's account, conversations, or settings.
+Used to expire a high OpenAI toolbar warning two hours after its native usage observation, even if the user has closed every ChatGPT tab. The alarm name contains only the provider and observation timestamp. It does not contain account data, prompt text, reply text, file content, or a usage payload. Serialized ownership checks prevent an old alarm from clearing a newer Claude or OpenAI badge.
 ```
 
----
+### Host access: Claude
 
-## Are you using remote code?
+Applies to:
 
-**Answer: No.**
+- `https://claude.ai/*`
+- `https://*.claude.ai/*`
 
 ```
-All executable code ships inside the extension package; nothing is fetched or evaluated from a
-remote server at runtime. The extension bundles two third-party open-source libraries locally as
-part of the package — officeparser (Office document parsing) and a Mozilla PDF.js worker (PDF
-parsing) — both used only by the optional local file-conversion feature. These files are static,
-version-pinned assets committed to the extension's own package, not code loaded from a CDN or
-external host at runtime; they execute inside a sandboxed page with no network access. This
-satisfies "no remote code" under the Chrome Web Store's definition, since no code is retrieved
-from the network after installation.
+Required to run COMPANION's Claude widget and read the signed-in user's own native usage and limit information from Claude's first-party HTTPS endpoints. Requests are read-only and same-origin. COMPANION does not read the user's session cookie and cannot modify the account, subscription, settings, or conversations.
 ```
 
----
+### Host access: ChatGPT and OpenAI web surfaces
+
+Applies to:
+
+- `https://chatgpt.com/*`
+- `https://*.chatgpt.com/*`
+- `https://chat.openai.com/*`
+
+```
+Required to run COMPANION's ChatGPT widget, local Caveman tools, popup routing, and page-world observer on supported Chat, Work, and Codex-aware web routes. The observer passively inspects only first-party responses whose pathname suggests usage or limit data. Raw responses remain in the page world; only bounded normalized numeric fields and a query-free pathname cross into the extension. COMPANION does not create account or billing requests and cannot modify the user's OpenAI account or conversations.
+```
+
+## Remote code
+
+Select:
+
+**No, I am not using remote code.**
+
+Use this explanation if the dashboard provides a text field:
+
+```
+All executable code ships inside the uploaded extension package. COMPANION does not download JavaScript, WebAssembly, fonts, or executable configuration at runtime. The bundled office-document parser and PDF worker are version-pinned package assets and run only inside the local file-conversion flow. No code is loaded from a CDN or developer server, and privileged extension pages prohibit remote scripts and eval through their Content Security Policy.
+```
 
 ## Data usage disclosure checklist
 
-The CWS "Data collected" categories to check, and why:
+Chrome requires disclosure even when data is handled only on the user's device. The privacy policy must match the selected categories.
 
-### Categories to check
+### Categories to select
 
-| Category | Check? | Reasoning |
-|---|:---:|---|
-| Website content | **Yes** | The extension reads numeric usage data (spend, limits) from claude.ai pages/endpoints to display it back to the user. This is processed and stored **entirely on-device** — see below. |
+| Category | Select? | Why |
+| --- | :---: | --- |
+| Website content | **Yes** | COMPANION handles provider usage responses, numeric limit data, composer content for an optional local preview, and provider page state needed to render its user-facing features. |
+| Personal communications | **Yes** | When the user enables Caveman Mode and initiates a send, COMPANION transiently handles the draft prompt to offer a local trim preview. Prompt text is not stored or transmitted by COMPANION. |
+| User activity | **Yes, if this category appears in the current dashboard** | COMPANION reacts to user-initiated composer sends, file selection, and provider generation state solely to provide visible product features. This state is not used for analytics or behavioral profiling. |
 
-### Categories to leave unchecked
+If Google's current dashboard groups prompt and file content under a differently named category such as user-generated content, select that category as well and use the same local-only explanation. Accuracy is more important than minimizing the number of checked boxes.
 
-| Category | Check? | Reasoning |
-|---|:---:|---|
-| Personally identifiable information | No | No name, address, or contact info is read or stored |
-| Health information | No | Not applicable |
-| Financial and payment information | No | Dollar figures shown are Claude's own usage-credit readout, not payment/billing credentials; no payment data is read |
-| Authentication information | No | The session/auth cookie is never read; only a non-secret org-ID cookie value is used |
-| Personal communications | No | Prompt and reply text is never read or stored |
-| Location | No | Not applicable |
-| Web history | No | Only the active claude.ai tab is inspected via `activeTab`, and only to locate it — no browsing history is read or stored |
-| User activity | No | No clicks/keystrokes/scroll tracked; Caveman Mode's local prompt-trim preview is ephemeral and never persisted or transmitted |
+### Categories normally left unselected
 
-### For each category checked ("Website content"), required certifications
+| Category | Select? | Reason |
+| --- | :---: | --- |
+| Personally identifiable information | No | COMPANION does not collect names, emails, addresses, usernames, or government identifiers. |
+| Health information | No | Not handled. |
+| Financial and payment information | No | COMPANION does not access payment methods, invoices, banking data, billing addresses, or transactions. A provider's numeric usage-credit counter is handled as website content for the usage-meter feature. |
+| Authentication information | No | Passwords, access tokens, and session cookies are never read or stored. |
+| Location | No | Not requested or handled. |
+| Web history | No | COMPANION runs only on declared provider origins and uses activeTab after a popup click; it does not access browser history. |
 
-- **Is the data being sold to third parties?** No.
-- **Is the data being used for purposes unrelated to the item's core functionality?** No — it is used exclusively to display the user's own usage back to them.
-- **Is the data being used to determine creditworthiness or for lending purposes?** No.
+## Limited Use certifications
 
-### Required certification statements (tick all — all are true for this extension)
+All required certifications can be selected truthfully:
 
-- ☑ I do not sell or transfer user data to third parties outside of approved use cases.
-- ☑ I do not use or transfer user data for purposes unrelated to my item's single purpose.
-- ☑ I do not use or transfer user data to determine creditworthiness or for lending purposes.
+- COMPANION does not sell or transfer user data to third parties outside approved use cases.
+- COMPANION does not use or transfer user data for purposes unrelated to its single purpose.
+- COMPANION does not use or transfer user data to determine creditworthiness or for lending.
 
-### Recommended free-text summary for the disclosure form
+Recommended free-text explanation:
 
 ```
-The only data the extension reads is the user's own Claude.ai usage numbers (spend, limits),
-fetched read-only from claude.ai using the user's existing session. This data is processed and
-stored exclusively on the user's device (chrome.storage) to render the widget and popup. It is
-never transmitted to the developer or any third party, never sold, and never used for any
-purpose beyond displaying it back to the same user.
+COMPANION handles only the data necessary for its visible usage, alert, prompt-preview, and file-conversion features. Processing occurs locally in the browser. No COMPANION server receives user data, no developer or third party can read it, and it is never used for advertising, profiling, data brokerage, creditworthiness, lending, or any unrelated purpose. The use of information adheres to the Chrome Web Store User Data Policy, including the Limited Use requirements.
 ```
+
+## Public privacy policy URL
+
+The privacy policy URL must be public before submission. Because the repository is currently private, do not submit a private GitHub URL. First either:
+
+1. Make the repository public and use the rendered `store/privacy-policy.md` URL, or
+2. Publish the same policy on a public HTTPS page controlled by the developer.
+
+The public text must match this document and `store/privacy-policy.md` exactly in all material respects.
