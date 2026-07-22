@@ -1,0 +1,55 @@
+name: bootstrap-brand-assets
+
+on:
+  push:
+    branches: [agent/orbit-c-brand-refresh]
+
+permissions:
+  contents: write
+
+jobs:
+  bundle-fonts:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/orbit-c-brand-refresh
+      - name: Download approved OFL font binaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p src/fonts
+          curl --fail --location --retry 3 \
+            'https://raw.githubusercontent.com/theleagueof/league-spartan/master/fonts/webfonts/LeagueSpartan-Bold.woff2' \
+            --output src/fonts/league-spartan-bold.woff2
+          curl --fail --location --retry 3 \
+            'https://raw.githubusercontent.com/googlefonts/atkinson-hyperlegible-next/main/fonts/webfonts/AtkinsonHyperlegibleNext%5Bwght%5D.woff2' \
+            --output src/fonts/atkinson-hyperlegible-next-variable.woff2
+          python - <<'PY'
+          from pathlib import Path
+          expected = {
+              'src/fonts/league-spartan-bold.woff2': (10_000, 100_000),
+              'src/fonts/atkinson-hyperlegible-next-variable.woff2': (20_000, 200_000),
+          }
+          for path, bounds in expected.items():
+              data = Path(path).read_bytes()
+              if data[:4] != b'wOF2':
+                  raise SystemExit(f'{path} is not a WOFF2 font')
+              if not bounds[0] <= len(data) <= bounds[1]:
+                  raise SystemExit(f'{path} has implausible size: {len(data)}')
+              print(f'{path}: {len(data)} bytes')
+          PY
+      - name: Commit bundled fonts
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/fonts/league-spartan-bold.woff2 src/fonts/atkinson-hyperlegible-next-variable.woff2
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m 'chore: bundle approved local brand fonts'
+          git push origin HEAD:agent/orbit-c-brand-refresh
