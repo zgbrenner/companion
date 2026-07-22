@@ -6,6 +6,7 @@ import { EXT_PATH, assert } from "./lib.mjs";
 const read = path => readFileSync(join(EXT_PATH, path), "utf8");
 const manifest = JSON.parse(read("manifest.json"));
 const fonts = read("src/fonts.css");
+const providerFonts = read("src/brand-fonts.css");
 const popup = read("src/popup.html");
 const popupCss = read("src/popup.css");
 const router = read("src/popup-router.html");
@@ -31,11 +32,13 @@ for (const [name, source] of [
   assert(source.includes("COMPANION"), `${name} renders the all-caps brand`);
 }
 
-assert(fonts.includes('font-family: "League Spartan"'), "bundled League Spartan face is registered");
-assert(fonts.includes('font-family: "Atkinson Hyperlegible Next"'), "bundled Atkinson Hyperlegible Next face is registered");
-assert(fonts.includes("fonts/league-spartan-bold.woff2"), "League Spartan loads from the extension bundle");
-assert(fonts.includes("fonts/atkinson-hyperlegible-next-variable.woff2"), "Atkinson loads from the extension bundle");
-assert(!/https?:\/\//i.test(fonts), "font stylesheet makes no external request");
+for (const [name, source] of [["extension fonts", fonts], ["provider fonts", providerFonts]]) {
+  assert(source.includes('font-family: "League Spartan"'), `${name} registers League Spartan`);
+  assert(source.includes('font-family: "Atkinson Hyperlegible Next"'), `${name} registers Atkinson Hyperlegible Next`);
+  assert(source.includes("fonts/league-spartan-bold.woff2"), `${name} loads League Spartan from the bundle`);
+  assert(source.includes("fonts/atkinson-hyperlegible-next-variable.woff2"), `${name} loads Atkinson from the bundle`);
+  assert(!/https?:\/\//i.test(source), `${name} makes no external request`);
+}
 
 for (const path of [
   "src/fonts/league-spartan-bold.woff2",
@@ -58,10 +61,12 @@ for (const [name, source] of [
   assert(!source.includes('"Space Grotesk"'), `${name} no longer uses the old display font`);
 }
 
-assert(claudeContent.includes("league-spartan-bold.woff2"), "Claude registers the bundled brand font in the host page");
-assert(claudeContent.includes("atkinson-hyperlegible-next-variable.woff2"), "Claude registers the bundled UI font in the host page");
-assert(openaiContent.includes("league-spartan-bold.woff2"), "OpenAI registers the bundled brand font in the host page");
-assert(openaiContent.includes("atkinson-hyperlegible-next-variable.woff2"), "OpenAI registers the bundled UI font in the host page");
+assert(claudeContent.includes("league-spartan-bold.woff2"), "Claude's compatibility font registration is local");
+assert(openaiContent.includes("league-spartan-bold.woff2"), "OpenAI's compatibility font registration is local");
+const claudeScripts = manifest.content_scripts.find(entry => entry.matches?.some(match => match.includes("claude.ai")));
+const openaiScripts = manifest.content_scripts.find(entry => entry.matches?.some(match => match.includes("chatgpt.com")));
+assert(claudeScripts?.css?.includes("src/brand-fonts.css"), "Claude receives the provider font registration stylesheet");
+assert(openaiScripts?.css?.includes("src/brand-fonts.css"), "OpenAI receives the provider font registration stylesheet");
 
 const resources = manifest.web_accessible_resources.flatMap(entry => entry.resources || []);
 for (const resource of [
@@ -89,6 +94,6 @@ for (const size of [16, 32, 48, 128]) {
 }
 
 const allProductText = [manifest.description, popup, router, openaiPopup, options].join("\n");
-assert(!/fonts\.googleapis|fonts\.gstatic|use\.typekit/i.test(allProductText + fonts), "product makes no third-party font request");
+assert(!/fonts\.googleapis|fonts\.gstatic|use\.typekit/i.test(allProductText + fonts + providerFonts), "product makes no third-party font request");
 
 console.log("17-brand-identity PASS");
