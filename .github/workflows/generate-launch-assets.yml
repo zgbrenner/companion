@@ -1,5 +1,6 @@
 name: generate-launch-assets
 
+# One-time branch workflow. It deletes itself after committing the generated images.
 on:
   push:
     branches:
