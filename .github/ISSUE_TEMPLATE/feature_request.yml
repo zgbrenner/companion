@@ -1,0 +1,76 @@
+name: Feature request
+description: Propose a focused improvement that fits COMPANION's local, privacy-first purpose.
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        COMPANION stays intentionally narrow: native usage visibility, trustworthy alerts, and local efficiency tools for supported Claude and ChatGPT web surfaces. Explain the user problem before proposing an implementation.
+
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Primary surface
+      options:
+        - Claude.ai
+        - ChatGPT Chat
+        - ChatGPT Work
+        - Codex-aware ChatGPT web route
+        - Toolbar popup
+        - Settings
+        - File conversion
+        - Cross-provider
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: User problem
+      description: What recurring problem does this solve, and for whom?
+    validations:
+      required: true
+
+  - type: textarea
+    id: current-workaround
+    attributes:
+      label: Current workaround
+      description: How do users handle this today?
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed experience
+      description: Describe the smallest user-facing change that solves the problem.
+    validations:
+      required: true
+
+  - type: textarea
+    id: data
+    attributes:
+      label: Data and permission impact
+      description: What page data, local storage, host access, browser permission, or provider request would be required? Say "none" when none is needed.
+    validations:
+      required: true
+
+  - type: textarea
+    id: failure
+    attributes:
+      label: Failure and honesty boundary
+      description: How should COMPANION behave when the provider does not expose the needed data or the page layout changes?
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: principles
+    attributes:
+      label: Product principles
+      options:
+        - label: The proposal fits COMPANION's single purpose.
+          required: true
+        - label: The proposal does not require analytics, telemetry, advertising, or a developer backend.
+          required: true
+        - label: The proposal does not present an estimate as native provider data.
+          required: true
