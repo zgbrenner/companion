@@ -54,9 +54,10 @@ fi
 # Refuse known self-update or remotely executed script patterns. Provider HTTPS
 # URLs remain valid in host permissions and connect-src; this check targets code
 # loading, not first-party data access.
+REMOTE_CODE_PATTERN="(raw\\.githubusercontent\\.com|<script[^>]+src=['\"]https?://|importScripts\\(['\"]https?://|import\\(['\"]https?://)"
 if grep -RInE \
   --include='*.js' --include='*.html' --include='manifest.json' \
-  '(raw\.githubusercontent\.com|<script[^>]+src=["'"']https?://|importScripts\(["'"']https?://|import\(["'"']https?://)' \
+  "$REMOTE_CODE_PATTERN" \
   manifest.json src >/tmp/companion-remote-code-scan.txt 2>/dev/null; then
   echo "error: possible remote-code or self-update reference found:" >&2
   cat /tmp/companion-remote-code-scan.txt >&2
@@ -69,7 +70,6 @@ python3 - "$ZIP_PATH" <<'PY'
 from __future__ import annotations
 
 import json
-import os
 import pathlib
 import stat
 import sys
