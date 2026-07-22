@@ -1,83 +1,182 @@
-# Chrome Web Store Submission Checklist — Companion v1.0.0
+# Chrome Web Store Submission Checklist — COMPANION v1.2.0
 
-Step-by-step for taking this extension from repo to a published CWS listing.
+This checklist covers package creation, Chrome Web Store review, controlled testing, and coordinated public launch.
 
----
+## 1. Developer account and publisher setup
 
-## 1. One-time developer account setup
+- [ ] Register the publishing Google account in the Chrome Web Store developer dashboard.
+- [ ] Pay the one-time developer registration fee shown by Google if the account has not already completed registration.
+- [ ] Enable **2-step verification** on the publishing Google account. Chrome Web Store publishing requires it.
+- [ ] Verify the developer contact email and monitor it throughout review.
+- [ ] Complete the EU Digital Services Act trader or non-trader declaration in the account settings using the status that accurately applies to the developer.
+- [ ] Use the same verified publisher identity for future COMPANION updates.
 
-- [ ] Register a Chrome Web Store developer account at the [Developer Dashboard](https://chrome.google.com/webstore/devconsole) if not already done.
-- [ ] Pay the **one-time $5 USD registration fee** (per Google account, not per extension — skip if this account has already paid it for a prior extension).
-- [ ] Verify the account email if prompted.
+## 2. Repository and policy availability
 
-## 2. Build the upload package
+- [ ] Decide whether the repository will become public before submission. It is currently private.
+- [ ] Make `store/privacy-policy.md` available at a public HTTPS URL before entering the privacy-policy field.
+- [ ] Ensure the public privacy policy, `store/listing.md`, `store/permission-justifications.md`, `manifest.json`, and the actual extension behavior agree.
+- [ ] Confirm the public support destination works. A public GitHub issue tracker is recommended after the repository becomes public.
+- [ ] Confirm `zgbrenner@gmail.com` is the intended policy and support contact, or update every document consistently.
 
-- [ ] Confirm `manifest.json` reflects the store build: `"version": "1.0.0"`, self-updater code and its permissions/host entries removed (no `alarms` permission, no `api.github.com` / `raw.githubusercontent.com` / `*.pages.dev` host permissions or CSP `connect-src` entries — `connect-src` should be limited to `'self' https://claude.ai https://*.claude.ai`).
-- [ ] Run the packaging script:
+## 3. Final source preflight
+
+- [ ] Confirm `manifest.json` contains:
+  - [ ] name `COMPANION`
+  - [ ] version `1.2.0`
+  - [ ] exact Claude and ChatGPT HTTPS host permissions only
+  - [ ] `storage`, `activeTab`, `notifications`, `offscreen`, and `alarms`
+  - [ ] no `<all_urls>` permission
+  - [ ] no broad `tabs` permission
+  - [ ] no remote update URL or remote-code loader
+- [ ] Confirm `CHANGELOG.md` contains a finalized `1.2.0` section.
+- [ ] Confirm `RELEASE_NOTES_1.2.0.md` matches the shipped functionality.
+- [ ] Run the full numbered test suite and retain the transcript.
+- [ ] Review `docs/SECURITY.md` and `store/reviewer-notes.md` one final time.
+
+## 4. Build and verify the upload package
+
+The release workflow is the preferred source of the upload ZIP.
+
+- [ ] Run `.github/workflows/release-package.yml` with `workflow_dispatch` on the final release commit.
+- [ ] Download the generated ZIP and SHA-256 checksum artifact.
+- [ ] Confirm the checksum matches locally:
+
+  ```bash
+  sha256sum -c companion-1.2.0.zip.sha256
   ```
+
+- [ ] Alternatively, build locally:
+
+  ```bash
   tools/package-webstore.sh
   ```
-  This produces `dist/companion-1.0.0.zip`, containing exactly `manifest.json`, `src/`, and `icons/` at the zip root. The script refuses to package a manifest that still references the removed self-update subsystem.
-- [ ] Sanity-check the zip: unzip it to a scratch folder and `chrome://extensions` → Load unpacked from there, confirm it loads with no console errors and no references to the removed update mechanism.
 
-## 3. Screenshots
+- [ ] Confirm the ZIP contains exactly the runtime extension roots:
+  - `manifest.json`
+  - `icons/`
+  - `src/`
+- [ ] Confirm it does not contain tests, docs, source maps, environment files, editor files, development fonts, Git metadata, or launch materials.
+- [ ] Extract the ZIP to a fresh directory and load that extracted directory through `chrome://extensions` as an unpacked extension.
+- [ ] Confirm there are no missing assets or extension console errors.
 
-- [ ] Prepare **1 to 5** screenshots (1 minimum, 5 maximum — the store requires at least one).
-- [ ] Format: **PNG**, dimensions **1280×800** (preferred) or **640×400** — pick one size and use it consistently across all screenshots.
-- [ ] Suggested shots, in priority order:
-  1. The widget docked under the claude.ai chat box, showing real spend.
-  2. The toolbar popup (session spend, today, this month, 14-day trend, limits).
-  3. The limits view with reset countdowns.
-  4. Caveman Mode toggle / prompt-trim preview.
-  5. Settings page.
-- [ ] Source images exist at `docs/images/*.png` (widget, popup, settings) — re-export/crop these to the exact store dimensions rather than reusing the README's arbitrary-width versions.
-- [ ] Upload the five 1280×800 PNGs already in `store/screenshots/` (widget, popup, and settings in light theme; widget and popup in dark theme).
+## 5. Real-account smoke test
 
-## 4. Promotional tile (optional but recommended)
+Test the exact extracted release package, not a working-tree folder.
 
-- [ ] Small promo tile: **440×280 PNG**. Optional, but listings with a promo tile get better placement in category browsing/search — recommended for launch.
-- [ ] Marquee (1400×560) and large tile (920×680) are only needed if requesting featured placement — skip for initial submission.
+- [ ] Claude.ai, light theme
+- [ ] Claude.ai, dark theme
+- [ ] ChatGPT Chat, light theme
+- [ ] ChatGPT Chat, dark theme
+- [ ] ChatGPT Work if available to the test account
+- [ ] A Codex-aware ChatGPT web route if available
+- [ ] New conversation and existing conversation
+- [ ] Page refresh and in-app navigation
+- [ ] Provider-aware toolbar popup
+- [ ] Caveman prompt preview with trimmed, original, edited, and cancelled paths
+- [ ] One PDF and one Office file conversion
+- [ ] Desktop notification toggle
+- [ ] Toolbar badge behavior
+- [ ] Clear all local data
 
-## 5. Store listing fields
+Record any account-specific data absence as expected when a provider does not expose a supported native counter. Do not treat an honest OpenAI empty state as a failure.
 
-- [ ] Paste content from `store/listing.md`: extension name, short description (116/132 chars — verify it still fits if edited), detailed description, category (**Productivity**, see `listing.md` for reasoning), language (**English**).
-- [ ] Upload icon: use `icons/icon128.png` (already in repo) as the store icon.
+## 6. Store listing fields
 
-## 6. Privacy tab
+Paste the current content from `store/listing.md`.
 
-- [ ] **Privacy policy URL** — host `store/privacy-policy.md` on GitHub and link the rendered or raw URL, e.g.:
-  ```
-  https://github.com/zgbrenner/claudecompanion/blob/main/store/privacy-policy.md
-  ```
-  (Use the `blob` URL for a readable rendered page, or `raw.githubusercontent.com/...` if the field requires a raw text/HTML response rather than a GitHub UI page — check CWS's current validation behavior at submission time and use whichever it accepts.)
-- [ ] Paste content from `store/permission-justifications.md` into: single purpose description, and each permission's justification field (storage, activeTab, notifications, offscreen, host permission justification).
-- [ ] "Are you using remote code?" → **No**, with the explanation from `permission-justifications.md` (two bundled libraries ship locally in the package; nothing is fetched at runtime).
-- [ ] Data usage disclosure checklist → check **only** "Website content"; leave all other categories unchecked; tick the three required certification statements. See `store/permission-justifications.md` for full reasoning.
+- [ ] Name: `COMPANION`
+- [ ] Summary: verify it remains 132 characters or fewer after any dashboard edit
+- [ ] Detailed description: preserve the native-data boundary and non-affiliation statement
+- [ ] Category: Productivity
+- [ ] Language: English (United States)
+- [ ] Support URL: public and working
+- [ ] Homepage URL: public and working, preferably the public repository or a dedicated landing page
 
-## 7. Trademark / naming risk
+Do not add unsupported superlatives, provider affiliation, install counts, review counts, awards, rankings, or performance claims.
 
-- [x] **Resolved proactively:** the extension's original name paired "Claude" with "Companion"; it was renamed to just **"Companion"** before submission specifically to avoid using Anthropic's "Claude" mark in the product name, heading off a CWS **impersonation / trademark policy** flag rather than waiting for one.
-- [ ] **Residual risk is low but not zero:** the listing copy (short/detailed description, privacy policy) still references "Claude.ai" descriptively, since the extension needs to be findable and its purpose needs to be clear. This is standard nominative fair use — identifying the compatible product, not branding the extension with the mark — but reviewers doing a fast pass could still flag it.
-- [ ] **Mitigations in place:**
-  - Explicit non-affiliation disclaimer at the end of the detailed description ("Companion is an independent, unofficial project... not affiliated with, endorsed by, or sponsored by Anthropic. 'Claude' is a trademark of Anthropic, PBC.") — still required and unchanged by the rename.
-  - Same disclaimer duplicated in the privacy policy header.
-  - No use of Anthropic/Claude logos or brand assets — icon is original.
-- [ ] If review still flags the listing, trim "Claude.ai" mentions to the minimum needed for clarity (e.g. keep it in the short description and the non-affiliation line, drop repeated uses elsewhere) rather than renaming again.
+## 7. Store graphics
 
-## 8. Trader / non-trader declaration (EU DSA)
+Chrome Web Store screenshot dimensions must be consistent.
 
-- [ ] The Digital Services Act requires every developer publishing to EU users to declare **trader** or **non-trader** status in the dashboard's "Account" settings before submission.
-- [ ] For an individual developer (zgbrenner) publishing a free extension with no commercial trading entity, **non-trader** is almost always the correct declaration — confirm against current criteria in the dashboard, as Google's definitions can change. Complete this once per developer account; it blocks publishing to the EU if left unset.
+- [ ] Store icon: `icons/icon128.png`
+- [ ] Small promotional tile: `store/promo-tile-440x280.png`
+- [ ] Optional marquee: `store/marquee-1400x560.png`
+- [ ] Upload up to five 1280×800 screenshots:
+  1. `store/screenshots/01-overview.png`
+  2. `store/screenshots/02-claude-usage.png`
+  3. `store/screenshots/03-chatgpt-work-codex.png`
+  4. `store/screenshots/04-settings-privacy.png`
+  5. `store/screenshots/05-local-efficiency-tools.png`
+- [ ] Inspect every image at native size and at a small thumbnail size.
+- [ ] Confirm visible numbers are clearly presented as product examples or actual seeded product renders, not claims about a user's account.
+- [ ] Confirm no Anthropic, Claude, OpenAI, ChatGPT, Work, or Codex logo is used as COMPANION branding.
 
-## 9. Submit and review
+## 8. Privacy practices tab
 
-- [ ] Submit for review.
-- [ ] **Expected review time:** typically a few hours to a few business days for a new listing; can extend to ~1–2 weeks if the automated/manual review flags something (permissions, host access, or the trademark issue in §7) and requires a manual look or a resubmission cycle. Budget for at least one round of back-and-forth on a first submission.
-- [ ] Watch the developer dashboard and the registered account email for review correspondence — CWS communicates rejections and requested changes there, not elsewhere.
+Use `store/permission-justifications.md`.
 
-## 10. Post-approval
+- [ ] Paste the single-purpose description.
+- [ ] Justify `storage`.
+- [ ] Justify `activeTab`.
+- [ ] Justify `notifications`.
+- [ ] Justify `offscreen`.
+- [ ] Justify `alarms`.
+- [ ] Justify Claude host permissions.
+- [ ] Justify ChatGPT and OpenAI web host permissions.
+- [ ] Remote code: select **No, I am not using remote code**.
+- [ ] Disclose Website content.
+- [ ] Disclose Personal communications because an enabled, user-initiated Caveman preview transiently handles draft prompt text locally.
+- [ ] If the current dashboard separately lists User activity or User-generated content, select the categories that accurately describe composer sends and user-selected file conversion.
+- [ ] Select all required Limited Use certifications that remain true.
+- [ ] Enter the public privacy-policy URL.
 
-- [ ] **Updates now ship through the Chrome Web Store**, not the extension's old self-updater — that mechanism has been removed from the store build. Do not re-add GitHub host permissions or the `alarms` permission in future store releases.
-- [ ] For every future release: bump `"version"` in `manifest.json` (CWS requires a strictly increasing version to accept an update), rebuild with `tools/package-webstore.sh`, and upload the new zip as a new package version in the dashboard. Each update goes through review again, generally faster than the initial listing review.
-- [ ] Keep `store/privacy-policy.md`'s "Last updated" date current any time data handling changes, since the CWS listing links directly to it.
-- [ ] If distributing outside the store is still desired for some users (e.g., enterprise `ExtensionInstallForcelist`), that is a separate, unpacked/self-hosted distribution path and does not affect the CWS listing.
+Accuracy is more important than minimizing the number of disclosed categories. Local-only processing still needs to be disclosed.
+
+## 9. Reviewer instructions
+
+- [ ] Paste or attach the relevant material from `store/test-instructions.md`.
+- [ ] Add `store/reviewer-notes.md` when the dashboard provides a reviewer note field.
+- [ ] Explain that OpenAI usage rows are account-dependent and an empty state is valid when OpenAI exposes no supported counter.
+- [ ] Explain the standalone Codex desktop boundary.
+- [ ] Do not provide personal provider credentials in reviewer notes or repository files.
+
+## 10. Distribution and publishing controls
+
+- [ ] Choose the intended distribution regions.
+- [ ] For a public launch, select Public visibility.
+- [ ] Use **deferred publishing** so approval does not automatically trigger the public launch before the final smoke test and launch materials are ready.
+- [ ] If the dashboard supports a trusted-tester or unlisted phase that fits the launch plan, use it for a brief approved-package test before public publication.
+- [ ] Submit the package for review.
+- [ ] Monitor the dashboard and developer email for questions or policy notices.
+
+## 11. After approval, before public publication
+
+- [ ] Test the approved package with the intended release account and at least one additional trusted tester.
+- [ ] Add the final Chrome Web Store URL to `README.md`, launch copy, Product Hunt draft, and social posts.
+- [ ] Decide whether to make the GitHub repository public. Public source is an important trust and growth asset for this privacy-focused extension.
+- [ ] Set repository description, topics, social preview, issue templates, and discussions if enabled.
+- [ ] Prepare the `v1.2.0` GitHub release using `RELEASE_NOTES_1.2.0.md`.
+- [ ] Confirm the public privacy-policy and support links work while signed out.
+- [ ] Confirm the launch assets and posts contain the final store URL.
+
+## 12. Coordinated public launch
+
+Follow `docs/launch/LAUNCH_PLAYBOOK.md`.
+
+- [ ] Publish the approved Chrome Web Store listing.
+- [ ] Publish the GitHub repository if public source is part of the launch.
+- [ ] Publish the `v1.2.0` GitHub release.
+- [ ] Launch on Product Hunt only when the listing is live and installable.
+- [ ] Publish the Hacker News, Reddit, X, LinkedIn, and community posts at sensible intervals rather than simultaneously spamming every channel.
+- [ ] Ask for feedback and honest reviews after users have experienced the product. Do not coordinate votes, incentivize ratings, or mass-message strangers.
+- [ ] Respond quickly to install problems, permission questions, and provider-layout regressions.
+
+## 13. First-week operations
+
+- [ ] Review Chrome Web Store installs, weekly users, ratings, reviews, and support messages daily.
+- [ ] Review GitHub issues and discussions daily if the repository is public.
+- [ ] Track launch feedback using `docs/launch/PRIVACY_SAFE_GROWTH_METRICS.md`.
+- [ ] Prioritize broken installation, data-accuracy, privacy, and composer-integration issues over new features.
+- [ ] Ship a corrective release only after reproducing and testing the issue.
+- [ ] Update the listing or privacy policy immediately if a public claim is inaccurate.
