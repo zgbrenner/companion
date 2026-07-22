@@ -1,0 +1,191 @@
+name: release-package
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+  pull_request:
+    paths:
+      - manifest.json
+      - icons/**
+      - src/**
+      - tests/**
+      - tools/package-webstore.sh
+      - tools/generate-launch-assets.py
+      - store/**
+      - docs/launch/**
+      - RELEASE_NOTES_1.2.0.md
+      - .github/workflows/release-package.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-package-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-release-candidate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      PLAYWRIGHT_VERSION: "1.61.1"
+      AXE_CORE_VERSION: "4.12.1"
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Cache Playwright Chromium
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ env.PLAYWRIGHT_VERSION }}
+
+      - name: Install pinned browser verification dependencies
+        run: |
+          npm install --no-save "playwright@${PLAYWRIGHT_VERSION}" "axe-core@${AXE_CORE_VERSION}"
+          npx playwright install --with-deps chromium
+
+      - name: Install launch-artwork tooling
+        run: python3 -m pip install --disable-pip-version-check pillow 'fonttools[woff]' brotli
+
+      - name: Render current extension surfaces
+        run: node tests/18-brand-snapshots.mjs
+
+      - name: Decompress bundled fonts for launch artwork
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from fontTools.ttLib import TTFont
+          for source, destination in (
+              ('src/fonts/league-spartan-bold.woff2', '/tmp/companion-league-spartan.ttf'),
+              ('src/fonts/atkinson-hyperlegible-next-variable.woff2', '/tmp/companion-atkinson.ttf'),
+          ):
+              font = TTFont(source)
+              font.flavor = None
+              font.save(destination)
+          PY
+
+      - name: Generate Chrome Web Store and launch artwork
+        env:
+          COMPANION_BRAND_FONT: /tmp/companion-league-spartan.ttf
+          COMPANION_UI_FONT: /tmp/companion-atkinson.ttf
+          COMPANION_UI_BOLD_FONT: /tmp/companion-atkinson.ttf
+        run: python3 tools/generate-launch-assets.py
+
+      - name: Run full numbered test suite
+        shell: bash
+        env:
+          REQUIRE_GENERATED_ASSETS: "1"
+        run: |
+          set +e
+          node tests/run.mjs 2>&1 | tee release-test-output.log
+          status=${PIPESTATUS[0]}
+          exit "$status"
+
+      - name: Build deterministic Chrome Web Store package
+        shell: bash
+        run: |
+          chmod +x tools/package-webstore.sh
+          tools/package-webstore.sh
+
+      - name: Audit package and checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./manifest.json').version")"
+          zip_path="dist/companion-${version}.zip"
+          checksum_path="${zip_path}.sha256"
+
+          test -s "$zip_path"
+          test -s "$checksum_path"
+          unzip -t "$zip_path"
+          (
+            cd dist
+            sha256sum -c "$(basename "$checksum_path")"
+          )
+
+          unzip -l "$zip_path" | tee release-package-contents.txt
+
+          python3 - "$zip_path" <<'PY'
+          import json
+          import pathlib
+          import sys
+          import zipfile
+
+          path = pathlib.Path(sys.argv[1])
+          with zipfile.ZipFile(path) as archive:
+              names = archive.namelist()
+              roots = {name.split('/', 1)[0] for name in names}
+              if roots != {'manifest.json', 'icons', 'src'}:
+                  raise SystemExit(f'unexpected archive roots: {sorted(roots)}')
+              manifest = json.loads(archive.read('manifest.json'))
+              if manifest.get('name') != 'COMPANION':
+                  raise SystemExit('package name is not COMPANION')
+              if manifest.get('version') != '1.2.0':
+                  raise SystemExit('package version is not 1.2.0')
+              forbidden = [
+                  name for name in names
+                  if name.startswith(('tests/', 'docs/', 'store/', '.github/'))
+                  or name.endswith(('.map', '.ttf', '.orig', '.rej', '.swp', '.tmp', '.bak'))
+                  or '/.env' in f'/{name.lower()}'
+                  or 'space-grotesk' in name.lower()
+              ]
+              if forbidden:
+                  raise SystemExit(f'forbidden package entries: {forbidden}')
+              print(f'Package audit passed: {len(names)} files')
+          PY
+
+      - name: Stage release artifact bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./manifest.json').version")"
+          mkdir -p release-artifact
+          cp "dist/companion-${version}.zip" release-artifact/
+          cp "dist/companion-${version}.zip.sha256" release-artifact/
+          cp RELEASE_NOTES_1.2.0.md release-artifact/
+          cp release-package-contents.txt release-artifact/
+          cp release-test-output.log release-artifact/
+
+      - name: Stage launch artwork bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p launch-artifact/store/screenshots launch-artifact/docs/launch/assets
+          cp store/promo-tile-440x280.png launch-artifact/store/
+          cp store/marquee-1400x560.png launch-artifact/store/
+          cp store/screenshots/0*.png launch-artifact/store/screenshots/
+          cp docs/launch/assets/*.png launch-artifact/docs/launch/assets/
+          cp store/listing.md launch-artifact/store/
+          cp store/privacy-policy.md launch-artifact/store/
+          cp store/permission-justifications.md launch-artifact/store/
+          cp store/submission-checklist.md launch-artifact/store/
+          cp store/test-instructions.md launch-artifact/store/
+          cp store/reviewer-notes.md launch-artifact/store/
+          cp docs/launch/LAUNCH_PLAYBOOK.md launch-artifact/docs/launch/
+          cp docs/launch/LAUNCH_COPY.md launch-artifact/docs/launch/
+          cp docs/launch/PRESS_KIT.md launch-artifact/docs/launch/
+          cp docs/launch/PRIVACY_SAFE_GROWTH_METRICS.md launch-artifact/docs/launch/
+
+      - name: Upload release candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: companion-v1.2.0-release-candidate
+          path: release-artifact
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload Chrome Web Store and launch assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: companion-v1.2.0-launch-assets
+          path: launch-artifact
+          if-no-files-found: error
+          retention-days: 30

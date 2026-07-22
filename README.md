@@ -1,190 +1,305 @@
 <div align="center">
 
-<h1>Companion</h1>
+<img src="icons/orbit-c.svg" alt="COMPANION Orbit C icon" width="96" height="96">
 
-<h3>A private usage meter and efficiency layer for Claude, ChatGPT, Work, and Codex-aware web surfaces.</h3>
+<h1>COMPANION</h1>
 
-<p>Know what the provider actually reports. Stretch your limits when they run low. Keep every prompt, reply, and file on your device.</p>
+<h3>Private usage and efficiency tools for Claude and ChatGPT</h3>
+
+<p><strong>Native numbers or nothing.</strong> See provider-reported usage when it is available, finish more work before a limit, and keep prompts, replies, files, and history private.</p>
 
 <p>
-  <img alt="Chrome and Edge, Manifest V3" src="https://img.shields.io/badge/Chrome%20%26%20Edge-Manifest%20V3-3d7a5c?style=for-the-badge&logo=googlechrome&logoColor=white" />
-  <img alt="Claude and ChatGPT" src="https://img.shields.io/badge/Claude%20%2B%20ChatGPT-auto--detect-2b3648?style=for-the-badge" />
-  <img alt="100 percent local and private" src="https://img.shields.io/badge/100%25-local%20%26%20private-3d7a5c?style=for-the-badge" />
-  <img alt="version 1.2.0" src="https://img.shields.io/badge/version-1.2.0-7c5cff?style=for-the-badge" />
+  <img alt="Version 1.2.0" src="https://img.shields.io/badge/version-1.2.0-7C6CFF?style=for-the-badge" />
+  <img alt="Chrome Manifest V3" src="https://img.shields.io/badge/Chrome-Manifest%20V3-111827?style=for-the-badge&logo=googlechrome&logoColor=white" />
+  <img alt="No analytics or telemetry" src="https://img.shields.io/badge/analytics%20%26%20telemetry-none-168363?style=for-the-badge" />
 </p>
 
 <p>
-  <img alt="no telemetry" src="https://img.shields.io/badge/telemetry-none-3d7a5c?style=flat-square" />
-  <img alt="no trackers" src="https://img.shields.io/badge/trackers-zero-3d7a5c?style=flat-square" />
-  <img alt="sandboxed file parser" src="https://img.shields.io/badge/file%20parser-sandboxed-3d7a5c?style=flat-square" />
-  <img alt="read only provider access" src="https://img.shields.io/badge/provider%20access-read--only-b4791f?style=flat-square" />
+  <a href="#install-and-test">Install and test</a> ·
+  <a href="docs/SECURITY.md">Security</a> ·
+  <a href="store/privacy-policy.md">Privacy policy</a> ·
+  <a href="RELEASE_NOTES_1.2.0.md">Release notes</a>
 </p>
 
-<br/>
+<img alt="COMPANION widget" src="docs/images/widget.png" width="900">
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/widget-dark.png">
-  <img alt="Companion docked beneath a chat composer" src="docs/images/widget.png" width="760">
-</picture>
-
-<br/>
-<sub>Companion docks beneath the active composer, follows the page theme, and changes its visual language for Claude, Chat, Work, and Codex.</sub>
+<sub>The Chrome Web Store URL will be added after v1.2.0 is approved. The repository package is ready for trusted release testing.</sub>
 
 </div>
 
 ---
 
-## One extension, four surfaces
+## The problem
 
-Companion auto-detects where it is running. It does not ask you to choose a provider, install a second extension, or keep separate settings.
+Claude and ChatGPT are where a growing amount of real work happens, but usage visibility is fragmented, easy to miss, and different across providers and account types.
 
-| Surface | What Companion does |
+Many tools fill missing data with token estimates that look more certain than they are. COMPANION takes the opposite approach:
+
+> **Show a native value when the provider exposes it. Say when it does not. Never turn a guess into a fact.**
+
+COMPANION also places local efficiency tools beside the active composer, so the same privacy-first workflow follows you across supported providers.
+
+## One extension, four web surfaces
+
+COMPANION detects the current provider and surface automatically. There is no manual provider switch and no second extension to install.
+
+| Surface | What COMPANION does |
 | --- | --- |
-| **Claude.ai** | Shows Claude's exact usage-credit spend, rolling session and weekly limits, Opus usage, reset times, pace warnings, and local history. |
-| **ChatGPT Chat** | Adds a native-looking Chat widget, Caveman Mode, prompt trimming, local file conversion, and any numeric usage counters OpenAI exposes to the page. |
-| **ChatGPT Work** | Switches to a restrained violet treatment and shows the shared agentic usage pool when OpenAI exposes it. |
-| **Codex-aware web surfaces** | Switches to a graphite and indigo interface with selective monospace details and shows shared agentic usage when available. |
+| **Claude.ai** | Shows native usage-credit spend, rolling session and weekly limits, Opus usage, reset times, local history, pace warnings, and plan-fit insights when those values are exposed. |
+| **ChatGPT Chat** | Adds a native-looking widget, local Caveman tools, and supported numeric usage fields that OpenAI exposes to the page. |
+| **ChatGPT Work** | Uses restrained Work context styling and shows supported shared agentic usage when available. |
+| **Codex-aware ChatGPT web routes** | Uses graphite and indigo context styling and shows supported shared agentic usage when available. |
 
 > [!IMPORTANT]
-> The standalone Codex desktop shell is not a Chrome extension host. Companion cannot inject into that native shell through Manifest V3. It can support Codex-aware web routes and display shared Work or Codex agentic usage that OpenAI exposes on ChatGPT web.
+> The standalone native Codex desktop application is not a Chrome extension host. COMPANION supports Codex-aware web surfaces and native numeric data exposed through ChatGPT web. It does not claim to inject into the desktop shell.
 
-## The rule: native numbers or nothing
+## What it looks like
 
-Most usage extensions scrape conversation text, estimate tokens, multiply by a price, and present the result as fact. Companion does not.
+### Claude usage and history
 
-### On Claude
+<img alt="COMPANION Claude usage popup" src="docs/images/popup.png" width="900">
 
-Claude's own usage-credit counter is the source of truth. Dollar values are exact to the cent. Session and daily spend are deltas from that real counter. Token figures are the only derived values, and they appear as a range rather than fake precision.
+### ChatGPT, Work, and Codex-aware web support
 
-### On OpenAI surfaces
+The release workflow renders the current ChatGPT popup and composes the Chrome Web Store and Product Hunt images from that tested surface. Those platform-sized images ship in the `companion-v1.2.0-launch-assets` workflow artifact so they cannot drift from the release commit.
 
-Companion passively inspects only first-party ChatGPT responses whose path suggests usage, limits, quota, credits, billing, subscriptions, rate limits, or agentic usage. It extracts supported numeric fields inside the page and forwards only normalized numbers to the extension.
+### Privacy-first settings
 
-Depending on the account and surface, this can include:
-
-- agentic credits used and available
-- rolling session, daily, weekly, or monthly utilization
-- reset timestamps
-- exact input, output, or total token counters returned by OpenAI
-
-When OpenAI does not expose a trustworthy counter, Companion says it is waiting for native usage data. It does not invent a quota or inspect messages to fill the gap.
-
----
+<img alt="COMPANION privacy and settings" src="docs/images/settings.png" width="900">
 
 ## Features
 
-| | |
+| Feature | What it means |
 | --- | --- |
-| **Automatic provider detection** | Claude, Chat, Work, and Codex styling switch automatically from the current origin, route, and selected mode. |
-| **Native usage meters** | Exact Claude spend and limits, plus supported numeric OpenAI counters when exposed. |
-| **Caveman Mode** | Ask for maximally concise replies, preview a locally trimmed prompt, and convert files to lean Markdown. |
-| **Before-the-wall alerts** | Toolbar badge and optional desktop notice when a trustworthy limit reaches 85 or 95 percent. |
-| **Native visual fit** | Shadow DOM widget, exact composer width, page-level light and dark theme following, keyboard focus, and reduced-motion support. |
-| **Only what you want** | Hide the widget, Caveman Mode, or individual Claude metrics from Settings. |
-| **Private by design** | No telemetry, no analytics, no prompt storage, and no third-party backend. |
+| **Automatic provider detection** | Claude, Chat, Work, and Codex-aware styling switch from the current origin, route, and selected mode. |
+| **Native usage views** | Exact Claude spend and native limits, plus supported numeric OpenAI fields when OpenAI exposes them. |
+| **Freshness and expiry** | OpenAI readings are labeled fresh, aging, stale, or expired instead of remaining on screen indefinitely. |
+| **Caveman Mode** | Ask for concise replies, preview a conservative local prompt trim, and convert files to lean Markdown. |
+| **Before-the-wall alerts** | Optional toolbar badge and desktop warnings at 85% and 95% of a trustworthy native limit. |
+| **Local history** | Claude daily and weekly views, trend chart, export, pace, and plan-fit insight stay in browser storage. |
+| **Per-metric controls** | Hide individual Claude metrics, the widget, Caveman Mode, notifications, or the toolbar badge. |
+| **Provider-native visual fit** | Shadow DOM widgets follow the host surface, composer width, light or dark appearance, keyboard focus, and reduced-motion preference. |
+| **Complete local reset** | One Settings action clears Claude and OpenAI local state, caches, session data, alarms, and the toolbar badge. |
 
 ## Caveman Mode
 
-Running low and still need to finish something important? Turn on Caveman Mode.
+Caveman Mode is optional, visible, and user-controlled.
 
-- **Shorter replies:** A one-time visible instruction asks the assistant to answer in the fewest words that preserve every important fact, step, and caveat.
-- **Prompt trimming:** Before send, Companion offers a conservative local rewrite that removes filler without paraphrasing protected content. You approve every send.
-- **File to Markdown:** Pick a PDF, DOCX, PPTX, XLSX, CSV, HTML, text, or OpenDocument file and convert it locally into lean Markdown before it enters the chat box.
+### Concise replies
 
-Nothing is silently sent. The preview always lets you send the trimmed version, edit it, send the original, or cancel.
+A fixed instruction asks the provider to use the fewest words that preserve the important facts, steps, and caveats.
 
----
+### Conservative local prompt preview
 
-## How it works
+When enabled, COMPANION can offer a local extractive trim before send. You choose whether to:
+
+- use the trimmed prompt
+- edit the trimmed prompt
+- send the original
+- cancel
+
+Nothing is silently sent. Prompt text is not written to extension storage or sent to the developer.
+
+### Local file to Markdown
+
+Select a PDF, DOCX, PPTX, XLSX, CSV, HTML, text, or OpenDocument file and convert it locally into lean Markdown before deciding what enters the provider composer.
+
+Parsing runs in a manifest-declared opaque-origin sandbox with:
+
+- no network access
+- no extension API access
+- no provider session access
+- no persistent file storage
+
+<img alt="COMPANION dark widget" src="docs/images/widget-dark.png" width="900">
+
+## Privacy is an architecture decision
+
+COMPANION has:
+
+- no COMPANION account
+- no developer backend
+- no analytics or telemetry
+- no advertising or trackers
+- no remote code
+- no remote fonts
+- no broad `<all_urls>` permission
+- no broad `tabs` permission
+- no prompt or reply storage
+- no raw OpenAI response storage
+- no file upload to a COMPANION service
+
+### Claude boundary
+
+Claude usage reads are read-only and same-origin. The browser authenticates them using the existing signed-in session. COMPANION never reads or stores the session cookie.
+
+### OpenAI boundary
+
+Raw first-party ChatGPT responses stay in the page world. A random per-page channel carries only normalized JSON containing supported bounded numeric fields. The isolated script validates it, and the service worker validates sender, top frame, origin, keys, units, bucket names, timestamps, ranges, and payload size again.
+
+### Shared badge boundary
+
+Claude and OpenAI keep separate usage adapters but share one browser toolbar badge. A serialized owner prevents a stale provider update or alarm from clearing a newer provider warning.
+
+Read the full **[Security and Privacy architecture](docs/SECURITY.md)** and **[Chrome Web Store privacy policy](store/privacy-policy.md)**.
+
+## How the data flows
 
 ```text
-Claude usage counter ── sampled locally ──► exact spend and native limits
+Claude native usage endpoints
+        │ read-only, same-origin
+        ▼
+Claude adapter ─────────────► local widget, popup, history, alerts
 
-OpenAI first-party response ── normalize numeric fields in-page ──►
-  bounded usage snapshot only ──► local widget, popup, badge, and alerts
+ChatGPT first-party response
+        │ normalize supported numeric fields inside the page
+        ▼
+random per-page channel
+        │ validate again
+        ▼
+OpenAI adapter ─────────────► local widget, popup, freshness, alerts
 
-Your prompt ── optional local Caveman preview ──► your explicit send action
-Your file   ── sandboxed local parser ──► Markdown in the active composer
+user-selected file
+        │ explicit action
+        ▼
+opaque-origin no-network sandbox ──► Markdown preview/composer
 ```
 
-The Claude and OpenAI adapters are separate. A tiny service-worker entry point composes them, while each provider keeps its own origin validation, storage keys, network observer, and page integration.
+The Claude and OpenAI adapters use separate message names, storage keys, network observers, and validation logic. A small service-worker entry point composes them without merging provider trust boundaries.
 
-## Security and privacy
+## Install and test
 
-Companion is designed to survive a serious extension review.
+### Chrome Web Store
 
-- **Exact origins only:** Permissions are limited to Claude and ChatGPT HTTPS hosts. There is no `<all_urls>` access.
-- **Least privilege:** The extension uses `activeTab`, not the broad `tabs` permission.
-- **Read only:** Companion never changes provider account data, conversations, subscriptions, or settings.
-- **One-time OpenAI channel:** At `document_start`, the isolated extension script creates a random channel identifier in a temporary DOM mailbox. The MAIN-world observer reads and removes it immediately. Later events use unguessable channel names.
-- **Sanitized OpenAI data:** Raw account responses never cross the bridge. Only bounded numeric counters, utilization, reset times, and a source path with its query string removed are emitted.
-- **Defense in depth:** The background validates the extension sender, top frame, exact HTTPS origin, allowed keys, value bounds, units, bucket names, and timestamps again before storing anything.
-- **No conversation collection:** Prompt and reply text are never stored or transmitted by Companion.
-- **Sandboxed document parsing:** The office parser runs in an opaque-origin sandbox with no extension API access and no network access.
-- **No telemetry:** There are no analytics SDKs, trackers, remote logs, or Companion servers.
+The public Chrome Web Store link will be inserted here after v1.2.0 approval and final smoke testing.
 
-See **[Security and Privacy](docs/SECURITY.md)** and **[OpenAI Support](docs/OPENAI_SUPPORT.md)** for the full architecture.
+### Trusted release candidate
 
----
+Use the artifact produced by the **release-package** GitHub Actions workflow. It contains the tested Web Store ZIP, checksum, release notes, package inventory, test transcript, and separate launch-artwork bundle.
 
-## Quick start
+1. Download and extract `companion-1.2.0.zip`.
+2. Open `chrome://extensions`.
+3. Enable **Developer mode**.
+4. Choose **Load unpacked**.
+5. Select the extracted directory containing `manifest.json`.
+6. Open or reload Claude.ai or ChatGPT.com.
 
-1. Open `chrome://extensions`.
-2. Enable **Developer mode**.
-3. Choose **Load unpacked** and select this repository folder.
-4. Open or reload **Claude.ai** or **ChatGPT.com**.
-5. Start a normal chat. Companion appears beneath the composer automatically.
+### Build from source
 
-The toolbar popup routes itself to the correct provider. Claude keeps the full spend and history dashboard. ChatGPT gets a dedicated native usage view for Chat, Work, and Codex-aware state.
+```bash
+git clone https://github.com/zgbrenner/claudecompanion.git
+cd claudecompanion
+tools/package-webstore.sh
+```
 
-Full walkthrough: **[Quick Start](docs/QUICKSTART.md)**
+The deterministic package is written to:
+
+```text
+dist/companion-1.2.0.zip
+```
+
+A SHA-256 checksum is written beside it.
+
+## Accuracy boundaries
+
+### Claude
+
+Claude dollar values come from Claude's own native usage-credit counter. Session and history values are deltas from that counter. Token figures are derived ranges, not exact counts.
+
+### OpenAI
+
+OpenAI exposes different account data by plan and surface. COMPANION renders only recognized native numeric fields. A waiting or empty state can be the correct result.
+
+### Provider changes
+
+Claude and ChatGPT are web applications and their internal layouts or response shapes can change. COMPANION fails closed by omitting unsupported rows instead of presenting stale or guessed data as current.
+
+## Verification
+
+The committed Chromium suite covers:
+
+- extension boot and settings persistence
+- Claude and OpenAI popup rendering
+- sandboxed document conversion
+- accessibility audits
+- provider and surface detection
+- least-privilege manifest rules
+- OpenAI normalization, query stripping, and forgery resistance
+- usage freshness and expiry
+- provider-aware popup routing
+- complete local-data clearing
+- badge ownership, restart reconciliation, and single-writer enforcement
+- Orbit C brand rendering and local font integrity
+- release-readiness documents, package automation, and launch-asset generation
+
+Run locally:
+
+```bash
+node tests/run.mjs
+```
+
+See `.github/workflows/tests.yml` and `.github/workflows/release-package.yml` for the pinned CI environment.
 
 ## Documentation
 
-| | |
+| Document | Purpose |
 | --- | --- |
-| **[Quick Start](docs/QUICKSTART.md)** | Installation, everyday use, and troubleshooting. |
-| **[OpenAI Support](docs/OPENAI_SUPPORT.md)** | Chat, Work, Codex behavior, usage semantics, and the desktop boundary. |
-| **[Security and Privacy](docs/SECURITY.md)** | Permissions, data handling, threat model, and audit steps. |
-| **[Changelog](CHANGELOG.md)** | Version history. |
-| **[Contributing](CONTRIBUTING.md)** | Development and review guidance. |
+| **[Quick Start](docs/QUICKSTART.md)** | Installation, everyday use, and troubleshooting |
+| **[OpenAI Support](docs/OPENAI_SUPPORT.md)** | Chat, Work, Codex-aware behavior, usage semantics, and limitations |
+| **[Security and Privacy](docs/SECURITY.md)** | Permissions, data flow, threat model, and audit steps |
+| **[Privacy Policy](store/privacy-policy.md)** | Public Chrome Web Store privacy policy |
+| **[Release Notes](RELEASE_NOTES_1.2.0.md)** | v1.2.0 highlights and upgrade notes |
+| **[Changelog](CHANGELOG.md)** | Version history |
+| **[Contributing](CONTRIBUTING.md)** | Development and review guidance |
+
+## Support and contribution
+
+After the repository becomes public:
+
+- use GitHub Issues for reproducible bugs
+- use GitHub Discussions for questions and workflows, if enabled
+- send security-sensitive reports to `zgbrenner@gmail.com`
+
+When reporting a provider issue, include the provider, surface, browser version, extension version, light or dark theme, and URL pathname without query strings. Remove conversation and account content from screenshots. Never share cookies, tokens, or credentials.
+
+Contributions that improve provider resilience, privacy, accessibility, documentation, and testing are welcome.
 
 ## FAQ
 
 <details>
-<summary><strong>Does it work on Claude Free, Pro, Max, Team, and Enterprise?</strong></summary>
-<br/>
-Yes. Companion reads whatever native usage data the account exposes. Personal-plan users can hide the monthly-credit view for a cleaner Claude widget.
+<summary><strong>Does COMPANION work on every Claude and ChatGPT plan?</strong></summary>
+<br>
+The interface and local tools work on supported composers. Usage rows depend on what the signed-in account and current surface expose.
 </details>
 
 <details>
-<summary><strong>Does it work on ChatGPT Chat and Work?</strong></summary>
-<br/>
-Yes. The widget, Caveman Mode, prompt preview, and file conversion work on supported ChatGPT web composers. Usage rows appear only when OpenAI exposes supported numeric data for the current account and surface.
+<summary><strong>Why is ChatGPT usage blank?</strong></summary>
+<br>
+OpenAI may expose no supported native counter to that account or surface. COMPANION leaves the state blank rather than estimating a quota.
 </details>
 
 <details>
-<summary><strong>Does it work inside the standalone Codex desktop app?</strong></summary>
-<br/>
-Not as a Chrome content script. Native desktop shells do not automatically host Manifest V3 extensions. Companion is ready for Codex-aware ChatGPT web routes and can show shared agentic usage that appears on the web.
+<summary><strong>Does COMPANION send chats or files to the developer?</strong></summary>
+<br>
+No. There is no developer backend. Prompt text is handled only for an enabled, user-initiated local preview and is not stored. Reply text is not collected. User-selected files are parsed locally in a no-network sandbox.
 </details>
 
 <details>
-<summary><strong>Does Companion send my prompts or chats anywhere?</strong></summary>
-<br/>
-No. Prompt and reply text are never stored or transmitted by Companion. The extension contacts only the provider pages you opened and has no analytics or telemetry backend.
+<summary><strong>Can a provider page forge usage data?</strong></summary>
+<br>
+The OpenAI adapter uses a random per-page event channel and strict validation in both the isolated script and service worker. The Claude and OpenAI adapters also remain separate. The full threat model is documented in `docs/SECURITY.md`.
 </details>
 
 <details>
-<summary><strong>How accurate are the numbers?</strong></summary>
-<br/>
-Claude dollar figures are exact because they come from Claude's own counter. OpenAI figures are shown only when OpenAI returns the numeric field directly. Companion labels unavailable data instead of replacing it with an estimate.
+<summary><strong>Does it work inside the native Codex desktop app?</strong></summary>
+<br>
+No. The native desktop shell is not a Chrome extension host. COMPANION supports Codex-aware ChatGPT web surfaces and shared agentic usage exposed on the web.
 </details>
 
 <details>
-<summary><strong>Can a website forge a usage event?</strong></summary>
-<br/>
-Companion creates a random per-page channel during `document_start`, removes its temporary mailbox immediately, and accepts later page-world events only on the unguessable channel names. The privileged background then validates the sender, top frame, exact HTTPS origin, message keys, value bounds, units, bucket names, and timestamps again before storing anything.
+<summary><strong>Is COMPANION affiliated with Anthropic or OpenAI?</strong></summary>
+<br>
+No. COMPANION is independent and unofficial. Claude, ChatGPT, Work, and Codex are trademarks of their respective owners.
 </details>
 
 ---
@@ -193,8 +308,6 @@ Companion creates a random per-page channel during `document_start`, removes its
 
 **Built for people who would rather finish the work than discover a limit halfway through it.**
 
-⭐ Star the project if Companion saved a session.
-
-<sub>Not affiliated with or endorsed by Anthropic or OpenAI. Claude, ChatGPT, Work, and Codex are trademarks of their respective owners.</sub>
+After COMPANION has helped, an honest Chrome Web Store review or GitHub star makes the project easier for other people to evaluate.
 
 </div>

@@ -1,91 +1,141 @@
-# Privacy Policy — Companion
+# Privacy Policy — COMPANION
 
-**Last updated: July 16, 2026**
+**Last updated: July 21, 2026**
 
-This policy describes how the **Companion** browser extension (the "Extension"), an unofficial usage meter for Claude.ai, handles data. The Extension is an independent, unofficial project and is not affiliated with, endorsed by, or sponsored by Anthropic, PBC. "Claude" is a trademark of Anthropic, PBC.
+This policy explains how the **COMPANION** browser extension handles data. COMPANION is an independent, unofficial project. It is not affiliated with, endorsed by, sponsored by, or produced by Anthropic or OpenAI.
 
-This policy is hosted alongside the Extension's source code at:
-`https://github.com/zgbrenner/claudecompanion/blob/main/store/privacy-policy.md`
+A public copy of this policy must be available at the URL entered in the Chrome Web Store developer dashboard. Before submission, either make this repository public or publish this document on another public HTTPS page controlled by the developer.
 
----
+## 1. What COMPANION does
 
-## 1. What the Extension does
+COMPANION is a local usage and efficiency layer for supported Claude and ChatGPT web surfaces.
 
-Companion reads usage information that claude.ai already makes available to your own account — spend in dollars, token estimates, and Claude's own rolling usage limits (5-hour session, weekly, Opus, and monthly credits) — and displays it in a widget under the claude.ai chat box and in the toolbar popup. It also offers an optional "Caveman Mode" that locally trims prompts and converts uploaded files to Markdown to help you stretch your usage quota.
+- On Claude, it reads native usage and limit information made available to the signed-in account and displays that information in an in-page widget and toolbar popup.
+- On ChatGPT web surfaces, it passively observes first-party page responses and extracts only supported numeric usage, quota, credit, limit, reset, or token fields.
+- Caveman Mode can locally prepare a concise-response instruction, offer a conservative prompt-trimming preview, and convert a user-selected file to Markdown.
+- Optional badges and desktop notifications warn when a trustworthy native limit reaches a configured threshold.
 
-The Extension does not modify your Claude account, conversations, or settings in any way. Every request it makes to claude.ai is a read-only `GET`.
+COMPANION does not modify provider accounts, subscriptions, conversations, or settings.
 
 ## 2. Data collected by the developer
 
-**None.** The developer of Companion does not operate any server that the Extension communicates with, and does not collect, receive, or have access to any data from your use of the Extension. There is no analytics, no crash reporting, no telemetry, and no tracking of any kind.
+**None.**
 
-## 3. Data stored locally on your device
+The developer does not operate a COMPANION server and does not receive data from the extension. There is **No analytics**, no telemetry, no advertising SDK, no tracking pixel, no crash-reporting service, and no remote logging endpoint.
 
-The Extension stores the following data using your browser's built-in `chrome.storage` APIs. This data never leaves your device except as described in Section 4.
+Because COMPANION handles some data locally on the user's device, the remaining sections describe that local handling in detail.
 
-| Data | Storage | Purpose |
-|---|---|---|
-| Your settings (display preferences, alert thresholds, Caveman Mode toggle, etc.) | `chrome.storage.local` | Remember your configuration between sessions |
-| Daily spend totals (dollar amounts and derived token ranges) | `chrome.storage.local` | Power the popup's spend history and 14-day trend |
-| Your organization's UUID (cached, ≤48 hours) | `chrome.storage.local` | Address the correct claude.ai usage endpoint for your account |
-| The learned usage-endpoint path (a URL path only, not any payload) | `chrome.storage.local` | Continue reading your usage data if claude.ai's internal endpoint path changes |
-| Notification-dedupe state (which alert thresholds you've already been notified about) | `chrome.storage.local` | Avoid repeat desktop notifications for the same limit crossing |
-| The current usage reading and session-spend baseline | `chrome.storage.session` (memory-only, cleared when the browser closes) | Compute your live session spend |
+## 3. Data handled and stored locally
 
-All of the above stays on your device. You can inspect it at any time via your browser's extension storage inspector, and you can erase it at any time — see Section 6.
+COMPANION uses `chrome.storage.local` and `chrome.storage.session`. The exact stored fields may evolve as the product changes, but the categories and purposes are:
 
-## 4. Network requests
+| Data | Storage and retention | Purpose |
+| --- | --- | --- |
+| Display, alert, export, model, and Caveman preferences | Local storage until cleared or the extension is uninstalled | Remember user choices |
+| Claude daily spend history and session baseline | Daily history in local storage; current session baseline in session storage | Show session, daily, weekly, and monthly views |
+| Claude organization UUID and learned usage endpoint pathname | Small bounded local caches | Address the signed-in account's own usage endpoints and tolerate provider route changes |
+| Latest normalized OpenAI usage snapshot | Session storage when available, with a local-storage fallback | Render the most recently observed supported numeric usage fields |
+| OpenAI usage snapshot freshness timestamp and source pathname | Stored with the normalized snapshot; source metadata excludes query strings | Label readings as fresh, aging, stale, or expired |
+| Notification deduplication state | Local storage | Avoid repeating the same 85% or 95% warning during one reset window |
+| Caveman conversation-instruction state | Local storage, bounded to recent conversation keys | Avoid sending the same concise-response instruction repeatedly in one conversation |
+| Shared toolbar-badge ownership and expiry metadata | Session storage and one Chrome alarm | Prevent Claude and OpenAI badge updates from overwriting each other and clear stale OpenAI warnings |
 
-The Extension communicates with **claude.ai only**. It has no permission to contact, and does not contact, any other host. The requests it makes are:
+An **OpenAI usage snapshot** contains bounded normalized numbers, such as utilization, used and limit values, supported token counters, reset timestamps, surface name, observation time, and a short source pathname. It does not contain raw account responses, headers, cookies, query strings, profile fields, prompt text, reply text, or file contents.
 
-| Request | Method | Purpose |
-|---|---|---|
-| `claude.ai/api/organizations` | GET | Discover your organization ID |
-| `claude.ai/api/organizations/{org}/usage` | GET | Read your rolling usage limits and monthly credit spend |
-| `claude.ai/api/organizations/{org}/overage_spend_limit` | GET | Read your monthly spend cap, where applicable |
-| A per-model spend endpoint (path learned by observing claude.ai's own requests — only the URL path is observed, never any request or response payload) | GET | Read per-model spend detail |
+## 4. Data handled transiently but not stored
 
-All of these requests are **read-only** and are issued using your browser's existing claude.ai session — the same way any page you have open in that tab would authenticate. No request carries a body of your data, and none can change your account, your conversations, or your settings.
+### Prompt text
 
-## 5. What is never collected
+When the user enables Caveman Mode and initiates a send from a supported composer, COMPANION reads the current prompt transiently in the page to offer a local trim preview. The prompt is not written to extension storage, sent to the developer, or sent to any third party by COMPANION. The user controls whether the trimmed version, edited version, original version, or nothing is sent to the provider.
 
-The Extension is built specifically to avoid collecting anything beyond numeric usage data:
+### Provider replies
 
-- **Your prompts** are never read or transmitted, except transiently in-page (and only locally, never sent anywhere) to offer a local trim preview if you opt into Caveman Mode's prompt trimming.
-- **Claude's replies** are never read at all.
-- **Uploaded file contents** (Caveman Mode's file→Markdown feature) are parsed entirely on your device, inside a sandboxed page with no network access, and are never transmitted anywhere.
-- **Your Claude session/authentication cookie** is never read. The only cookie value the Extension reads is `lastActiveOrg`, a non-secret organization identifier — not a credential — used solely to address the correct usage endpoint.
-- **No personal information** (name, email, payment details) is collected by the Extension itself; it only reads the usage numbers described above.
+Claude and ChatGPT reply text is not collected, stored, or transmitted by COMPANION.
 
-## 6. Permissions this Extension requests, and why
+### User-selected files
 
-| Permission | Why it's needed |
-|---|---|
-| `storage` | Save your settings and local spend history on your device |
-| `activeTab` | Locate the active Claude tab when you open the toolbar popup |
-| `notifications` | Show an optional desktop alert when a usage limit crosses 85% or 95% |
-| `offscreen` | Host the local, sandboxed file-conversion pipeline used by Caveman Mode |
-| Host access to `https://claude.ai/*` and `https://*.claude.ai/*` | Run the widget and read your usage from claude.ai's own endpoints |
+When the user explicitly chooses a file for conversion, its bytes are relayed to a manifest-declared opaque-origin sandbox. The sandbox has no extension API access and no HTTP, HTTPS, or WebSocket network access. The file and resulting Markdown are not retained by COMPANION after the conversion flow completes.
 
-The Extension requests no other permissions and no `<all_urls>` access.
+### Raw OpenAI responses
 
-## 7. Data retention and deletion
+Raw first-party ChatGPT account responses are inspected only inside the ChatGPT page world. Normalization occurs before data crosses into the extension. Raw response bodies are not stored or forwarded.
 
-Locally stored data (Section 3) persists in your browser until you remove it. You can delete it at any time by:
+## 5. Network behavior
 
-- Using the **"Clear all local data"** button in the Extension's settings page, which erases all Extension storage immediately, or
-- Uninstalling the Extension, which removes all of its stored data along with it.
+COMPANION has host access only to these provider origins:
 
-Because no data is transmitted to the developer, there is no server-side copy to request deletion of — deleting it locally is complete deletion.
+- `https://claude.ai/*`
+- `https://*.claude.ai/*`
+- `https://chatgpt.com/*`
+- `https://*.chatgpt.com/*`
+- `https://chat.openai.com/*`
 
-## 8. Changes to this policy
+### Claude
 
-If this policy changes, the updated version will be published at the same URL with a new "Last updated" date. Material changes (e.g., any change to what data is read or where it goes) will also be noted in the Extension's `CHANGELOG.md`.
+COMPANION makes read-only, same-origin requests to Claude usage endpoints using the browser's existing signed-in session. The browser handles authentication. COMPANION does not read, store, log, or transmit the session cookie. Requests are used only to retrieve the user's own native usage and limit information.
 
-## 9. Contact
+### ChatGPT and OpenAI web surfaces
 
-Questions about this policy or the Extension's data handling can be sent to:
+COMPANION does not create account, billing, or quota requests to OpenAI. A page-world observer passively examines first-party responses whose pathname suggests usage, limits, quota, credits, billing, subscriptions, rate limits, or agentic usage. It reduces supported responses to bounded numeric fields before anything enters the extension.
+
+### Third parties
+
+COMPANION has no third-party runtime endpoint. All executable code, icons, fonts, and parser libraries ship inside the extension package. Browser-store updates are delivered by the browser.
+
+## 6. Permissions
+
+| Permission | Purpose |
+| --- | --- |
+| `storage` | Store settings, numeric history, normalized snapshots, and small operational state locally |
+| `activeTab` | Identify the active supported provider tab after the user opens the toolbar popup |
+| `notifications` | Show optional threshold warnings |
+| `offscreen` | Host the privileged relay for user-initiated local file conversion |
+| `alarms` | Expire a stale OpenAI toolbar warning even when no ChatGPT tab remains open |
+| Exact Claude and ChatGPT host permissions | Run the provider-specific widget and usage adapters only on supported HTTPS origins |
+
+COMPANION does not request `<all_urls>`, the broad `tabs` permission, browsing history, bookmarks, downloads, identity, payment, clipboard, microphone, camera, or geolocation access.
+
+## 7. Data sharing and human access
+
+COMPANION does not sell, license, transfer, or share user data with the developer, advertisers, data brokers, analytics providers, or other third parties. No developer employee or contractor can read data handled by the extension because the extension sends none of it to a developer-controlled system.
+
+The provider receives only content the user explicitly chooses to send through the provider's own composer. That provider-side handling is governed by the provider's terms and privacy policy, not this policy.
+
+## 8. Retention and deletion
+
+Local data remains in browser storage until it is cleared, expires under the rules described above, or the extension is uninstalled.
+
+Users can delete COMPANION data by:
+
+1. Opening COMPANION Settings and choosing **Clear all local data**, or
+2. Uninstalling the extension.
+
+The clear-data action removes settings, Claude history and caches, OpenAI snapshots and operational state, notification state, Caveman state, session data, and the toolbar badge. Provider accounts and conversations are not changed.
+
+Because the developer receives no extension data, there is no server-side copy to request or delete.
+
+## 9. Security measures
+
+COMPANION uses exact HTTPS host permissions, Manifest V3 content-script isolation, a random per-page OpenAI event channel, schema and range validation in both the page adapter and background, query-string removal, serialized toolbar-badge ownership, a restrictive extension Content Security Policy, and a no-network conversion sandbox.
+
+Technical details are documented in `docs/SECURITY.md`.
+
+## 10. Chrome Web Store Limited Use
+
+COMPANION's use of information is limited to providing or improving its disclosed single purpose and user-facing features. COMPANION does not use or transfer user data for advertising, creditworthiness, lending, data brokerage, or unrelated purposes. This use adheres to the Chrome Web Store User Data Policy, including its Limited Use requirements.
+
+## 11. Children's privacy
+
+COMPANION is a general productivity tool and is not directed to children. The developer does not knowingly collect personal information from anyone, including children.
+
+## 12. Changes to this policy
+
+Material changes to data handling will be reflected here, in the Chrome Web Store disclosure fields, in user-facing product copy where required, and in `CHANGELOG.md` before the changed version is published.
+
+## 13. Contact
+
+Questions about COMPANION's privacy or security can be sent to:
 
 **zgbrenner@gmail.com**
 
-Source code, including this policy, is available at `https://github.com/zgbrenner/claudecompanion`.
+Source code and documentation are maintained at `https://github.com/zgbrenner/claudecompanion` and will be publicly accessible before the public launch.
