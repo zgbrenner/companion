@@ -15,7 +15,7 @@ try {
 
 const { context, extensionId } = await launchExtension();
 try {
-  for (const file of ["options.html", "popup.html"]) {
+  for (const file of ["options.html", "popup.html", "openai-popup.html"]) {
     const { page } = await openPage(context, extensionId, file);
     if (file === "popup.html") {
       await page.evaluate(seedScript());
