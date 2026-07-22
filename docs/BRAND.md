@@ -30,8 +30,12 @@ Warning and danger colors remain semantic and must not be replaced by mint or ir
 
 ## Product rules
 
-- Write the brand as **COMPANION**, never `COMPANION`, in product chrome and store-facing identity.
+- Write the brand as **COMPANION**, never title-case `Companion`, in product chrome and store-facing identity.
 - Use sentence case for settings, buttons, helper text, and descriptions.
 - Use the Orbit C mark rather than provider logos. Provider context is shown through restrained accent changes and labels.
 - Preserve AA contrast for normal text and clear focus indicators.
 - Avoid gradients in the core wordmark or icon. Depth should come from spacing, restrained shadows, and surface hierarchy.
+
+## Implementation
+
+The extension bundles the approved font binaries, the source Orbit C SVG, and four size-specific Chrome toolbar PNGs. The popup, settings page, Claude widget, ChatGPT widget, Work surface, and Codex-aware web surface share the same core identity while retaining restrained provider-context accents.
