@@ -21,7 +21,7 @@
   <a href="RELEASE_NOTES_1.2.0.md">Release notes</a>
 </p>
 
-<img alt="COMPANION across Claude and ChatGPT" src="store/screenshots/01-overview.png" width="900">
+<img alt="COMPANION widget" src="docs/images/widget.png" width="900">
 
 <sub>The Chrome Web Store URL will be added after v1.2.0 is approved. The repository package is ready for trusted release testing.</sub>
 
@@ -57,15 +57,15 @@ COMPANION detects the current provider and surface automatically. There is no ma
 
 ### Claude usage and history
 
-<img alt="COMPANION Claude usage popup" src="store/screenshots/02-claude-usage.png" width="900">
+<img alt="COMPANION Claude usage popup" src="docs/images/popup.png" width="900">
 
 ### ChatGPT, Work, and Codex-aware web support
 
-<img alt="COMPANION ChatGPT, Work, and Codex-aware web support" src="store/screenshots/03-chatgpt-work-codex.png" width="900">
+The release workflow renders the current ChatGPT popup and composes the Chrome Web Store and Product Hunt images from that tested surface. Those platform-sized images ship in the `companion-v1.2.0-launch-assets` workflow artifact so they cannot drift from the release commit.
 
 ### Privacy-first settings
 
-<img alt="COMPANION privacy and settings" src="store/screenshots/04-settings-privacy.png" width="900">
+<img alt="COMPANION privacy and settings" src="docs/images/settings.png" width="900">
 
 ## Features
 
@@ -111,7 +111,7 @@ Parsing runs in a manifest-declared opaque-origin sandbox with:
 - no provider session access
 - no persistent file storage
 
-<img alt="COMPANION local efficiency tools" src="store/screenshots/05-local-efficiency-tools.png" width="900">
+<img alt="COMPANION dark widget" src="docs/images/widget-dark.png" width="900">
 
 ## Privacy is an architecture decision
 
@@ -175,7 +175,7 @@ The public Chrome Web Store link will be inserted here after v1.2.0 approval and
 
 ### Trusted release candidate
 
-Use the artifact produced by the **release-package** GitHub Actions workflow. It contains the tested Web Store ZIP, checksum, release notes, package inventory, and test transcript.
+Use the artifact produced by the **release-package** GitHub Actions workflow. It contains the tested Web Store ZIP, checksum, release notes, package inventory, test transcript, and separate launch-artwork bundle.
 
 1. Download and extract `companion-1.2.0.zip`.
 2. Open `chrome://extensions`.
@@ -230,7 +230,7 @@ The committed Chromium suite covers:
 - complete local-data clearing
 - badge ownership, restart reconciliation, and single-writer enforcement
 - Orbit C brand rendering and local font integrity
-- release-readiness documents, package automation, and launch assets
+- release-readiness documents, package automation, and launch-asset generation
 
 Run locally:
 
