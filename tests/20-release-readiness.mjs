@@ -36,7 +36,15 @@ for (const term of ["claude.ai", "chatgpt.com", "chat.openai.com", "OpenAI usage
 assert(!privacy.includes("communicates with **claude.ai only**"), "privacy policy is not Claude-only");
 
 const permissions = read("store/permission-justifications.md");
-for (const term of ["### alarms", "chatgpt.com", "chat.openai.com", "No, I am not using remote code", "Website content"]) {
+for (const term of [
+  "### alarms",
+  "chatgpt.com",
+  "chat.openai.com",
+  "No, I am not using remote code",
+  "Website content",
+  "Personal communications",
+  "User activity",
+]) {
   assert(permissions.includes(term), `permission disclosure includes ${term}`);
 }
 
