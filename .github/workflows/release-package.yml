@@ -1,0 +1,132 @@
+name: release-package
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+  pull_request:
+    paths:
+      - manifest.json
+      - icons/**
+      - src/**
+      - tests/**
+      - tools/package-webstore.sh
+      - store/**
+      - RELEASE_NOTES_1.2.0.md
+      - .github/workflows/release-package.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-package-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-release-candidate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PLAYWRIGHT_VERSION: "1.61.1"
+      AXE_CORE_VERSION: "4.12.1"
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Cache Playwright Chromium
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ env.PLAYWRIGHT_VERSION }}
+
+      - name: Install pinned verification dependencies
+        run: |
+          npm install --no-save "playwright@${PLAYWRIGHT_VERSION}" "axe-core@${AXE_CORE_VERSION}"
+          npx playwright install --with-deps chromium
+
+      - name: Run full numbered test suite
+        shell: bash
+        run: |
+          set +e
+          node tests/run.mjs 2>&1 | tee release-test-output.log
+          status=${PIPESTATUS[0]}
+          exit "$status"
+
+      - name: Build deterministic Chrome Web Store package
+        shell: bash
+        run: |
+          chmod +x tools/package-webstore.sh
+          tools/package-webstore.sh
+
+      - name: Audit package and checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./manifest.json').version")"
+          zip_path="dist/companion-${version}.zip"
+          checksum_path="${zip_path}.sha256"
+
+          test -s "$zip_path"
+          test -s "$checksum_path"
+          unzip -t "$zip_path"
+          (
+            cd dist
+            sha256sum -c "$(basename "$checksum_path")"
+          )
+
+          unzip -l "$zip_path" | tee release-package-contents.txt
+
+          python3 - "$zip_path" <<'PY'
+          import json
+          import pathlib
+          import sys
+          import zipfile
+
+          path = pathlib.Path(sys.argv[1])
+          with zipfile.ZipFile(path) as archive:
+              names = archive.namelist()
+              roots = {name.split('/', 1)[0] for name in names}
+              if roots != {'manifest.json', 'icons', 'src'}:
+                  raise SystemExit(f'unexpected archive roots: {sorted(roots)}')
+              manifest = json.loads(archive.read('manifest.json'))
+              if manifest.get('name') != 'COMPANION':
+                  raise SystemExit('package name is not COMPANION')
+              if manifest.get('version') != '1.2.0':
+                  raise SystemExit('package version is not 1.2.0')
+              forbidden = [
+                  name for name in names
+                  if name.startswith(('tests/', 'docs/', 'store/', '.github/'))
+                  or name.endswith(('.map', '.ttf', '.orig', '.rej', '.swp', '.tmp', '.bak'))
+                  or '/.env' in f'/{name.lower()}'
+                  or 'space-grotesk' in name.lower()
+              ]
+              if forbidden:
+                  raise SystemExit(f'forbidden package entries: {forbidden}')
+              print(f'Package audit passed: {len(names)} files')
+          PY
+
+      - name: Stage release artifact bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./manifest.json').version")"
+          mkdir -p release-artifact
+          cp "dist/companion-${version}.zip" release-artifact/
+          cp "dist/companion-${version}.zip.sha256" release-artifact/
+          cp RELEASE_NOTES_1.2.0.md release-artifact/
+          cp release-package-contents.txt release-artifact/
+          cp release-test-output.log release-artifact/
+
+      - name: Upload release candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: companion-v1.2.0-release-candidate
+          path: release-artifact
+          if-no-files-found: error
+          retention-days: 30
