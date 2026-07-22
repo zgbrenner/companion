@@ -30,6 +30,7 @@ for (const [name, source] of [
 ]) {
   assert(!/>Companion</.test(source), `${name} does not render title-case brand text`);
   assert(source.includes("COMPANION"), `${name} renders the all-caps brand`);
+  assert(source.includes("orbit-c.svg"), `${name} renders the Orbit C mark`);
 }
 
 for (const [name, source] of [["extension fonts", fonts], ["provider fonts", providerFonts]]) {
@@ -49,20 +50,28 @@ for (const path of [
   assert(bytes.subarray(0, 4).toString("ascii") === "wOF2", `${path} is a valid WOFF2 container`);
 }
 
-for (const [name, source] of [
-  ["popup CSS", popupCss],
-  ["OpenAI popup CSS", openaiPopupCss],
-  ["settings CSS", optionsCss],
-  ["Claude widget CSS", widgetCss],
-  ["OpenAI widget CSS", openaiWidgetCss],
+for (const [name, source, brandSelector] of [
+  ["popup CSS", popupCss, ".brand-header h1"],
+  ["OpenAI popup CSS", openaiPopupCss, ".brand h1"],
+  ["settings CSS", optionsCss, ".brand-name"],
+  ["Claude widget CSS", widgetCss, ".cuc-title"],
+  ["OpenAI widget CSS", openaiWidgetCss, ".cuc-openai-title"],
 ]) {
   assert(source.includes('"Atkinson Hyperlegible Next"'), `${name} uses the readable UI typeface`);
   assert(source.includes('"League Spartan"'), `${name} uses the brand typeface`);
   assert(!source.includes('"Space Grotesk"'), `${name} no longer uses the old display font`);
+  const brandFontUses = source.match(/"League Spartan"/g)?.length || 0;
+  assert(brandFontUses === 1, `${name} reserves League Spartan for one brand rule, found ${brandFontUses}`);
+  assert(source.includes(brandSelector), `${name} applies its display type to the brand selector`);
 }
 
 assert(claudeContent.includes("league-spartan-bold.woff2"), "Claude's compatibility font registration is local");
 assert(openaiContent.includes("league-spartan-bold.woff2"), "OpenAI's compatibility font registration is local");
+assert(claudeContent.includes('class="cuc-orbit-mark"'), "Claude widget renders an Orbit C mark");
+assert(claudeContent.includes("<svg"), "Claude widget mark is local inline SVG");
+assert(openaiContent.includes('class="cuc-openai-mark"'), "OpenAI widget renders an Orbit C mark");
+assert(openaiContent.includes("<svg"), "OpenAI widget mark is local inline SVG");
+assert(!openaiContent.includes('aria-hidden="true">◆'), "OpenAI widget no longer uses the placeholder diamond");
 const claudeScripts = manifest.content_scripts.find(entry => entry.matches?.some(match => match.includes("claude.ai")));
 const openaiScripts = manifest.content_scripts.find(entry => entry.matches?.some(match => match.includes("chatgpt.com")));
 assert(claudeScripts?.css?.includes("src/brand-fonts.css"), "Claude receives the provider font registration stylesheet");
