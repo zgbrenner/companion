@@ -1,0 +1,57 @@
+name: polish-orbit-brand
+
+on:
+  push:
+    branches: [agent/orbit-c-brand-refresh]
+
+permissions:
+  contents: write
+
+jobs:
+  polish:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/orbit-c-brand-refresh
+      - name: Apply focused accessibility and copy fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          css_path = Path('src/options.css')
+          css = css_path.read_text()
+          marker = '/* Orbit C contrast correction */'
+          if marker not in css:
+              css = css.rstrip() + '''
+
+          /* Orbit C contrast correction */
+          .save-status { color: #0f6d52; }
+          .save-status::before { background: #24b88e; }
+          @media (prefers-color-scheme: dark) {
+            .save-status { color: #7ce7cd; }
+            .save-status::before { background: #35d6a6; }
+          }
+          ''' + '\n'
+          css_path.write_text(css)
+
+          options_path = Path('src/options.html')
+          options = options_path.read_text()
+          old = 'COMPANION follows the active page. Claude keeps its warm meter design, Chat uses a restrained green accent, Work uses violet, and Codex-aware web surfaces use graphite and indigo.'
+          new = 'COMPANION follows the active page while keeping the Orbit C identity consistent. Mint is the primary accent, with restrained iris context for Work and Codex-aware web surfaces.'
+          if old not in options:
+              raise SystemExit('stale surface-matching copy not found')
+          options_path.write_text(options.replace(old, new, 1))
+
+          Path('.github/workflows/polish-orbit-brand.yml').unlink()
+          PY
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'fix: preserve contrast in Orbit C settings'
+          git push origin HEAD:agent/orbit-c-brand-refresh
