@@ -39,3 +39,7 @@ Warning and danger colors remain semantic and must not be replaced by mint or ir
 ## Implementation
 
 The extension ships only the optimized local WOFF2 font assets, the source Orbit C SVG, and four size-specific Chrome toolbar PNGs. Development TTF sources and temporary download workflows are excluded from the production branch. The popup, settings page, Claude widget, ChatGPT widget, Work surface, and Codex-aware web surface share the same core identity while retaining restrained provider-context accents.
+
+## Validation
+
+Every pull request must verify the computed Atkinson and League Spartan font families, all-caps wordmark, Orbit C asset, console cleanliness, and zero serious or critical accessibility violations. Chromium screenshots of Settings, the Claude popup, and the OpenAI popup are retained as CI artifacts for visual review of spacing, hierarchy, clipping, and consistency.
