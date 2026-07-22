@@ -1,21 +1,21 @@
 # Security and Privacy
 
-This document describes Companion's security architecture, data handling, permissions, network behavior, threat model, and audit steps. Companion is an unofficial Manifest V3 extension for Claude.ai and ChatGPT web surfaces, including Chat, Work, and Codex-aware routes.
+This document describes COMPANION's security architecture, data handling, permissions, network behavior, threat model, and audit steps. COMPANION is an unofficial Manifest V3 extension for Claude.ai and ChatGPT web surfaces, including Chat, Work, and Codex-aware routes.
 
 ## Security summary
 
 - All first-party code ships unminified and reviewable.
-- There is no Companion server, analytics SDK, telemetry endpoint, remote logger, or tracker.
+- There is no COMPANION server, analytics SDK, telemetry endpoint, remote logger, or tracker.
 - Host access is limited to exact Claude and ChatGPT HTTPS origins.
 - The extension uses `activeTab`, not the broad `tabs` permission.
 - Provider access is read-only.
-- Prompt and reply text are never persisted or transmitted by Companion.
+- Prompt and reply text are never persisted or transmitted by COMPANION.
 - User-selected files are converted locally in an opaque-origin sandbox with no extension API access and no network access.
 - Raw OpenAI account responses never cross from the page world into the extension.
 
 ## 1. Data handling
 
-| Data | Read? | Stored locally? | Sent off-device by Companion? |
+| Data | Read? | Stored locally? | Sent off-device by COMPANION? |
 | --- | --- | --- | --- |
 | Prompt text | Transiently, only for an optional local Caveman preview | No | No |
 | Claude or ChatGPT reply text | No | No | No |
@@ -27,7 +27,7 @@ This document describes Companion's security architecture, data handling, permis
 | Session or authentication cookies | Never read | Never | Never |
 | User settings | n/a | Yes | No |
 
-Local data is stored in `chrome.storage.local` and `chrome.storage.session`. Clearing Companion's local data removes settings, usage history, cached readings, badge ownership, and notification deduplication state.
+Local data is stored in `chrome.storage.local` and `chrome.storage.session`. Clearing COMPANION's local data removes settings, usage history, cached readings, badge ownership, and notification deduplication state.
 
 ## 2. Permissions
 
@@ -41,7 +41,7 @@ From `manifest.json`:
 | `offscreen` | Host the privileged relay used by the sandboxed file-conversion pipeline. |
 | `alarms` | Remove an OpenAI warning badge when its native usage reading becomes more than two hours old, even if no ChatGPT tab remains open. |
 
-The alarm contains only the provider name and observation timestamp. It does not contain account, conversation, prompt, or usage payload data. Companion does not request the broad `tabs` permission.
+The alarm contains only the provider name and observation timestamp. It does not contain account, conversation, prompt, or usage payload data. COMPANION does not request the broad `tabs` permission.
 
 Host permissions are limited to:
 
@@ -57,7 +57,7 @@ There is no `<all_urls>` permission.
 
 ### Claude
 
-Companion issues read-only same-origin requests to Claude usage endpoints, including organization usage and the optional overage-spend limit. The browser attaches the user's existing Claude session because the request is same-origin. Companion never reads or stores the session cookie.
+COMPANION issues read-only same-origin requests to Claude usage endpoints, including organization usage and the optional overage-spend limit. The browser attaches the user's existing Claude session because the request is same-origin. COMPANION never reads or stores the session cookie.
 
 ### OpenAI
 
@@ -75,7 +75,7 @@ Query strings are removed from source metadata. Raw response bodies, profile fie
 
 ### Third parties
 
-Companion has no third-party runtime endpoint. Store updates are handled by the browser or by the user's unpacked-extension workflow.
+COMPANION has no third-party runtime endpoint. Store updates are handled by the browser or by the user's unpacked-extension workflow.
 
 ## 4. Architecture and trust boundaries
 
@@ -147,9 +147,9 @@ The file-conversion sandbox intentionally has a separate CSP. It permits the bun
 
 ## 6. Credentials and sessions
 
-Companion never reads, stores, logs, or transmits provider passwords, authentication tokens, or session cookies.
+COMPANION never reads, stores, logs, or transmits provider passwords, authentication tokens, or session cookies.
 
-Claude usage reads are same-origin and credentialed by the browser. The only Claude identifier cached by Companion is the non-secret organization UUID needed to address the user's own usage endpoint.
+Claude usage reads are same-origin and credentialed by the browser. The only Claude identifier cached by COMPANION is the non-secret organization UUID needed to address the user's own usage endpoint.
 
 The OpenAI adapter does not retain request headers, cookies, query strings, or raw account responses.
 
@@ -189,9 +189,9 @@ Caveman Mode is local and user-controlled:
 | Stale OpenAI badge remains indefinitely | A single bounded alarm clears the badge after two hours if that snapshot still owns it. |
 | Oversized or malformed runtime message | Schema, key, unit, timestamp, numeric, and size validation. |
 | File-parser exploit | Parser is confined to an opaque-origin sandbox with no network or extension privileges. |
-| Prompt, reply, or file exfiltration | No Companion backend; content is not persisted or transmitted; sandbox has no network. |
+| Prompt, reply, or file exfiltration | No COMPANION backend; content is not persisted or transmitted; sandbox has no network. |
 | Session-cookie theft | Cookies are never read. |
-| Account modification | Provider behavior is read-only; Companion issues no state-changing account request. |
+| Account modification | Provider behavior is read-only; COMPANION issues no state-changing account request. |
 | Over-broad site access | Exact Claude and ChatGPT hosts only; no `<all_urls>` and no broad `tabs` permission. |
 
 ## 10. How to audit
@@ -207,7 +207,7 @@ Caveman Mode is local and user-controlled:
 
 ## 11. Known limitations
 
-- Claude and OpenAI expose internal web response shapes that can change. Companion fails closed by omitting unsupported usage rows rather than guessing.
+- Claude and OpenAI expose internal web response shapes that can change. COMPANION fails closed by omitting unsupported usage rows rather than guessing.
 - A browser extension cannot inject into the standalone native Codex desktop shell unless that shell provides an extension-enabled browser surface.
 - When loaded unpacked, the extension is only as trustworthy as the local repository folder. Restrict write access to that folder.
 - The vendored office and PDF parser should be reviewed and updated periodically even though it runs inside the sandbox.

@@ -1,6 +1,6 @@
 # Quick Start
 
-Companion is a Chrome/Edge extension that shows your real Claude.ai usage under the chat box. This guide covers installing it, first-run setup, and everyday use. For the security model and IT/infosec review, see **[SECURITY.md](SECURITY.md)**.
+COMPANION is a Chrome/Edge extension that shows your real Claude.ai usage under the chat box. This guide covers installing it, first-run setup, and everyday use. For the security model and IT/infosec review, see **[SECURITY.md](SECURITY.md)**.
 
 ---
 
@@ -16,7 +16,7 @@ No account, sign-up, API key, or server is required by the extension itself.
 
 ## 2. Install (Developer mode / "Load unpacked")
 
-1. Download or clone this repository to a stable location on disk — a folder you won't move or delete (e.g. `Documents\Companion`). The extension runs from these files in place.
+1. Download or clone this repository to a stable location on disk — a folder you won't move or delete (e.g. `Documents\COMPANION`). The extension runs from these files in place.
 2. Open your browser and go to `chrome://extensions` (or `edge://extensions`).
 3. Turn on **Developer mode** (top-right toggle).
 4. Click **Load unpacked** and select the extension folder (the one containing `manifest.json`).

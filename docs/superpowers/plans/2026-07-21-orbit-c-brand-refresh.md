@@ -35,8 +35,8 @@
 ### Task 2: Local Font System
 
 **Files:**
-- Create: `src/fonts/league-spartan-variable.ttf`
-- Create: `src/fonts/atkinson-hyperlegible-next-variable.ttf`
+- Create: `src/fonts/league-spartan-bold.woff2`
+- Create: `src/fonts/atkinson-hyperlegible-next-variable.woff2`
 - Modify: `src/fonts.css`
 - Modify: `manifest.json`
 - Modify: `src/content.js`

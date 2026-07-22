@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
-  "name": "Companion",
+  "name": "COMPANION",
   "version": "1.2.0",
   "minimum_chrome_version": "111",
-  "description": "A private, native-looking usage and efficiency companion for Claude and ChatGPT, including Work and Codex-aware web surfaces.",
+  "description": "COMPANION is a private, local usage and efficiency layer for Claude and ChatGPT, including Work and Codex-aware web surfaces.",
   "permissions": [
     "storage",
     "activeTab",
@@ -44,6 +44,7 @@
         "src/content.js"
       ],
       "css": [
+        "src/brand-fonts.css",
         "src/content.css"
       ],
       "run_at": "document_start"
@@ -74,7 +75,10 @@
         "src/openai-content.js",
         "src/openai-freshness-ui.js"
       ],
-      "run_at": "document_start"
+      "run_at": "document_start",
+      "css": [
+        "src/brand-fonts.css"
+      ]
     },
     {
       "matches": [
@@ -93,7 +97,8 @@
     {
       "resources": [
         "src/widget.css",
-        "src/fonts/space-grotesk-latin.woff2"
+        "src/fonts/league-spartan-bold.woff2",
+        "src/fonts/atkinson-hyperlegible-next-variable.woff2"
       ],
       "matches": [
         "https://claude.ai/*",
@@ -103,7 +108,8 @@
     {
       "resources": [
         "src/openai-widget.css",
-        "src/fonts/space-grotesk-latin.woff2"
+        "src/fonts/league-spartan-bold.woff2",
+        "src/fonts/atkinson-hyperlegible-next-variable.woff2"
       ],
       "matches": [
         "https://chatgpt.com/*",
@@ -119,7 +125,7 @@
     "128": "icons/icon128.png"
   },
   "action": {
-    "default_title": "Companion",
+    "default_title": "COMPANION",
     "default_icon": {
       "16": "icons/icon16.png",
       "32": "icons/icon32.png",

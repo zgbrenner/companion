@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Extend Companion to ChatGPT Chat, ChatGPT Work, and Codex-aware web surfaces without changing the shipped Claude adapter.
+**Goal:** Extend COMPANION to ChatGPT Chat, ChatGPT Work, and Codex-aware web surfaces without changing the shipped Claude adapter.
 
 **Architecture:** Keep provider-specific network and DOM integrations isolated behind `src/platform.js`. Compose the two privileged routers through a tiny service-worker entry point, and route the toolbar popup by active provider.
 

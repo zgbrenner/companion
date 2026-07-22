@@ -32,7 +32,7 @@
   // reveals the endpoint and it validates.
   let spendBreakdown = null;
   let generationRefreshTimer = null;
-  // Space Grotesk registration for the widget. @font-face declared INSIDE a
+  // League Spartan registration for the widget. @font-face declared INSIDE a
   // shadow root's stylesheet never registers with the document font cache
   // (a shadow root can use fonts, but can't define new ones), so it has to
   // be injected once into the host page's <head> instead. Guarded by id so
@@ -44,8 +44,8 @@
     const style = document.createElement("style");
     style.id = FONT_FACE_STYLE_ID;
     style.textContent = `@font-face {
-      font-family: "Space Grotesk";
-      src: url("${chrome.runtime.getURL("src/fonts/space-grotesk-latin.woff2")}") format("woff2");
+      font-family: "League Spartan";
+      src: url("${chrome.runtime.getURL("src/fonts/league-spartan-bold.woff2")}") format("woff2");
       font-weight: 400 700;
       font-display: swap;
     }`;
@@ -233,7 +233,7 @@
     container.innerHTML = `
       <div class="cuc-card" role="complementary" aria-label="Claude usage meter">
         <div class="cuc-header">
-          <span class="cuc-title">Companion</span>
+          <span class="cuc-title">COMPANION</span>
           <div class="cuc-controls">
             <button class="cuc-button" data-cuc-action="cycle" title="Switch between dollars/tokens" aria-label="Switch display between dollars, tokens, and both">$</button>
             <button class="cuc-button" data-cuc-action="options" title="Settings" aria-label="Open settings">⚙</button>

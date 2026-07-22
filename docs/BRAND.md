@@ -30,7 +30,7 @@ Warning and danger colors remain semantic and must not be replaced by mint or ir
 
 ## Product rules
 
-- Write the brand as **COMPANION**, never `Companion`, in product chrome and store-facing identity.
+- Write the brand as **COMPANION**, never `COMPANION`, in product chrome and store-facing identity.
 - Use sentence case for settings, buttons, helper text, and descriptions.
 - Use the Orbit C mark rather than provider logos. Provider context is shown through restrained accent changes and labels.
 - Preserve AA contrast for normal text and clear focus indicators.

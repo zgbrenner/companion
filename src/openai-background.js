@@ -247,7 +247,7 @@ async function ensureOpenAIOffscreenDocument() {
     openaiOffscreenCreating = chrome.offscreen.createDocument({
       url: "src/offscreen.html",
       reasons: ["WORKERS"],
-      justification: "Convert a user-selected office file to Markdown locally for Companion.",
+      justification: "Convert a user-selected office file to Markdown locally for COMPANION.",
     }).finally(() => { openaiOffscreenCreating = null; });
   }
   await openaiOffscreenCreating;

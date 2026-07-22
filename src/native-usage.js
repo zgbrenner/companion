@@ -389,7 +389,7 @@
       const stored = await chrome.storage.local.get([SPEND_ENDPOINT_KEY]);
       if (stored[SPEND_ENDPOINT_KEY]?.path === path) return false;
       await chrome.storage.local.set({ [SPEND_ENDPOINT_KEY]: { path, learnedAt: Date.now() } });
-      console.debug("[Companion] learned candidate spend endpoint:", path);
+      console.debug("[COMPANION] learned candidate spend endpoint:", path);
       return true;
     } catch {
       return false;
@@ -502,10 +502,10 @@
       const flipped = rowsWithDivisor(rawRows, divisor === 100 ? 1 : 100);
       const flippedTotal = flipped.reduce((sum, row) => sum + row.spendUsd, 0);
       if (flippedTotal > bound) {
-        console.debug("[Companion] spend breakdown rejected: totals", total, flippedTotal, "vs monthly counter", monthUsed);
+        console.debug("[COMPANION] spend breakdown rejected: totals", total, flippedTotal, "vs monthly counter", monthUsed);
         return null;
       }
-      console.debug("[Companion] spend breakdown unit flipped:", total, "->", flippedTotal, "vs monthly counter", monthUsed);
+      console.debug("[COMPANION] spend breakdown unit flipped:", total, "->", flippedTotal, "vs monthly counter", monthUsed);
       rows = flipped;
     }
     return { fetchedAt: Date.now(), path: endpoint.path, rows };

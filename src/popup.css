@@ -20,7 +20,7 @@ body {
 }
 
 h1 {
-  font-family: "Space Grotesk", system-ui, -apple-system, sans-serif;
+  font-family: "League Spartan", system-ui, -apple-system, sans-serif;
   font-size: 15px;
   font-weight: 650;
   letter-spacing: -0.01em;
@@ -60,14 +60,14 @@ p {
 
 .meter-label span:first-child {
   flex-shrink: 0;
-  font-family: "Space Grotesk", system-ui, -apple-system, sans-serif;
+  font-family: "League Spartan", system-ui, -apple-system, sans-serif;
   font-weight: 600;
 }
 
 .meter-label span:last-child {
   min-width: 0;
   color: #1c2430;
-  font-family: "Space Grotesk", system-ui, -apple-system, sans-serif;
+  font-family: "League Spartan", system-ui, -apple-system, sans-serif;
   font-weight: 650;
   font-size: 13px;
   font-variant-numeric: tabular-nums;
@@ -157,13 +157,13 @@ p {
 }
 
 .summary-row span:first-child {
-  font-family: "Space Grotesk", system-ui, -apple-system, sans-serif;
+  font-family: "League Spartan", system-ui, -apple-system, sans-serif;
   font-weight: 600;
 }
 
 .summary-row span:last-child {
   color: #1c2430;
-  font-family: "Space Grotesk", system-ui, -apple-system, sans-serif;
+  font-family: "League Spartan", system-ui, -apple-system, sans-serif;
   font-weight: 650;
   font-variant-numeric: tabular-nums;
 }
@@ -324,12 +324,12 @@ p {
 }
 
 .native-label span:first-child {
-  font-family: "Space Grotesk", system-ui, -apple-system, sans-serif;
+  font-family: "League Spartan", system-ui, -apple-system, sans-serif;
 }
 
 .native-label span:last-child {
   color: #1c2430;
-  font-family: "Space Grotesk", system-ui, -apple-system, sans-serif;
+  font-family: "League Spartan", system-ui, -apple-system, sans-serif;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
@@ -390,7 +390,7 @@ p {
 }
 
 .insights-title {
-  font-family: "Space Grotesk", system-ui, -apple-system, sans-serif;
+  font-family: "League Spartan", system-ui, -apple-system, sans-serif;
   font-weight: 650;
   font-size: 11px;
   letter-spacing: -0.01em;
@@ -476,3 +476,48 @@ button:focus-visible {
     outline-color: #5fb383;
   }
 }
+
+/* ---- Orbit C brand system ---- */
+body {
+  width: 320px;
+  font-family: "Atkinson Hyperlegible Next", ui-sans-serif, system-ui, sans-serif;
+  color: #111827;
+  background: #f8fafc;
+}
+.popup { padding: 16px; }
+.brand-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 13px;
+  border-bottom: 1px solid #dbe3ec;
+}
+.brand-mark { width: 30px; height: 30px; border-radius: 8px; }
+h1 {
+  font-family: "League Spartan", ui-sans-serif, system-ui, sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: .12em;
+  color: #111827;
+}
+.bar > div, .trend .trend-bar.today { background: #24b88e; }
+.trend .trend-bar { background: #c9f2e5; }
+button {
+  font-family: "Atkinson Hyperlegible Next", ui-sans-serif, system-ui, sans-serif;
+  border-color: #cbd5e1;
+  color: #111827;
+  background: #ffffff;
+}
+button:hover { background: #eefbf7; border-color: #35d6a6; }
+button:focus-visible, .trend .trend-bar:focus-visible { outline-color: #168363; }
+@media (prefers-color-scheme: dark) {
+  body { color: #f8fafc; background: #0b1220; }
+  .brand-header { border-bottom-color: #334155; }
+  h1 { color: #f8fafc; }
+  .bar { background: #334155; }
+  .bar > div, .trend .trend-bar.today { background: #35d6a6; }
+  .trend .trend-bar { background: #275a4d; }
+  button { color: #f8fafc; background: #172033; border-color: #334155; }
+  button:hover { background: #1d2a3e; }
+}
+

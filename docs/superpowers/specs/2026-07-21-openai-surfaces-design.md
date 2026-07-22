@@ -1,12 +1,12 @@
-# Companion for OpenAI Surfaces
+# COMPANION for OpenAI Surfaces
 
 ## Goal
 
-Extend Companion from Claude.ai to ChatGPT Chat, ChatGPT Work, and Codex-aware OpenAI surfaces while preserving the existing Claude implementation and privacy model.
+Extend COMPANION from Claude.ai to ChatGPT Chat, ChatGPT Work, and Codex-aware OpenAI surfaces while preserving the existing Claude implementation and privacy model.
 
 ## Product behavior
 
-Companion auto-detects the active provider and surface. On Claude.ai it behaves exactly as it does today. On ChatGPT it detects Chat, Work, or Codex from the route and selected mode, docks beneath the active composer, follows the page theme, and applies a visual treatment that feels native to that surface.
+COMPANION auto-detects the active provider and surface. On Claude.ai it behaves exactly as it does today. On ChatGPT it detects Chat, Work, or Codex from the route and selected mode, docks beneath the active composer, follows the page theme, and applies a visual treatment that feels native to that surface.
 
 The shared features remain available wherever there is a writable chat composer:
 
@@ -23,9 +23,9 @@ Provider usage is an adapter boundary.
 
 Claude continues using its existing native usage adapter without modification. OpenAI uses a separate adapter that observes only first-party ChatGPT network responses and extracts sanitized numeric usage, credit, token, reset, and utilization fields. It never forwards raw account payloads, prompt text, response text, or file contents across the page boundary.
 
-OpenAI exposes different usage fields across plans and surfaces. Companion therefore renders only values it actually observes. It never estimates a dollar amount or invents a quota. Missing values are presented as unavailable on the current surface.
+OpenAI exposes different usage fields across plans and surfaces. COMPANION therefore renders only values it actually observes. It never estimates a dollar amount or invents a quota. Missing values are presented as unavailable on the current surface.
 
-Work and Codex can share an agentic usage pool. Companion labels that pool `Agentic usage` instead of pretending it is isolated to one product.
+Work and Codex can share an agentic usage pool. COMPANION labels that pool `Agentic usage` instead of pretending it is isolated to one product.
 
 ## Architecture
 
@@ -96,7 +96,7 @@ The widget follows the page's rendered light or dark mode, honors reduced motion
 
 ## Codex boundary
 
-The Chrome extension supports Codex when Codex is presented as a ChatGPT web route or composer surface. The standalone Codex desktop shell is not a normal Chrome extension host, so Companion cannot inject into that native shell through Manifest V3. On ChatGPT web, Companion can still display any shared Work/Codex agentic usage data that OpenAI exposes.
+The Chrome extension supports Codex when Codex is presented as a ChatGPT web route or composer surface. The standalone Codex desktop shell is not a normal Chrome extension host, so COMPANION cannot inject into that native shell through Manifest V3. On ChatGPT web, COMPANION can still display any shared Work/Codex agentic usage data that OpenAI exposes.
 
 ## Testing
 
@@ -112,4 +112,4 @@ The test suite covers:
 
 ## Release
 
-Version `1.2.0` introduces multi-provider support. Documentation and store copy describe Companion as an unofficial local usage and efficiency companion for Claude and ChatGPT, with the Codex desktop limitation stated explicitly.
+Version `1.2.0` introduces multi-provider support. Documentation and store copy describe COMPANION as an unofficial local usage and efficiency companion for Claude and ChatGPT, with the Codex desktop limitation stated explicitly.
