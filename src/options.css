@@ -1,4 +1,4 @@
-/* Companion settings. Design language mirrors the in-chat widget:
+/* COMPANION settings. Design language mirrors the in-chat widget:
    12px radii, muted surfaces, bordered headers, green status accents,
    restrained shadows, coordinated dark mode. Dependency-free shadcn-style
    components (switch, segmented, badge, notice, disclosure, buttons).
@@ -81,7 +81,7 @@ body {
 }
 .brand { display: flex; align-items: baseline; gap: 8px; }
 .brand-mark { color: var(--accent); font-size: 14px; }
-.brand-name { margin: 0; font-family: "Space Grotesk", system-ui, -apple-system, sans-serif; font-weight: 700; font-size: 15px; color: var(--text-strong); letter-spacing: -0.01em; }
+.brand-name { margin: 0; font-family: "Atkinson Hyperlegible Next", system-ui, -apple-system, sans-serif; font-weight: 700; font-size: 15px; color: var(--text-strong); letter-spacing: -0.01em; }
 .brand-sub { color: var(--muted); font-size: 13px; }
 .save-bar { display: flex; align-items: center; gap: 12px; }
 .save-status {
@@ -171,7 +171,7 @@ body {
   background: var(--surface-muted);
   border-bottom: 1px solid var(--border);
 }
-.card-header h2 { margin: 0; font-family: "Space Grotesk", system-ui, -apple-system, sans-serif; font-size: 15px; font-weight: 700; letter-spacing: -0.01em; color: var(--text-strong); }
+.card-header h2 { margin: 0; font-family: "Atkinson Hyperlegible Next", system-ui, -apple-system, sans-serif; font-size: 15px; font-weight: 700; letter-spacing: -0.01em; color: var(--text-strong); }
 .card-header p { margin: 3px 0 0; font-size: 12.5px; color: var(--muted); }
 .card-body { padding: 6px 18px 14px; }
 
@@ -206,7 +206,7 @@ label.row-label { cursor: pointer; }
 .metrics-group-legend {
   padding: 0 6px;
   margin-left: 4px;
-  font-family: "Space Grotesk", system-ui, -apple-system, sans-serif;
+  font-family: "Atkinson Hyperlegible Next", system-ui, -apple-system, sans-serif;
   font-size: 12.5px;
   font-weight: 700;
   letter-spacing: -0.01em;
@@ -438,3 +438,80 @@ code {
     transition: none;
   }
 }
+
+/* ---- Orbit C brand system ---- */
+:root {
+  --bg: #f1f5f9;
+  --surface: #ffffff;
+  --surface-muted: #f8fafc;
+  --surface-sunken: #e8eef5;
+  --border: #d7e0ea;
+  --border-strong: #b8c5d4;
+  --text: #111827;
+  --text-strong: #111827;
+  --muted: #526174;
+  --muted-2: #334155;
+  --accent: #14765a;
+  --accent-soft: rgba(53, 214, 166, .14);
+  --shadow: 0 8px 28px rgba(15, 23, 42, .07);
+}
+body { font-family: "Atkinson Hyperlegible Next", ui-sans-serif, system-ui, sans-serif; }
+.brand { align-items: center; gap: 10px; }
+.brand-mark { width: 30px; height: 30px; border-radius: 8px; }
+.brand-name {
+  font-family: "Atkinson Hyperlegible Next", ui-sans-serif, system-ui, sans-serif;
+  font-size: 16px;
+  letter-spacing: .12em;
+}
+.card-header h2, .metrics-group-legend {
+  font-family: "Atkinson Hyperlegible Next", ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: 0;
+}
+.topbar { background: color-mix(in srgb, #f1f5f9 88%, transparent); }
+.section-nav a.active { color: #0f6d52; }
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0b1220;
+    --surface: #111827;
+    --surface-muted: #172033;
+    --surface-sunken: #0f172a;
+    --border: #334155;
+    --border-strong: #475569;
+    --text: #e6edf5;
+    --text-strong: #f8fafc;
+    --muted: #a9b6c6;
+    --muted-2: #cbd5e1;
+    --accent: #35d6a6;
+    --accent-soft: rgba(53, 214, 166, .14);
+  }
+  .topbar { background: color-mix(in srgb, #0b1220 88%, transparent); }
+}
+
+/* Orbit C contrast correction */
+.save-status { color: #0f6d52; }
+.save-status::before { background: #24b88e; }
+@media (prefers-color-scheme: dark) {
+  .save-status { color: #7ce7cd; }
+  .save-status::before { background: #35d6a6; }
+}
+
+
+
+/* Brand-only display type */
+.brand-name {
+  font-family: "League Spartan", ui-sans-serif, system-ui, sans-serif;
+}
+
+/* Orbit C provider panel spacing */
+.panel > p {
+  margin: 0;
+  padding: 12px 14px 0;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+.panel > p + p {
+  padding-top: 8px;
+  padding-bottom: 12px;
+}
+

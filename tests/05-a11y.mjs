@@ -15,7 +15,7 @@ try {
 
 const { context, extensionId } = await launchExtension();
 try {
-  for (const file of ["options.html", "popup.html"]) {
+  for (const file of ["options.html", "popup.html", "openai-popup.html"]) {
     const { page } = await openPage(context, extensionId, file);
     if (file === "popup.html") {
       await page.evaluate(seedScript());
@@ -32,10 +32,15 @@ try {
     const serious = results.violations.filter(v =>
       v.impact === "serious" || v.impact === "critical"
     );
-    assert(
-      serious.length === 0,
-      `${file}: ${serious.map(v => `${v.id} (${v.impact}) x${v.nodes.length}`).join(", ")}`
-    );
+    const details = serious.map(violation => {
+      const targets = violation.nodes.map(node => {
+        const target = Array.isArray(node.target) ? node.target.join(" ") : String(node.target || "unknown");
+        const summary = String(node.failureSummary || "").replace(/\s+/g, " ").trim();
+        return `${target}${summary ? `: ${summary}` : ""}`;
+      }).join(" | ");
+      return `${violation.id} (${violation.impact}) x${violation.nodes.length}${targets ? ` [${targets}]` : ""}`;
+    }).join(", ");
+    assert(serious.length === 0, `${file}: ${details}`);
     console.log(`  ${file}: 0 serious/critical violations`);
     await page.close();
   }

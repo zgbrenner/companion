@@ -4,6 +4,7 @@ All notable changes to Companion. The most recent release is at the top.
 
 ### Unreleased (OpenAI hardening)
 
+- Introduced the Orbit C identity, all-caps COMPANION wordmark, and locally bundled League Spartan and Atkinson Hyperlegible Next typography across the toolbar, popups, settings, and provider widgets.
 - Replaced the fixed-name OpenAI DOM bridge with random per-page event channels established through a one-time `document_start` mailbox that the MAIN-world observer removes immediately.
 - Raw OpenAI account responses remain in the page world. Only bounded normalized numeric usage data crosses into the extension.
 - Removed URL query strings from retained OpenAI source metadata so access values, identifiers, and conversation parameters cannot be stored or displayed.

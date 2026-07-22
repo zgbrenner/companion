@@ -1,9 +1,4 @@
-@font-face {
-  font-family: "Space Grotesk";
-  src: url("fonts/space-grotesk-latin.woff2") format("woff2");
-  font-weight: 400 700;
-  font-display: swap;
-}
+@import url("fonts.css");
 
 :root {
   color-scheme: light dark;
@@ -49,14 +44,14 @@ button { font: inherit; }
 .topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .brand { display: flex; align-items: center; gap: 9px; }
 .mark { width: 29px; height: 29px; display: grid; place-items: center; border-radius: 9px; background: var(--accent-soft); color: var(--accent-strong); font-weight: 800; }
-h1 { margin: 0; font: 700 15px/1.1 "Space Grotesk", ui-sans-serif, sans-serif; letter-spacing: -0.02em; }
+h1 { margin: 0; font: 700 15px/1.1 "Atkinson Hyperlegible Next", ui-sans-serif, sans-serif; letter-spacing: -0.02em; }
 .brand p { margin: 2px 0 0; color: var(--muted); font-size: 10px; }
 .surface { display: inline-flex; align-items: center; gap: 5px; padding: 4px 8px; border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent); border-radius: 999px; background: var(--accent-soft); color: var(--accent-strong); font-size: 10px; font-weight: 700; }
 .surface > span { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 
 .hero { margin-top: 14px; padding: 14px; border: 1px solid var(--border); border-radius: 17px; background: linear-gradient(145deg, var(--surface), color-mix(in srgb, var(--accent-soft) 40%, var(--surface))); }
 .eyebrow { margin: 0; color: var(--accent-strong); font-size: 9px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
-h2 { margin: 5px 0 4px; font: 700 17px/1.2 "Space Grotesk", ui-sans-serif, sans-serif; letter-spacing: -0.025em; }
+h2 { margin: 5px 0 4px; font: 700 17px/1.2 "Atkinson Hyperlegible Next", ui-sans-serif, sans-serif; letter-spacing: -0.025em; }
 .hero p:not(.eyebrow) { margin: 0; color: var(--muted); font-size: 10.5px; }
 .freshness { display: inline-block; margin-top: 10px; padding: 3px 7px; border-radius: 999px; background: var(--bg); color: var(--muted); font-size: 9.5px; font-weight: 650; }
 .freshness[data-state="stale"] { background: var(--warning-soft); color: var(--warning); }
@@ -66,7 +61,7 @@ h2 { margin: 5px 0 4px; font: 700 17px/1.2 "Space Grotesk", ui-sans-serif, sans-
 .row { padding: 10px; border-radius: 13px; background: var(--surface); }
 .row-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .label { color: var(--muted); font-size: 10px; }
-.value { font: 700 11px/1.2 "Space Grotesk", ui-sans-serif, sans-serif; font-variant-numeric: tabular-nums; }
+.value { font: 700 11px/1.2 "Atkinson Hyperlegible Next", ui-sans-serif, sans-serif; font-variant-numeric: tabular-nums; }
 .progress { height: 5px; margin-top: 7px; overflow: hidden; border-radius: 99px; background: color-mix(in srgb, var(--muted) 16%, transparent); }
 .progress span { display: block; height: 100%; border-radius: inherit; background: var(--accent); }
 .reset { margin-top: 4px; color: var(--muted); font-size: 9px; }
@@ -87,4 +82,42 @@ body[data-surface="codex"] { --accent: #536dfe; --accent-soft: rgba(83, 109, 254
 @media (prefers-color-scheme: dark) {
   body[data-surface="work"] { --accent: #a995ff; --accent-soft: rgba(169, 149, 255, .15); --accent-strong: #c5b8ff; }
   body[data-surface="codex"] { --accent: #91a3ff; --accent-soft: rgba(145, 163, 255, .15); --accent-strong: #bac4ff; }
+}
+
+/* ---- Orbit C brand system ---- */
+body {
+  font-family: "Atkinson Hyperlegible Next", ui-sans-serif, system-ui, sans-serif;
+  --bg: #f8fafc;
+  --surface: #ffffff;
+  --surface-hover: #eefbf7;
+  --border: rgba(51, 65, 85, .18);
+  --text: #111827;
+  --muted: #526174;
+  --accent: #168363;
+  --accent-soft: rgba(53, 214, 166, .14);
+  --accent-strong: #0f6d52;
+}
+.mark { width: 30px; height: 30px; border-radius: 8px; }
+h1 {
+  font-family: "Atkinson Hyperlegible Next", ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: .12em;
+}
+h2, .value { font-family: "Atkinson Hyperlegible Next", ui-sans-serif, system-ui, sans-serif; }
+@media (prefers-color-scheme: dark) {
+  body {
+    --bg: #0b1220;
+    --surface: #172033;
+    --surface-hover: #1d2a3e;
+    --border: rgba(203, 213, 225, .18);
+    --text: #f8fafc;
+    --muted: #a9b6c6;
+    --accent: #35d6a6;
+    --accent-soft: rgba(53, 214, 166, .14);
+    --accent-strong: #7ce7cd;
+  }
+}
+
+/* Brand-only display type */
+.brand h1 {
+  font-family: "League Spartan", ui-sans-serif, system-ui, sans-serif;
 }

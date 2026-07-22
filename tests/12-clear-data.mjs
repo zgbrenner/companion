@@ -33,7 +33,7 @@ try {
 
   page.once("dialog", dialog => dialog.accept());
   await page.click("#clear-all-data");
-  await page.waitForFunction(() => document.getElementById("clear-data-status")?.textContent?.includes("All local Companion data has been cleared"));
+  await page.waitForFunction(() => document.getElementById("clear-data-status")?.textContent?.includes("All local COMPANION data has been cleared"));
 
   const result = await worker.evaluate(async () => ({
     local: await chrome.storage.local.get(null),

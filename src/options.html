@@ -3,15 +3,15 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Companion Settings</title>
+  <title>COMPANION Settings</title>
   <link rel="stylesheet" href="options.css" />
 </head>
 <body>
   <header class="topbar">
     <div class="topbar-inner">
       <div class="brand">
-        <span class="brand-mark" aria-hidden="true">◆</span>
-        <h1 class="brand-name">Companion</h1>
+        <img class="brand-mark" src="../icons/orbit-c.svg" alt="" aria-hidden="true" />
+        <h1 class="brand-name">COMPANION</h1>
         <span class="brand-sub">Settings</span>
       </div>
       <div class="save-bar">
@@ -38,12 +38,12 @@
         <div class="card-body">
           <div class="notice">
             <div class="notice-title">Automatic surface matching</div>
-            <p>Companion follows the active page. Claude keeps its warm meter design, Chat uses a restrained green accent, Work uses violet, and Codex-aware web surfaces use graphite and indigo.</p>
+            <p>COMPANION follows the active page while keeping the Orbit C identity consistent. Mint is the primary accent, with restrained iris context for Work and Codex-aware web surfaces.</p>
           </div>
 
           <div class="row">
             <div class="row-text">
-              <label class="row-label" id="lbl-show-widget" for="showWidget">Show the in-page Companion widget</label>
+              <label class="row-label" id="lbl-show-widget" for="showWidget">Show the in-page COMPANION widget</label>
               <div class="row-desc" id="desc-show-widget">Pins beneath supported Claude and ChatGPT composers. You can also hide it from the widget itself.</div>
             </div>
             <button type="button" id="showWidget" class="switch" role="switch" aria-checked="true" data-setting="showWidget" aria-labelledby="lbl-show-widget" aria-describedby="desc-show-widget"><span class="switch-knob"></span></button>
@@ -134,8 +134,8 @@
         <div class="card-body">
           <div class="panel">
             <div class="panel-head"><span class="panel-title">ChatGPT, Work, and Codex-aware web surfaces</span><span class="badge badge-muted">Automatic</span></div>
-            <p>Companion detects supported ChatGPT origins and selected modes automatically. It forwards only bounded numeric usage fields that OpenAI exposes. Raw account payloads and conversation text never cross the page bridge.</p>
-            <p>The standalone Codex desktop shell is not a Chrome extension host. Companion supports Codex-aware web surfaces and shared agentic usage exposed on ChatGPT web.</p>
+            <p>COMPANION detects supported ChatGPT origins and selected modes automatically. It forwards only bounded numeric usage fields that OpenAI exposes. Raw account payloads and conversation text never cross the page bridge.</p>
+            <p>The standalone Codex desktop shell is not a Chrome extension host. COMPANION supports Codex-aware web surfaces and shared agentic usage exposed on ChatGPT web.</p>
           </div>
 
           <div class="panel">
@@ -151,7 +151,7 @@
 
           <details class="disclosure">
             <summary>How Claude detection works</summary>
-            <div class="disclosure-body"><p>The organization is discovered from Claude's own active-organization state, with its organizations endpoint as a fallback. The monthly cap comes from Claude's usage response. Nothing is hardcoded.</p><p>Only the non-secret organization identifier is cached locally. Companion never reads, stores, or transmits your session cookie and makes read requests only.</p></div>
+            <div class="disclosure-body"><p>The organization is discovered from Claude's own active-organization state, with its organizations endpoint as a fallback. The monthly cap comes from Claude's usage response. Nothing is hardcoded.</p><p>Only the non-secret organization identifier is cached locally. COMPANION never reads, stores, or transmits your session cookie and makes read requests only.</p></div>
           </details>
         </div>
       </section>
@@ -164,7 +164,7 @@
             <ul>
               <li><strong>Stored locally:</strong> settings, Claude daily spend totals, bounded OpenAI usage snapshots, and small provider caches.</li>
               <li><strong>Never stored:</strong> prompt or reply text, file contents, passwords, login cookies, or raw provider account payloads.</li>
-              <li><strong>Never contacted:</strong> Companion has no analytics, telemetry, tracking, or third-party backend.</li>
+              <li><strong>Never contacted:</strong> COMPANION has no analytics, telemetry, tracking, or third-party backend.</li>
             </ul>
           </div>
 

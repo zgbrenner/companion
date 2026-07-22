@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="COMPANION Orbit C icon">
+  <rect width="128" height="128" rx="28" fill="#111827"/>
+  <path d="M91.4 35.8A42 42 0 1 0 94.6 88" fill="none" stroke="#F8FAFC" stroke-width="11" stroke-linecap="round"/>
+  <circle cx="64" cy="64" r="15" fill="#35D6A6"/>
+  <circle cx="94.6" cy="88" r="5.5" fill="#35D6A6"/>
+</svg>

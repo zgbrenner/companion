@@ -37,8 +37,8 @@
     const style = document.createElement("style");
     style.id = FONT_STYLE_ID;
     style.textContent = `@font-face {
-      font-family: "Space Grotesk";
-      src: url("${chrome.runtime.getURL("src/fonts/space-grotesk-latin.woff2")}") format("woff2");
+      font-family: "League Spartan";
+      src: url("${chrome.runtime.getURL("src/fonts/league-spartan-bold.woff2")}") format("woff2");
       font-weight: 400 700;
       font-display: swap;
     }`;
@@ -322,7 +322,7 @@
         : "";
       rowsEl.innerHTML = rows.length || tokenRow
         ? `${rows.map(rowHtml).join("")}${tokenRow}`
-        : `<div class="cuc-openai-empty">Waiting for native usage data from this account. Companion does not guess or scrape message text.</div>`;
+        : `<div class="cuc-openai-empty">Waiting for native usage data from this account. COMPANION does not guess or scrape message text.</div>`;
     }
 
     const title = widgetRoot.querySelector("[data-cuc-openai='status-title']");
@@ -364,16 +364,16 @@
 
     const root = document.createElement("div");
     root.className = "cuc-openai-root";
-    root.innerHTML = `<section class="cuc-openai-card" role="complementary" aria-label="Companion for ChatGPT">
+    root.innerHTML = `<section class="cuc-openai-card" role="complementary" aria-label="COMPANION for ChatGPT">
       <header class="cuc-openai-header">
         <div class="cuc-openai-brand">
-          <span class="cuc-openai-mark" aria-hidden="true">◆</span>
-          <span class="cuc-openai-title">Companion</span>
+          <span class="cuc-openai-mark" aria-hidden="true"><svg viewBox="0 0 128 128" focusable="false" aria-hidden="true"><rect width="128" height="128" rx="28" fill="#111827"></rect><path d="M91.4 35.8A42 42 0 1 0 94.6 88" fill="none" stroke="#F8FAFC" stroke-width="11" stroke-linecap="round"></path><circle cx="64" cy="64" r="15" fill="#35D6A6"></circle><circle cx="94.6" cy="88" r="5.5" fill="#35D6A6"></circle></svg></span>
+          <span class="cuc-openai-title">COMPANION</span>
           <span class="cuc-openai-surface" data-cuc-openai="surface"></span>
         </div>
         <div class="cuc-openai-actions">
-          <button class="cuc-openai-icon-button" data-cuc-openai-action="options" aria-label="Open Companion settings" title="Settings">⚙</button>
-          <button class="cuc-openai-icon-button" data-cuc-openai-action="hide" aria-label="Hide Companion" title="Hide">×</button>
+          <button class="cuc-openai-icon-button" data-cuc-openai-action="options" aria-label="Open COMPANION settings" title="Settings">⚙</button>
+          <button class="cuc-openai-icon-button" data-cuc-openai-action="hide" aria-label="Hide COMPANION" title="Hide">×</button>
         </div>
       </header>
       <div class="cuc-openai-body">

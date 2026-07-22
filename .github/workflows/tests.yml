@@ -41,3 +41,11 @@ jobs:
           path: extension-test-output.log
           if-no-files-found: error
           retention-days: 14
+      - name: Upload rendered brand snapshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: brand-snapshots
+          path: test-artifacts/brand
+          if-no-files-found: warn
+          retention-days: 14

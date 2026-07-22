@@ -70,7 +70,7 @@ try {
     const host = document.querySelector("#cuc-openai-widget");
     return { text: host?.shadowRoot?.textContent || "", width: host?.getBoundingClientRect().width || 0 };
   });
-  assert(initial.text.includes("Companion"), "widget renders Companion title");
+  assert(initial.text.includes("COMPANION"), "widget renders COMPANION title");
   assert(initial.text.includes("Chat"), "widget detects Chat surface");
   assert(initial.width > 600 && initial.width < 720, `widget follows composer width, got ${initial.width}`);
 

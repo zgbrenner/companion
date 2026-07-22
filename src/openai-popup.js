@@ -66,7 +66,7 @@
 
     if (!snapshot) {
       title.textContent = "Watching for OpenAI data";
-      note.textContent = "Companion shows only numeric usage that OpenAI exposes. No estimates and no message scraping.";
+      note.textContent = "COMPANION shows only numeric usage that OpenAI exposes. No estimates and no message scraping.";
       rows.innerHTML = `<div class="empty">Use Chat, Work, or a Codex-aware web surface. Usage appears here as soon as OpenAI returns a supported counter or limit.</div>`;
       return;
     }
@@ -74,8 +74,8 @@
     if (!descriptor.showValues) {
       title.textContent = `${meta.label} usage needs refresh`;
       note.textContent = descriptor.state === "expired"
-        ? "The last native reading is too old to present as current, so Companion is hiding it."
-        : "This native usage reading has no trustworthy observation time, so Companion is hiding it.";
+        ? "The last native reading is too old to present as current, so COMPANION is hiding it."
+        : "This native usage reading has no trustworthy observation time, so COMPANION is hiding it.";
       rows.innerHTML = `<div class="empty">Use ChatGPT, Work, or a Codex-aware web surface to collect a fresh native usage reading.</div>`;
       return;
     }
