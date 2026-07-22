@@ -15,9 +15,10 @@ All notable changes to Companion. The most recent release is at the top.
 - Freshness labels update automatically while the page or popup remains open.
 - Added serialized provider ownership for the shared toolbar badge. Old OpenAI cleanup can no longer erase a newer Claude badge or a newer OpenAI reading.
 - Reintroduced the narrow `alarms` permission solely to remove a high OpenAI warning badge after its native reading becomes two hours old, even when no ChatGPT tab remains open. Alarm names contain only provider and observation time.
+- Badge ownership now reconciles when the service worker starts: orphaned or expired badges are cleared, valid Claude ownership is preserved, and a missing future OpenAI expiry alarm is recreated.
 - Added a Chromium privacy regression test proving that Clear all local data removes Claude and OpenAI local state, session state, caches, and the toolbar badge.
 - Pinned Playwright and axe-core to verified versions and cached the matching Chromium build, preventing unrelated upstream releases from changing CI behavior without a repository update.
-- Added end-to-end coverage for native OpenAI usage rendering, profile-field exclusion, query-string stripping, event-forgery resistance, bridge startup timing, stale warnings, expired-value hiding, data reset, badge ownership, and reproducible CI policy.
+- Added end-to-end coverage for native OpenAI usage rendering, profile-field exclusion, query-string stripping, event-forgery resistance, bridge startup timing, stale warnings, expired-value hiding, data reset, badge ownership, restart reconciliation, and reproducible CI policy.
 - Rewrote the OpenAI and security documentation to match the multi-provider architecture, freshness policy, badge expiry, and Codex desktop boundary.
 
 ### 1.1.0 (insights)

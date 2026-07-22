@@ -42,10 +42,58 @@
     catch { /* alarm cleanup is best effort */ }
   }
 
+  async function createAlarm(name, when) {
+    if (!name || !Number.isFinite(when) || !chrome.alarms?.create) return false;
+    try {
+      await chrome.alarms.create(name, { when });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   function validInput(provider, observedAt) {
     return ALLOWED_PROVIDERS.has(provider)
       && Number.isFinite(observedAt)
       && observedAt >= 0;
+  }
+
+  async function clearOwnedState(current = null) {
+    if (current?.alarmName) await clearAlarm(current.alarmName);
+    await chrome.action.setBadgeText({ text: "" });
+    await removeState();
+  }
+
+  async function reconcileStartup(now = Date.now()) {
+    const current = await getState();
+    if (!current) {
+      // The browser may retain toolbar paint after storage.session is cleared.
+      await chrome.action.setBadgeText({ text: "" });
+      return { status: "cleared-orphan" };
+    }
+
+    if (!validInput(current.provider, current.observedAt)) {
+      await clearOwnedState(current);
+      return { status: "cleared-invalid" };
+    }
+
+    if (current.provider === "claude") {
+      return { status: "preserved-claude" };
+    }
+
+    if (!Number.isFinite(current.expiresAt) || current.expiresAt <= now) {
+      await clearOwnedState(current);
+      return { status: "cleared-expired" };
+    }
+
+    const alarmName = `${ALARM_PREFIX}${current.observedAt}`;
+    if (current.alarmName && current.alarmName !== alarmName) {
+      await clearAlarm(current.alarmName);
+    }
+    const scheduled = await createAlarm(alarmName, current.expiresAt);
+    const next = { ...current, alarmName: scheduled ? alarmName : null };
+    if (next.alarmName !== current.alarmName) await setState(next);
+    return { status: scheduled ? "rescheduled-openai" : "preserved-openai" };
   }
 
   async function setBadge({ provider, observedAt, text = "", color = null, expiresAt = null } = {}) {
@@ -65,14 +113,16 @@
         return true;
       }
 
+      const safeExpiresAt = provider === "openai" && Number.isFinite(expiresAt) && expiresAt > observedAt
+        ? expiresAt
+        : null;
       let alarmName = null;
-      if (provider === "openai" && Number.isFinite(expiresAt) && expiresAt > observedAt && chrome.alarms?.create) {
-        alarmName = `${ALARM_PREFIX}${observedAt}`;
-        try { await chrome.alarms.create(alarmName, { when: expiresAt }); }
-        catch { alarmName = null; }
+      if (safeExpiresAt != null) {
+        const wanted = `${ALARM_PREFIX}${observedAt}`;
+        if (await createAlarm(wanted, safeExpiresAt)) alarmName = wanted;
       }
 
-      await setState({ provider, observedAt, alarmName });
+      await setState({ provider, observedAt, expiresAt: safeExpiresAt, alarmName });
       return true;
     });
   }
@@ -82,9 +132,7 @@
     return serialize(async () => {
       const current = await getState();
       if (!current || current.provider !== provider || current.observedAt !== observedAt) return false;
-      if (current.alarmName) await clearAlarm(current.alarmName);
-      await chrome.action.setBadgeText({ text: "" });
-      await removeState();
+      await clearOwnedState(current);
       return true;
     });
   }
@@ -97,10 +145,14 @@
     return clearIfCurrent("openai", observedAt).catch(() => false);
   });
 
+  const ready = serialize(() => reconcileStartup());
+
   globalThis.CompanionBadgeState = Object.freeze({
     STATE_KEY,
     ALARM_PREFIX,
+    ready,
     set: setBadge,
     clearIfCurrent,
+    reconcile: now => serialize(() => reconcileStartup(now)),
   });
 })();
