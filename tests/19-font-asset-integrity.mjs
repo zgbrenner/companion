@@ -1,6 +1,6 @@
 // Every runtime font reference must resolve to a bundled production asset.
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
-import { extname, join, relative } from "node:path";
+import { dirname, extname, join, relative } from "node:path";
 import { EXT_PATH, assert } from "./lib.mjs";
 
 function filesUnder(root) {
@@ -24,7 +24,9 @@ for (const path of runtimeFiles) {
   for (const match of source.matchAll(/url\(["']?([^"')]+\.(?:woff2?|ttf))["']?\)/gi)) {
     const ref = match[1];
     if (/^(?:https?:|data:|chrome-extension:)/i.test(ref)) continue;
-    const asset = join(path, "..", ref);
+    const asset = /^(?:src|icons)\//.test(ref)
+      ? join(EXT_PATH, ref)
+      : join(dirname(path), ref);
     assert(existsSync(asset), `${name} references missing local font ${ref}`);
   }
 }
