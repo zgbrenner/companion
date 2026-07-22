@@ -4,6 +4,25 @@
   const ALLOWED_PROVIDERS = new Set(["claude", "openai"]);
   let chain = Promise.resolve();
 
+  // Capture Chrome's real badge methods before the provider adapters load.
+  // The service-worker entry point imports this module first. Replacing the
+  // public methods below makes later legacy direct writes harmless, while this
+  // owner keeps the only references that can reach the native API.
+  const nativeSetBadgeText = chrome.action.setBadgeText.bind(chrome.action);
+  const nativeSetBadgeBackgroundColor = chrome.action.setBadgeBackgroundColor.bind(chrome.action);
+  const blockedDirectWrite = async () => undefined;
+  try {
+    Object.defineProperties(chrome.action, {
+      setBadgeText: { value: blockedDirectWrite, configurable: false, writable: false },
+      setBadgeBackgroundColor: { value: blockedDirectWrite, configurable: false, writable: false },
+    });
+  } catch {
+    // Chrome's extension API objects are currently configurable. This fallback
+    // preserves compatibility with test doubles or older Chromium variants.
+    try { chrome.action.setBadgeText = blockedDirectWrite; } catch { /* best effort */ }
+    try { chrome.action.setBadgeBackgroundColor = blockedDirectWrite; } catch { /* best effort */ }
+  }
+
   function serialize(task) {
     const run = chain.then(task, task);
     chain = run.catch(() => {});
@@ -60,7 +79,7 @@
 
   async function clearOwnedState(current = null) {
     if (current?.alarmName) await clearAlarm(current.alarmName);
-    await chrome.action.setBadgeText({ text: "" });
+    await nativeSetBadgeText({ text: "" });
     await removeState();
   }
 
@@ -68,7 +87,7 @@
     const current = await getState();
     if (!current) {
       // The browser may retain toolbar paint after storage.session is cleared.
-      await chrome.action.setBadgeText({ text: "" });
+      await nativeSetBadgeText({ text: "" });
       return { status: "cleared-orphan" };
     }
 
@@ -103,9 +122,9 @@
       if (prior?.alarmName) await clearAlarm(prior.alarmName);
 
       const safeText = typeof text === "string" ? text.slice(0, 8) : "";
-      await chrome.action.setBadgeText({ text: safeText });
+      await nativeSetBadgeText({ text: safeText });
       if (safeText && typeof color === "string" && color) {
-        await chrome.action.setBadgeBackgroundColor({ color });
+        await nativeSetBadgeBackgroundColor({ color });
       }
 
       if (!safeText) {
