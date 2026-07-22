@@ -1,5 +1,5 @@
 blank_issues_enabled: false
 contact_links:
   - name: Security or privacy report
-    url: mailto:zgbrenner@gmail.com
+    url: https://github.com/zgbrenner/claudecompanion/security/advisories/new
     about: Report sensitive security or privacy issues privately. Do not open a public issue containing credentials, tokens, cookies, account data, prompts, replies, or confidential files.
