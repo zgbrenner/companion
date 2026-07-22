@@ -12,7 +12,9 @@ on:
       - src/**
       - tests/**
       - tools/package-webstore.sh
+      - tools/generate-launch-assets.py
       - store/**
+      - docs/launch/**
       - RELEASE_NOTES_1.2.0.md
       - .github/workflows/release-package.yml
 
@@ -26,7 +28,7 @@ concurrency:
 jobs:
   build-release-candidate:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     env:
       PLAYWRIGHT_VERSION: "1.61.1"
       AXE_CORE_VERSION: "4.12.1"
@@ -45,13 +47,42 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ env.PLAYWRIGHT_VERSION }}
 
-      - name: Install pinned verification dependencies
+      - name: Install pinned browser verification dependencies
         run: |
           npm install --no-save "playwright@${PLAYWRIGHT_VERSION}" "axe-core@${AXE_CORE_VERSION}"
           npx playwright install --with-deps chromium
 
+      - name: Install launch-artwork tooling
+        run: python3 -m pip install --disable-pip-version-check pillow 'fonttools[woff]' brotli
+
+      - name: Render current extension surfaces
+        run: node tests/18-brand-snapshots.mjs
+
+      - name: Decompress bundled fonts for launch artwork
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from fontTools.ttLib import TTFont
+          for source, destination in (
+              ('src/fonts/league-spartan-bold.woff2', '/tmp/companion-league-spartan.ttf'),
+              ('src/fonts/atkinson-hyperlegible-next-variable.woff2', '/tmp/companion-atkinson.ttf'),
+          ):
+              font = TTFont(source)
+              font.flavor = None
+              font.save(destination)
+          PY
+
+      - name: Generate Chrome Web Store and launch artwork
+        env:
+          COMPANION_BRAND_FONT: /tmp/companion-league-spartan.ttf
+          COMPANION_UI_FONT: /tmp/companion-atkinson.ttf
+          COMPANION_UI_BOLD_FONT: /tmp/companion-atkinson.ttf
+        run: python3 tools/generate-launch-assets.py
+
       - name: Run full numbered test suite
         shell: bash
+        env:
+          REQUIRE_GENERATED_ASSETS: "1"
         run: |
           set +e
           node tests/run.mjs 2>&1 | tee release-test-output.log
@@ -123,10 +154,38 @@ jobs:
           cp release-package-contents.txt release-artifact/
           cp release-test-output.log release-artifact/
 
+      - name: Stage launch artwork bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p launch-artifact/store/screenshots launch-artifact/docs/launch/assets
+          cp store/promo-tile-440x280.png launch-artifact/store/
+          cp store/marquee-1400x560.png launch-artifact/store/
+          cp store/screenshots/0*.png launch-artifact/store/screenshots/
+          cp docs/launch/assets/*.png launch-artifact/docs/launch/assets/
+          cp store/listing.md launch-artifact/store/
+          cp store/privacy-policy.md launch-artifact/store/
+          cp store/permission-justifications.md launch-artifact/store/
+          cp store/submission-checklist.md launch-artifact/store/
+          cp store/test-instructions.md launch-artifact/store/
+          cp store/reviewer-notes.md launch-artifact/store/
+          cp docs/launch/LAUNCH_PLAYBOOK.md launch-artifact/docs/launch/
+          cp docs/launch/LAUNCH_COPY.md launch-artifact/docs/launch/
+          cp docs/launch/PRESS_KIT.md launch-artifact/docs/launch/
+          cp docs/launch/PRIVACY_SAFE_GROWTH_METRICS.md launch-artifact/docs/launch/
+
       - name: Upload release candidate
         uses: actions/upload-artifact@v4
         with:
           name: companion-v1.2.0-release-candidate
           path: release-artifact
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload Chrome Web Store and launch assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: companion-v1.2.0-launch-assets
+          path: launch-artifact
           if-no-files-found: error
           retention-days: 30
