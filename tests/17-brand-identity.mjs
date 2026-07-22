@@ -33,15 +33,17 @@ for (const [name, source] of [
 
 assert(fonts.includes('font-family: "League Spartan"'), "bundled League Spartan face is registered");
 assert(fonts.includes('font-family: "Atkinson Hyperlegible Next"'), "bundled Atkinson Hyperlegible Next face is registered");
-assert(fonts.includes("fonts/league-spartan-variable.ttf"), "League Spartan loads from the extension bundle");
-assert(fonts.includes("fonts/atkinson-hyperlegible-next-variable.ttf"), "Atkinson loads from the extension bundle");
+assert(fonts.includes("fonts/league-spartan-bold.woff2"), "League Spartan loads from the extension bundle");
+assert(fonts.includes("fonts/atkinson-hyperlegible-next-variable.woff2"), "Atkinson loads from the extension bundle");
 assert(!/https?:\/\//i.test(fonts), "font stylesheet makes no external request");
 
 for (const path of [
-  "src/fonts/league-spartan-variable.ttf",
-  "src/fonts/atkinson-hyperlegible-next-variable.ttf",
+  "src/fonts/league-spartan-bold.woff2",
+  "src/fonts/atkinson-hyperlegible-next-variable.woff2",
 ]) {
   assert(existsSync(join(EXT_PATH, path)), `${path} is bundled locally`);
+  const bytes = readFileSync(join(EXT_PATH, path));
+  assert(bytes.subarray(0, 4).toString("ascii") === "wOF2", `${path} is a valid WOFF2 container`);
 }
 
 for (const [name, source] of [
@@ -56,15 +58,15 @@ for (const [name, source] of [
   assert(!source.includes('"Space Grotesk"'), `${name} no longer uses the old display font`);
 }
 
-assert(claudeContent.includes("league-spartan-variable.ttf"), "Claude registers the bundled brand font in the host page");
-assert(claudeContent.includes("atkinson-hyperlegible-next-variable.ttf"), "Claude registers the bundled UI font in the host page");
-assert(openaiContent.includes("league-spartan-variable.ttf"), "OpenAI registers the bundled brand font in the host page");
-assert(openaiContent.includes("atkinson-hyperlegible-next-variable.ttf"), "OpenAI registers the bundled UI font in the host page");
+assert(claudeContent.includes("league-spartan-bold.woff2"), "Claude registers the bundled brand font in the host page");
+assert(claudeContent.includes("atkinson-hyperlegible-next-variable.woff2"), "Claude registers the bundled UI font in the host page");
+assert(openaiContent.includes("league-spartan-bold.woff2"), "OpenAI registers the bundled brand font in the host page");
+assert(openaiContent.includes("atkinson-hyperlegible-next-variable.woff2"), "OpenAI registers the bundled UI font in the host page");
 
 const resources = manifest.web_accessible_resources.flatMap(entry => entry.resources || []);
 for (const resource of [
-  "src/fonts/league-spartan-variable.ttf",
-  "src/fonts/atkinson-hyperlegible-next-variable.ttf",
+  "src/fonts/league-spartan-bold.woff2",
+  "src/fonts/atkinson-hyperlegible-next-variable.woff2",
 ]) {
   assert(resources.includes(resource), `${resource} is web-accessible only on declared provider origins`);
 }
