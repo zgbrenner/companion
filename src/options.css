@@ -487,3 +487,11 @@ body { font-family: "Atkinson Hyperlegible Next", ui-sans-serif, system-ui, sans
   .topbar { background: color-mix(in srgb, #0b1220 88%, transparent); }
 }
 
+/* Orbit C contrast correction */
+.save-status { color: #0f6d52; }
+.save-status::before { background: #24b88e; }
+@media (prefers-color-scheme: dark) {
+  .save-status { color: #7ce7cd; }
+  .save-status::before { background: #35d6a6; }
+}
+
