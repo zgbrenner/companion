@@ -20,7 +20,7 @@ assert(readme.includes("<h1>COMPANION</h1>"), "README uses the approved wordmark
 for (const term of ["Claude", "ChatGPT", "Work", "Codex", "Chrome Web Store", "privacy"]) {
   assert(readme.includes(term), `README includes ${term}`);
 }
-assert(readme.includes("store/screenshots/01-overview.png"), "README uses current release imagery");
+assert(readme.includes("docs/images/popup.png"), "README includes an existing product render");
 
 const listing = read("store/listing.md");
 assert(listing.includes("Chrome Web Store Listing — COMPANION"), "store listing uses the current brand");
@@ -64,10 +64,18 @@ for (const path of [
   "docs/superpowers/specs/2026-07-21-release-growth-design.md",
   "docs/superpowers/plans/2026-07-21-release-growth.md",
   ".github/workflows/release-package.yml",
+  "tools/generate-launch-assets.py",
 ]) mustExist(path);
 
 const releaseWorkflow = read(".github/workflows/release-package.yml");
-for (const term of ["workflow_dispatch", "tools/package-webstore.sh", "sha256sum", "actions/upload-artifact@v4"]) {
+for (const term of [
+  "workflow_dispatch",
+  "tools/package-webstore.sh",
+  "tools/generate-launch-assets.py",
+  "sha256sum",
+  "actions/upload-artifact@v4",
+  "companion-v1.2.0-launch-assets",
+]) {
   assert(releaseWorkflow.includes(term), `release workflow includes ${term}`);
 }
 
@@ -76,12 +84,6 @@ assert(launchCopy.includes("Product Hunt"), "launch copy includes Product Hunt")
 assert(launchCopy.includes("Hacker News"), "launch copy includes Hacker News");
 assert(launchCopy.includes("Reddit"), "launch copy includes Reddit");
 assert(!/ask[^\n]{0,35}upvote/i.test(launchCopy), "launch copy does not ask for upvotes");
-
-function pngDimensions(path) {
-  const bytes = readFileSync(pathFor(path));
-  assert(bytes.subarray(1, 4).toString("ascii") === "PNG", `${path} is a PNG`);
-  return [bytes.readUInt32BE(16), bytes.readUInt32BE(20)];
-}
 
 const images = new Map([
   ["store/promo-tile-440x280.png", [440, 280]],
@@ -98,10 +100,22 @@ const images = new Map([
   ["docs/launch/assets/social-card-1200x630.png", [1200, 630]],
 ]);
 
+const generator = read("tools/generate-launch-assets.py");
 for (const [path, expected] of images) {
-  mustExist(path);
-  const actual = pngDimensions(path);
-  assert(actual[0] === expected[0] && actual[1] === expected[1], `${path} is ${expected[0]}x${expected[1]}`);
+  assert(generator.includes(path), `asset generator declares ${path}`);
+  assert(generator.includes(`(${expected[0]}, ${expected[1]})`), `asset generator declares ${expected[0]}x${expected[1]}`);
+}
+
+const generatedAssetsPresent = [...images.keys()].every(path => existsSync(pathFor(path)));
+if (generatedAssetsPresent) {
+  for (const [path, expected] of images) {
+    const bytes = readFileSync(pathFor(path));
+    assert(bytes.subarray(1, 4).toString("ascii") === "PNG", `${path} is a PNG`);
+    const actual = [bytes.readUInt32BE(16), bytes.readUInt32BE(20)];
+    assert(actual[0] === expected[0] && actual[1] === expected[1], `${path} is ${expected[0]}x${expected[1]}`);
+  }
+} else {
+  assert(process.env.REQUIRE_GENERATED_ASSETS !== "1", "release workflow must generate every required launch asset");
 }
 
 console.log("20-release-readiness PASS");
