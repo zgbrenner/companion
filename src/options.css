@@ -81,7 +81,7 @@ body {
 }
 .brand { display: flex; align-items: baseline; gap: 8px; }
 .brand-mark { color: var(--accent); font-size: 14px; }
-.brand-name { margin: 0; font-family: "League Spartan", system-ui, -apple-system, sans-serif; font-weight: 700; font-size: 15px; color: var(--text-strong); letter-spacing: -0.01em; }
+.brand-name { margin: 0; font-family: "Atkinson Hyperlegible Next", system-ui, -apple-system, sans-serif; font-weight: 700; font-size: 15px; color: var(--text-strong); letter-spacing: -0.01em; }
 .brand-sub { color: var(--muted); font-size: 13px; }
 .save-bar { display: flex; align-items: center; gap: 12px; }
 .save-status {
@@ -171,7 +171,7 @@ body {
   background: var(--surface-muted);
   border-bottom: 1px solid var(--border);
 }
-.card-header h2 { margin: 0; font-family: "League Spartan", system-ui, -apple-system, sans-serif; font-size: 15px; font-weight: 700; letter-spacing: -0.01em; color: var(--text-strong); }
+.card-header h2 { margin: 0; font-family: "Atkinson Hyperlegible Next", system-ui, -apple-system, sans-serif; font-size: 15px; font-weight: 700; letter-spacing: -0.01em; color: var(--text-strong); }
 .card-header p { margin: 3px 0 0; font-size: 12.5px; color: var(--muted); }
 .card-body { padding: 6px 18px 14px; }
 
@@ -206,7 +206,7 @@ label.row-label { cursor: pointer; }
 .metrics-group-legend {
   padding: 0 6px;
   margin-left: 4px;
-  font-family: "League Spartan", system-ui, -apple-system, sans-serif;
+  font-family: "Atkinson Hyperlegible Next", system-ui, -apple-system, sans-serif;
   font-size: 12.5px;
   font-weight: 700;
   letter-spacing: -0.01em;
@@ -459,7 +459,7 @@ body { font-family: "Atkinson Hyperlegible Next", ui-sans-serif, system-ui, sans
 .brand { align-items: center; gap: 10px; }
 .brand-mark { width: 30px; height: 30px; border-radius: 8px; }
 .brand-name {
-  font-family: "League Spartan", ui-sans-serif, system-ui, sans-serif;
+  font-family: "Atkinson Hyperlegible Next", ui-sans-serif, system-ui, sans-serif;
   font-size: 16px;
   letter-spacing: .12em;
 }
@@ -495,3 +495,9 @@ body { font-family: "Atkinson Hyperlegible Next", ui-sans-serif, system-ui, sans
   .save-status::before { background: #35d6a6; }
 }
 
+
+
+/* Brand-only display type */
+.brand-name {
+  font-family: "League Spartan", ui-sans-serif, system-ui, sans-serif;
+}

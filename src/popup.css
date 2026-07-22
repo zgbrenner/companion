@@ -20,7 +20,7 @@ body {
 }
 
 h1 {
-  font-family: "League Spartan", system-ui, -apple-system, sans-serif;
+  font-family: "Atkinson Hyperlegible Next", system-ui, -apple-system, sans-serif;
   font-size: 15px;
   font-weight: 650;
   letter-spacing: -0.01em;
@@ -60,14 +60,14 @@ p {
 
 .meter-label span:first-child {
   flex-shrink: 0;
-  font-family: "League Spartan", system-ui, -apple-system, sans-serif;
+  font-family: "Atkinson Hyperlegible Next", system-ui, -apple-system, sans-serif;
   font-weight: 600;
 }
 
 .meter-label span:last-child {
   min-width: 0;
   color: #1c2430;
-  font-family: "League Spartan", system-ui, -apple-system, sans-serif;
+  font-family: "Atkinson Hyperlegible Next", system-ui, -apple-system, sans-serif;
   font-weight: 650;
   font-size: 13px;
   font-variant-numeric: tabular-nums;
@@ -157,13 +157,13 @@ p {
 }
 
 .summary-row span:first-child {
-  font-family: "League Spartan", system-ui, -apple-system, sans-serif;
+  font-family: "Atkinson Hyperlegible Next", system-ui, -apple-system, sans-serif;
   font-weight: 600;
 }
 
 .summary-row span:last-child {
   color: #1c2430;
-  font-family: "League Spartan", system-ui, -apple-system, sans-serif;
+  font-family: "Atkinson Hyperlegible Next", system-ui, -apple-system, sans-serif;
   font-weight: 650;
   font-variant-numeric: tabular-nums;
 }
@@ -324,12 +324,12 @@ p {
 }
 
 .native-label span:first-child {
-  font-family: "League Spartan", system-ui, -apple-system, sans-serif;
+  font-family: "Atkinson Hyperlegible Next", system-ui, -apple-system, sans-serif;
 }
 
 .native-label span:last-child {
   color: #1c2430;
-  font-family: "League Spartan", system-ui, -apple-system, sans-serif;
+  font-family: "Atkinson Hyperlegible Next", system-ui, -apple-system, sans-serif;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
@@ -390,7 +390,7 @@ p {
 }
 
 .insights-title {
-  font-family: "League Spartan", system-ui, -apple-system, sans-serif;
+  font-family: "Atkinson Hyperlegible Next", system-ui, -apple-system, sans-serif;
   font-weight: 650;
   font-size: 11px;
   letter-spacing: -0.01em;
@@ -494,7 +494,7 @@ body {
 }
 .brand-mark { width: 30px; height: 30px; border-radius: 8px; }
 h1 {
-  font-family: "League Spartan", ui-sans-serif, system-ui, sans-serif;
+  font-family: "Atkinson Hyperlegible Next", ui-sans-serif, system-ui, sans-serif;
   font-size: 16px;
   font-weight: 700;
   letter-spacing: .12em;
@@ -527,3 +527,9 @@ button:focus-visible, .trend .trend-bar:focus-visible { outline-color: #168363; 
   .budget-line, .native-note { color: #a9b6c6; }
 }
 
+
+
+/* Brand-only display type */
+.brand-header h1 {
+  font-family: "League Spartan", ui-sans-serif, system-ui, sans-serif;
+}

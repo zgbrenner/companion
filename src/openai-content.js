@@ -367,7 +367,7 @@
     root.innerHTML = `<section class="cuc-openai-card" role="complementary" aria-label="COMPANION for ChatGPT">
       <header class="cuc-openai-header">
         <div class="cuc-openai-brand">
-          <span class="cuc-openai-mark" aria-hidden="true">◆</span>
+          <span class="cuc-openai-mark" aria-hidden="true"><svg viewBox="0 0 128 128" focusable="false" aria-hidden="true"><rect width="128" height="128" rx="28" fill="#111827"></rect><path d="M91.4 35.8A42 42 0 1 0 94.6 88" fill="none" stroke="#F8FAFC" stroke-width="11" stroke-linecap="round"></path><circle cx="64" cy="64" r="15" fill="#35D6A6"></circle><circle cx="94.6" cy="88" r="5.5" fill="#35D6A6"></circle></svg></span>
           <span class="cuc-openai-title">COMPANION</span>
           <span class="cuc-openai-surface" data-cuc-openai="surface"></span>
         </div>
