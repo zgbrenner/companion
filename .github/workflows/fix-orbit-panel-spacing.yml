@@ -1,0 +1,52 @@
+name: fix-orbit-panel-spacing
+
+on:
+  push:
+    branches: [agent/orbit-c-brand-refresh]
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/orbit-c-brand-refresh
+      - name: Apply focused settings spacing fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('src/options.css')
+          css = path.read_text()
+          marker = '/* Orbit C provider panel spacing */'
+          if marker not in css:
+              css = css.rstrip() + '''
+
+          /* Orbit C provider panel spacing */
+          .panel > p {
+            margin: 0;
+            padding: 12px 14px 0;
+            color: var(--muted);
+            font-size: 12.5px;
+            line-height: 1.55;
+          }
+          .panel > p + p {
+            padding-top: 8px;
+            padding-bottom: 12px;
+          }
+          ''' + '\n'
+          path.write_text(css)
+          Path('.github/workflows/fix-orbit-panel-spacing.yml').unlink()
+          PY
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'fix: align provider panel spacing'
+          git push origin HEAD:agent/orbit-c-brand-refresh
