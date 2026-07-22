@@ -501,3 +501,17 @@ body { font-family: "Atkinson Hyperlegible Next", ui-sans-serif, system-ui, sans
 .brand-name {
   font-family: "League Spartan", ui-sans-serif, system-ui, sans-serif;
 }
+
+/* Orbit C provider panel spacing */
+.panel > p {
+  margin: 0;
+  padding: 12px 14px 0;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+.panel > p + p {
+  padding-top: 8px;
+  padding-bottom: 12px;
+}
+
