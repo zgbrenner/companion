@@ -521,3 +521,9 @@ button:focus-visible, .trend .trend-bar:focus-visible { outline-color: #168363; 
   button:hover { background: #1d2a3e; }
 }
 
+/* Orbit C popup note contrast */
+.budget-line, .native-note { color: #526174; }
+@media (prefers-color-scheme: dark) {
+  .budget-line, .native-note { color: #a9b6c6; }
+}
+
