@@ -1,12 +1,5 @@
 @import url("fonts.css");
 
-@font-face {
-  font-family: "Atkinson Hyperlegible Next";
-  src: url("fonts/space-grotesk-latin.woff2") format("woff2");
-  font-weight: 400 700;
-  font-display: swap;
-}
-
 :root {
   color-scheme: light dark;
   --bg: #ffffff;
@@ -123,8 +116,6 @@ h2, .value { font-family: "Atkinson Hyperlegible Next", ui-sans-serif, system-ui
     --accent-strong: #7ce7cd;
   }
 }
-
-
 
 /* Brand-only display type */
 .brand h1 {
