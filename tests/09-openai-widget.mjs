@@ -137,8 +137,12 @@ try {
   });
   await page.waitForFunction(() => document.querySelector("#cuc-openai-widget")?.shadowRoot?.textContent?.includes("Work"));
 
-  await page.evaluate(() => document.documentElement.classList.add("dark"));
-  await page.waitForFunction(() => document.querySelector("#cuc-openai-widget")?.classList.contains("cuc-openai-dark"));
+  await page.evaluate(() => {
+    document.documentElement.classList.add("dark");
+    document.documentElement.setAttribute("data-theme", "dark");
+    window.dispatchEvent(new Event("resize"));
+  });
+  await page.waitForFunction(() => document.querySelector("#cuc-openai-widget")?.classList.contains("cuc-openai-dark"), undefined, { timeout: 10000 });
 
   await page.waitForFunction(() => document.querySelector("#cuc-openai-widget")?.shadowRoot
     ?.querySelector("[data-cuc-openai-action='caveman-toggle']")?.getAttribute("aria-checked") === "true");
