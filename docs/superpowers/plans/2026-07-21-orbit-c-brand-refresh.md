@@ -6,7 +6,7 @@
 
 **Architecture:** Keep provider behavior unchanged and introduce the identity through local static assets, shared font registration, semantic CSS tokens, and minimal brand markup. The manifest remains the authority for toolbar assets and provider-scoped web-accessible font resources. Existing accessibility and provider integration tests remain mandatory.
 
-**Tech Stack:** Chrome Manifest V3, HTML, CSS, JavaScript, SVG, PNG, variable OpenType fonts, plain Node.js tests.
+**Tech Stack:** Chrome Manifest V3, HTML, CSS, JavaScript, SVG, PNG, OpenType web fonts, plain Node.js tests.
 
 ## Global Constraints
 
@@ -30,7 +30,7 @@
 - Create: `src/fonts/OFL.txt`
 
 - [x] Write the failing identity contract.
-- [ ] Run CI and confirm failure is caused by missing Orbit C assets and fonts.
+- [x] Run CI and confirm failure is caused by missing Orbit C assets and fonts.
 
 ### Task 2: Local Font System
 
@@ -42,10 +42,10 @@
 - Modify: `src/content.js`
 - Modify: `src/openai-content.js`
 
-- [ ] Bundle both variable fonts under the SIL Open Font License.
-- [ ] Register both faces from extension-local URLs.
-- [ ] Expose them only to declared Claude and OpenAI origins.
-- [ ] Remove Space Grotesk from runtime typography.
+- [x] Bundle both fonts under the SIL Open Font License.
+- [x] Register both faces from extension-local URLs.
+- [x] Expose them only to declared Claude and OpenAI origins.
+- [x] Remove Space Grotesk from runtime typography.
 
 ### Task 3: Orbit C Icon Family
 
@@ -56,9 +56,9 @@
 - Replace: `icons/icon48.png`
 - Replace: `icons/icon128.png`
 
-- [ ] Build a source SVG with a graphite rounded tile, white open orbit, mint core, and mint endpoint.
-- [ ] Render crisp size-specific PNGs.
-- [ ] Confirm every PNG's intrinsic dimensions.
+- [x] Build a source SVG with a graphite rounded tile, white open orbit, mint core, and mint endpoint.
+- [x] Render crisp size-specific PNGs.
+- [x] Confirm every PNG's intrinsic dimensions.
 
 ### Task 4: Product Wordmark and Typography
 
@@ -74,11 +74,11 @@
 - Modify: `src/widget.css`
 - Modify: `src/openai-widget.css`
 
-- [ ] Replace product-title text with `COMPANION`.
-- [ ] Add the Orbit C mark to popup and settings headers.
-- [ ] Apply League Spartan only to brand text.
-- [ ] Apply Atkinson Hyperlegible Next to interface text.
-- [ ] Unify core surfaces around graphite, soft white, slate, and mint while preserving Work and Codex context accents.
+- [x] Replace product-title text with `COMPANION`.
+- [x] Add the Orbit C mark to popup and settings headers.
+- [x] Apply League Spartan only to brand text.
+- [x] Apply Atkinson Hyperlegible Next to interface text.
+- [x] Unify core surfaces around graphite, soft white, slate, and mint while preserving Work and Codex context accents.
 
 ### Task 5: Validation and Merge
 
