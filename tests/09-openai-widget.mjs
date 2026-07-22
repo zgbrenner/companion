@@ -6,9 +6,19 @@ import { launchExtension, assert } from "./lib.mjs";
 const { context, worker } = await launchExtension();
 try {
   await worker.evaluate(async () => {
-    await chrome.storage.local.set({
-      "cuc:settings": { cavemanMode: true, showCavemanMode: true, showWidget: true },
-    });
+    // Let the extension's onInstalled default-settings task finish before
+    // seeding this test. Otherwise the install task can race and overwrite the
+    // fixture between storage.set() and the ChatGPT content script's loadState().
+    await new Promise(resolve => setTimeout(resolve, 300));
+    const desired = { cavemanMode: true, showCavemanMode: true, showWidget: true };
+    const deadline = Date.now() + 2000;
+    while (Date.now() < deadline) {
+      await chrome.storage.local.set({ "cuc:settings": desired });
+      await new Promise(resolve => setTimeout(resolve, 50));
+      const stored = await chrome.storage.local.get(["cuc:settings"]);
+      if (stored["cuc:settings"]?.cavemanMode === true) return;
+    }
+    throw new Error("could not seed stable ChatGPT settings fixture");
   });
 
   await context.route("https://chatgpt.com/**", async route => {
@@ -145,7 +155,7 @@ try {
   await page.waitForFunction(() => document.querySelector("#cuc-openai-widget")?.classList.contains("cuc-openai-dark"), undefined, { timeout: 10000 });
 
   await page.waitForFunction(() => document.querySelector("#cuc-openai-widget")?.shadowRoot
-    ?.querySelector("[data-cuc-openai-action='caveman-toggle']")?.getAttribute("aria-checked") === "true");
+    ?.querySelector("[data-cuc-openai-action='caveman-toggle']")?.getAttribute("aria-checked") === "true", undefined, { timeout: 10000 });
   await page.locator("#prompt-textarea").fill("Could you please basically summarize this very long request?");
   await page.locator("#prompt-textarea").press("Enter");
   await page.waitForFunction(() => {
