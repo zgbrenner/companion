@@ -4,7 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const vendorRoot = path.join(root, 'src', 'vendor');
+const vendorRoot = path.join(root, 'src', 'vendor', 'lifejacket');
 const modelRoot = path.join(root, 'src', 'models', 'lifejacket');
 const MAX_MODEL_BYTES = 35 * 1024 * 1024;
 const MAX_TOTAL_BYTES = 50 * 1024 * 1024;
@@ -19,6 +19,13 @@ function requireFile(file) {
   }
 }
 
+// Lifejacket shares src/vendor with the existing local document converter.
+// Verify those assets still exist before accepting an ML build.
+for (const sharedFile of [
+  path.join(root, 'src', 'vendor', 'officeparser.browser.slim.iife.js'),
+  path.join(root, 'src', 'vendor', 'pdf.worker.min.mjs'),
+]) requireFile(sharedFile);
+
 const vendorManifestPath = path.join(vendorRoot, 'vendor-manifest.json');
 const provenancePath = path.join(modelRoot, 'provenance.json');
 const sumsPath = path.join(modelRoot, 'SHA256SUMS');
@@ -31,6 +38,10 @@ if (vendorManifest.packages?.['@huggingface/transformers'] !== '4.2.0') {
 }
 if (vendorManifest.packages?.['onnxruntime-web'] !== '1.26.0-dev.20260416-b7804b056c') {
   throw new Error('Unexpected ONNX Runtime Web version in vendor manifest');
+}
+if (vendorManifest.policy?.namespace !== 'src/vendor/lifejacket'
+  || vendorManifest.policy?.preservesSharedVendorAssets !== true) {
+  throw new Error('Lifejacket vendor isolation policy is missing');
 }
 for (const entry of vendorManifest.files || []) {
   const file = path.join(vendorRoot, entry.path);
@@ -68,19 +79,23 @@ for (const [relative, expected] of expectedSums) {
   if (sha256(file) !== expected) throw new Error(`Model asset integrity mismatch: ${relative}`);
 }
 
-const totalBytes = [...(vendorManifest.files || []).map(file => file.bytes), ...[...expectedSums.keys()].map(relative => fs.statSync(path.join(modelRoot, relative)).size)]
-  .reduce((sum, value) => sum + value, 0);
+const totalBytes = [
+  ...(vendorManifest.files || []).map(file => file.bytes),
+  ...[...expectedSums.keys()].map(relative => fs.statSync(path.join(modelRoot, relative)).size),
+].reduce((sum, value) => sum + value, 0);
 if (totalBytes >= MAX_TOTAL_BYTES) throw new Error(`Lifejacket generated assets exceed ${MAX_TOTAL_BYTES} bytes: ${totalBytes}`);
 
 const runtime = fs.readFileSync(path.join(root, 'src', 'lifejacket-runtime.js'), 'utf8');
 if (/\b(?:import|export)\b[^\n]*https?:\/\//.test(runtime)) throw new Error('Remote module reference found in Lifejacket runtime');
 if (!/env\.allowRemoteModels\s*=\s*false/.test(runtime)) throw new Error('Remote model loading is not disabled');
+if (!/vendor\/lifejacket\/transformers\.web\.min\.js/.test(runtime)) throw new Error('Runtime is not using the namespaced vendor bundle');
 
 const report = {
   schema: 1,
   model: { bytes: modelBytes, sha256: modelHash },
   vendorBytes: (vendorManifest.files || []).reduce((sum, file) => sum + file.bytes, 0),
   totalBytes,
+  vendorNamespace: 'src/vendor/lifejacket',
 };
 fs.mkdirSync(path.join(root, 'dist'), { recursive: true });
 fs.writeFileSync(path.join(root, 'dist', 'lifejacket-assets.json'), `${JSON.stringify(report, null, 2)}\n`);
