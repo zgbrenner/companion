@@ -15,6 +15,9 @@ const chrome = {
     onMessage: { addListener(value) { listener = value; } },
     async sendMessage(message) {
       forwarded = message;
+      if (message.type === 'cuc:offscreen-convert') {
+        return { ok: true, markdown: '# Converted locally' };
+      }
       return {
         ok: true,
         text: 'Review plan.',
@@ -57,6 +60,11 @@ const validSender = {
   url: 'https://claude.ai/chat/abc',
   tab: { id: 7, url: 'https://claude.ai/chat/abc' },
 };
+const chatGptSender = {
+  ...validSender,
+  url: 'https://chatgpt.com/c/abc',
+  tab: { id: 8, url: 'https://chatgpt.com/c/abc' },
+};
 
 {
   const { keepChannel, response } = await send({
@@ -73,6 +81,18 @@ const validSender = {
   assert.equal(forwarded.keepRatio, 0.65);
 }
 
+{
+  const { keepChannel, response } = await send({
+    type: 'cuc:lifejacket-convert-file',
+    dataUrl: 'data:application/pdf;base64,JVBERi0=',
+    ext: 'pdf',
+  }, chatGptSender);
+  assert.equal(keepChannel, true);
+  assert.deepEqual(response, { ok: true, markdown: '# Converted locally' });
+  assert.equal(forwarded.type, 'cuc:offscreen-convert');
+  assert.equal(forwarded.ext, 'pdf');
+}
+
 for (const [label, sender, message, expected] of [
   ['forged extension', { ...validSender, id: 'other' }, { type: 'cuc:lifejacket-compress', text: 'x', keepRatio: 0.65 }, /sender/i],
   ['subframe', { ...validSender, frameId: 2 }, { type: 'cuc:lifejacket-compress', text: 'x', keepRatio: 0.65 }, /frame/i],
@@ -80,6 +100,8 @@ for (const [label, sender, message, expected] of [
   ['empty text', validSender, { type: 'cuc:lifejacket-compress', text: '', keepRatio: 0.65 }, /text/i],
   ['oversize text', validSender, { type: 'cuc:lifejacket-compress', text: 'x'.repeat(120_001), keepRatio: 0.65 }, /size/i],
   ['bad ratio', validSender, { type: 'cuc:lifejacket-compress', text: 'x', keepRatio: 0.2 }, /ratio/i],
+  ['unsupported file', validSender, { type: 'cuc:lifejacket-convert-file', dataUrl: 'data:x;base64,WA==', ext: 'exe' }, /file type/i],
+  ['malformed file', validSender, { type: 'cuc:lifejacket-convert-file', dataUrl: 'not-data', ext: 'pdf' }, /file data/i],
 ]) {
   const { keepChannel, response } = await send(message, sender);
   assert.equal(keepChannel, false, `${label} closes the message channel`);
@@ -102,8 +124,10 @@ assert.ok(offscreen.indexOf('lifejacket-core.js') < offscreen.indexOf('lifejacke
 
 assert.match(source, /45_000|45000/);
 assert.match(source, /MAX_INPUT_CHARS\s*=\s*120_000/);
+assert.match(source, /MAX_CONVERT_DATAURL_CHARS\s*=\s*30_000_000/);
 assert.match(source, /sender\.frameId/);
 assert.match(source, /chatgpt\.com/);
 assert.match(source, /claude\.ai/);
+assert.match(source, /cuc:lifejacket-convert-file/);
 
 console.log('PASS  Lifejacket service-worker and offscreen routing');
