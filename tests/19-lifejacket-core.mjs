@@ -119,13 +119,15 @@ assert.ok(protectedPrompt.segments.some(segment => segment.type === 'protected' 
 }
 
 {
+  const longOriginal = `${original}\n${'Explain the surrounding business context carefully. '.repeat(30)}`;
+  const longProtected = core.protectPrompt(longOriginal);
   const gutted = core.finalizeCompression({
-    original,
-    candidate: protectedPrompt.protectedSpans.join(' '),
-    protectedSpans: protectedPrompt.protectedSpans,
+    original: longOriginal,
+    candidate: longProtected.protectedSpans.join(' '),
+    protectedSpans: longProtected.protectedSpans,
   });
   assert.equal(gutted.accepted, false);
-  assert.equal(gutted.text, original);
+  assert.equal(gutted.text, longOriginal);
   assert.match(gutted.warning, /too much/i);
 }
 
