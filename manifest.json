@@ -3,7 +3,7 @@
   "name": "COMPANION",
   "version": "1.3.0",
   "minimum_chrome_version": "111",
-  "description": "Private local usage tools and Lifejacket Mode for Claude and ChatGPT, including prompt compression, concise replies, and file-to-Markdown conversion.",
+  "description": "Private Claude and ChatGPT usage tools with local Lifejacket prompt compression and file-to-Markdown conversion.",
   "permissions": [
     "storage",
     "activeTab",
@@ -140,5 +140,5 @@
     },
     "default_popup": "src/popup-router.html"
   },
-  "options_page": "src/options.html"
+  "options_page": "src/options-lifejacket.html"
 }
