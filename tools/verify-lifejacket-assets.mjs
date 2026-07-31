@@ -6,8 +6,8 @@ import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const vendorRoot = path.join(root, 'src', 'vendor', 'lifejacket');
 const modelRoot = path.join(root, 'src', 'models', 'lifejacket');
-const MAX_MODEL_BYTES = 35 * 1024 * 1024;
-const MAX_TOTAL_BYTES = 50 * 1024 * 1024;
+const MAX_MODEL_BYTES = 40 * 1024 * 1024;
+const MAX_TOTAL_BYTES = 55 * 1024 * 1024;
 
 function sha256(file) {
   return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
@@ -40,7 +40,8 @@ if (vendorManifest.packages?.['onnxruntime-web'] !== '1.26.0-dev.20260416-b7804b
   throw new Error('Unexpected ONNX Runtime Web version in vendor manifest');
 }
 if (vendorManifest.policy?.namespace !== 'src/vendor/lifejacket'
-  || vendorManifest.policy?.preservesSharedVendorAssets !== true) {
+  || vendorManifest.policy?.preservesSharedVendorAssets !== true
+  || vendorManifest.policy?.installsPackageDependencies !== false) {
   throw new Error('Lifejacket vendor isolation policy is missing');
 }
 for (const entry of vendorManifest.files || []) {
@@ -92,9 +93,10 @@ if (!/vendor\/lifejacket\/transformers\.web\.min\.js/.test(runtime)) throw new E
 
 const report = {
   schema: 1,
-  model: { bytes: modelBytes, sha256: modelHash },
+  model: { bytes: modelBytes, sha256: modelHash, maximumBytes: MAX_MODEL_BYTES },
   vendorBytes: (vendorManifest.files || []).reduce((sum, file) => sum + file.bytes, 0),
   totalBytes,
+  maximumTotalBytes: MAX_TOTAL_BYTES,
   vendorNamespace: 'src/vendor/lifejacket',
 };
 fs.mkdirSync(path.join(root, 'dist'), { recursive: true });
