@@ -46,7 +46,9 @@ jobs:
           python -m pip install --disable-pip-version-check huggingface_hub onnx onnxruntime transformers numpy
           npm install --no-save @huggingface/transformers@4.2.0 onnxruntime-web@1.26.0-dev.20260416-b7804b056c
       - name: Download, inspect, quantize, and smoke-test with ONNX Runtime
+        shell: bash
         run: |
+          set -euo pipefail
           python - <<'PY' 2>&1 | tee kompress-python.log
           import hashlib
           import json
@@ -79,14 +81,24 @@ jobs:
                   "blob_id": item.blob_id,
                   "lfs_sha256": lfs.get("sha256") if isinstance(lfs, dict) else getattr(lfs, "sha256", None),
               })
+
           cache = pathlib.Path(snapshot_download(
               repo_id=repo,
               revision=revision,
               allow_patterns=["*.json", "*.txt", "*.model", "*.onnx*"],
           ))
-          source = cache / "model.onnx"
+          source_root = pathlib.Path("probe-source")
+          source_root.mkdir(exist_ok=True)
+          for src in sorted(cache.rglob("*")):
+              if src.is_file():
+                  relative = src.relative_to(cache)
+                  destination = source_root / relative
+                  destination.parent.mkdir(parents=True, exist_ok=True)
+                  shutil.copy2(src, destination, follow_symlinks=True)
+
+          source = source_root / "model.onnx"
           if not source.exists():
-              candidates = list(cache.rglob("*.onnx"))
+              candidates = list(source_root.rglob("*.onnx"))
               if len(candidates) != 1:
                   raise SystemExit(f"unable to resolve source ONNX: {candidates}")
               source = candidates[0]
@@ -99,10 +111,10 @@ jobs:
               return h.hexdigest()
 
           metadata["downloaded_files"] = []
-          for path in sorted(cache.rglob("*")):
-              if path.is_file() and not path.is_symlink():
+          for path in sorted(source_root.rglob("*")):
+              if path.is_file():
                   metadata["downloaded_files"].append({
-                      "path": str(path.relative_to(cache)),
+                      "path": str(path.relative_to(source_root)),
                       "size": path.stat().st_size,
                       "sha256": digest(path),
                   })
@@ -121,7 +133,7 @@ jobs:
           target_root.mkdir(exist_ok=True)
           (target_root / "onnx").mkdir(exist_ok=True)
           for name in ["config.json", "tokenizer.json", "tokenizer_config.json", "special_tokens_map.json", "vocab.txt", "merges.txt"]:
-              src = cache / name
+              src = source_root / name
               if src.exists():
                   shutil.copy2(src, target_root / name)
 
@@ -141,15 +153,16 @@ jobs:
               "sha256": digest(output),
           }
 
-          tokenizer = AutoTokenizer.from_pretrained(repo, revision=revision)
+          tokenizer = AutoTokenizer.from_pretrained(str(target_root), local_files_only=True)
           sample = "Please summarize the project plan, keep Alice, Bob, invoice 42, and the June 15 deadline, while removing repeated polite filler."
           encoded = tokenizer(sample, return_tensors="np")
           session = ort.InferenceSession(str(output), providers=["CPUExecutionProvider"])
-          feeds = {name: encoded[name].astype(np.int64) for name in [item.name for item in session.get_inputs()] if name in encoded}
+          input_names = [item.name for item in session.get_inputs()]
+          feeds = {name: encoded[name].astype(np.int64) for name in input_names if name in encoded}
           result = session.run(None, feeds)
           metadata["python_smoke"] = {
               "providers": session.get_providers(),
-              "input_names": [item.name for item in session.get_inputs()],
+              "input_names": input_names,
               "output_names": [item.name for item in session.get_outputs()],
               "output_shapes": [list(np.asarray(value).shape) for value in result],
           }
@@ -157,15 +170,21 @@ jobs:
           print(json.dumps(metadata["quantized"], indent=2))
           print(json.dumps(metadata["python_smoke"], indent=2))
           PY
-      - name: Smoke-test the quantized graph through Transformers.js WASM
-        continue-on-error: true
+      - name: Smoke-test the quantized graph through Transformers.js WebAssembly
+        shell: bash
         run: |
-          cat > /tmp/kompress-smoke.mjs <<'JS'
+          set -euo pipefail
+          cat > kompress-smoke.mjs <<'JS'
           import path from "node:path";
-          import { AutoModelForTokenClassification, AutoTokenizer, env } from "@huggingface/transformers";
+          import {
+            AutoModelForTokenClassification,
+            AutoTokenizer,
+            env,
+          } from "./node_modules/@huggingface/transformers/dist/transformers.web.js";
 
           env.allowRemoteModels = false;
           env.allowLocalModels = true;
+          env.useBrowserCache = false;
           env.localModelPath = `${path.resolve(".")}/`;
           env.backends.onnx.wasm.wasmPaths = `${path.resolve("node_modules/onnxruntime-web/dist")}/`;
           env.backends.onnx.wasm.numThreads = 1;
@@ -177,9 +196,12 @@ jobs:
           });
           const input = await tokenizer("Keep Alice, invoice 42, and the June 15 deadline; remove repeated filler.");
           const output = await model(input);
+          if (!Array.isArray(output.logits.dims) || output.logits.dims.at(-1) !== 2) {
+            throw new Error(`unexpected logits shape: ${output.logits.dims}`);
+          }
           console.log(JSON.stringify({ dims: output.logits.dims, dtype: output.logits.type }));
           JS
-          node /tmp/kompress-smoke.mjs 2>&1 | tee kompress-js.log
+          node kompress-smoke.mjs 2>&1 | tee kompress-js.log
       - name: Upload probe evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -189,5 +211,5 @@ jobs:
             kompress-probe.json
             kompress-python.log
             kompress-js.log
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 3
