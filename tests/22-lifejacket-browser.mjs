@@ -11,7 +11,9 @@ for (const group of scriptGroups) {
   assert(group.js.includes('src/lifejacket-settings.js'), 'Lifejacket settings load on every supported provider');
   assert(group.js.includes('src/lifejacket-core.js'), 'Lifejacket safety core loads on every supported provider');
   assert(group.js.includes('src/lifejacket-content.js'), 'Lifejacket UI loads on every supported provider');
-  assert(group.js.indexOf('src/lifejacket-settings.js') < group.js.indexOf('src/caveman.js'), 'Lifejacket migration disables legacy Caveman behavior before provider code loads');
+  assert(!group.js.includes('src/caveman.js'), 'retired Caveman script is absent');
+  assert(group.js.indexOf('src/lifejacket-settings.js') < group.js.indexOf('src/lifejacket-content.js'), 'Lifejacket settings load before its UI');
+  assert(group.js.indexOf('src/lifejacket-core.js') < group.js.indexOf('src/lifejacket-content.js'), 'Lifejacket safety core loads before its UI');
 }
 
 const { context, worker } = await launchExtension();
