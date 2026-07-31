@@ -32,14 +32,27 @@ for directory in (SOURCE, ROOT):
         shutil.rmtree(directory)
     directory.mkdir(parents=True)
 
-snapshot_download(
+api = HfApi()
+repo_files = api.list_repo_files(REPO, revision=REVISION)
+print("Pinned repository files:")
+for filename in repo_files:
+    print(f"- {filename}")
+
+snapshot_root = pathlib.Path(snapshot_download(
     repo_id=REPO,
     revision=REVISION,
     local_dir=SOURCE,
-    allow_patterns=["*.json", "*.txt", "*.model", "*.safetensors"],
-)
+))
+print(f"Snapshot root: {snapshot_root}")
+print("Downloaded files:")
+for path in sorted(snapshot_root.rglob("*")):
+    if path.is_file():
+        print(f"- {path.relative_to(snapshot_root)} ({path.stat().st_size} bytes)")
 
-config_path = SOURCE / "config.json"
+config_candidates = list(snapshot_root.rglob("config.json"))
+if len(config_candidates) != 1:
+    raise SystemExit(f"expected one config.json, found: {config_candidates}")
+config_path = config_candidates[0]
 config = json.loads(config_path.read_text(encoding="utf-8"))
 if config.get("architectures") != ["ModernBertForTokenClassification"]:
     raise SystemExit(f"unexpected architecture: {config.get('architectures')}")
@@ -49,7 +62,7 @@ config["model_type"] = "modernbert"
 config_path.write_text(json.dumps(config, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 main_export(
-    model_name_or_path=str(SOURCE),
+    model_name_or_path=str(snapshot_root),
     output=ROOT,
     task="token-classification",
     device="cpu",
@@ -71,10 +84,11 @@ for name in (
     "vocab.txt",
     "merges.txt",
 ):
-    source = SOURCE / name
-    destination = ROOT / name
-    if source.exists() and not destination.exists():
-        shutil.copy2(source, destination)
+    matches = list(snapshot_root.rglob(name))
+    if len(matches) > 1:
+        raise SystemExit(f"ambiguous {name}: {matches}")
+    if matches and not (ROOT / name).exists():
+        shutil.copy2(matches[0], ROOT / name)
 
 candidates = [path for path in ROOT.rglob("*.onnx") if "quant" not in path.name]
 if len(candidates) != 1:
@@ -120,7 +134,7 @@ shapes = [list(np.asarray(value).shape) for value in outputs]
 if not outputs or np.asarray(outputs[0]).shape[-1] != 2:
     raise SystemExit(f"unexpected logits shape: {shapes}")
 
-info = HfApi().model_info(REPO, revision=REVISION, files_metadata=True)
+info = api.model_info(REPO, revision=REVISION, files_metadata=True)
 license_name = (info.card_data or {}).get("license") if info.card_data else None
 if license_name != "apache-2.0":
     raise SystemExit(f"unexpected model license: {license_name}")
@@ -130,6 +144,7 @@ report = {
     "revision": REVISION,
     "license": license_name,
     "pipeline_tag": info.pipeline_tag,
+    "repo_files": repo_files,
     "config_patch": {"model_type": "modernbert"},
     "quantized": {
         "path": str(target),
