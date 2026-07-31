@@ -16,6 +16,9 @@ const protectedSharedAssets = [
   path.join(sharedVendorRoot, 'officeparser.browser.slim.iife.js'),
   path.join(sharedVendorRoot, 'pdf.worker.min.mjs'),
 ];
+const staticLicenseSources = {
+  onnxruntime: path.join(root, 'third_party', 'licenses', 'onnxruntime-MIT.txt'),
+};
 
 function packageRoot(name) {
   let directory = path.dirname(require.resolve(name, { paths: [root] }));
@@ -35,6 +38,9 @@ function sha256(file) {
 }
 
 function copy(source, destination) {
+  if (!fs.existsSync(source) || !fs.statSync(source).isFile()) {
+    throw new Error(`Required vendored source is missing: ${path.relative(root, source)}`);
+  }
   fs.mkdirSync(path.dirname(destination), { recursive: true });
   fs.copyFileSync(source, destination);
   fs.chmodSync(destination, 0o644);
@@ -62,6 +68,12 @@ if (transformersPackage.version !== TRANSFORMERS_VERSION) {
 if (ortPackage.version !== ORT_WEB_VERSION) {
   throw new Error(`Expected onnxruntime-web ${ORT_WEB_VERSION}, found ${ortPackage.version}`);
 }
+if (transformersPackage.license !== 'Apache-2.0') {
+  throw new Error(`Unexpected Transformers.js license: ${transformersPackage.license}`);
+}
+if (ortPackage.license !== 'MIT') {
+  throw new Error(`Unexpected ONNX Runtime Web license: ${ortPackage.license}`);
+}
 
 // Delete only Lifejacket's generated namespace. src/vendor also contains the
 // sandboxed Office parser and PDF worker, which must survive every ML rebuild.
@@ -82,12 +94,14 @@ for (const filename of [
   'ort-wasm-simd-threaded.wasm',
 ]) {
   const source = path.join(ortRoot, 'dist', filename);
-  if (!fs.existsSync(source)) throw new Error(`Required ONNX Runtime asset is missing: ${filename}`);
   copy(source, path.join(ortOutput, filename));
 }
 
 copy(path.join(transformersRoot, 'LICENSE'), path.join(licenseOutput, 'transformers-js-APACHE-2.0.txt'));
-copy(path.join(ortRoot, 'LICENSE'), path.join(licenseOutput, 'onnxruntime-MIT.txt'));
+// The onnxruntime-web npm tarball declares MIT in package.json but does not
+// consistently include a LICENSE file. Copy a reviewed repository-owned copy
+// so the release always carries the required notice regardless of npm layout.
+copy(staticLicenseSources.onnxruntime, path.join(licenseOutput, 'onnxruntime-MIT.txt'));
 
 const runtimeSource = fs.readFileSync(path.join(root, 'src', 'lifejacket-runtime.js'), 'utf8');
 if (!/env\.allowRemoteModels\s*=\s*false/.test(runtimeSource)) {
@@ -119,6 +133,10 @@ const manifest = {
   packages: {
     '@huggingface/transformers': TRANSFORMERS_VERSION,
     'onnxruntime-web': ORT_WEB_VERSION,
+  },
+  licenses: {
+    '@huggingface/transformers': 'Apache-2.0',
+    'onnxruntime-web': 'MIT',
   },
   policy: {
     allowRemoteModels: false,
