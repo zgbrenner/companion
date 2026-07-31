@@ -29,6 +29,7 @@ assert.match(builder, /atjsh\/llmlingua-2-js-mobilebert-meetingbank/);
 assert.match(builder, /900ed52628d7b153a276a220483d26d5f8dfe0f7/);
 assert.match(builder, /99170493/);
 assert.match(builder, /caaadce5fa0fafce898c8ac2c152652a929ed5a2f55929eceb2f3325de4a2f07/);
+assert.match(builder, /MAX_OUTPUT_BYTES\s*=\s*40\s*\*\s*1024\s*\*\s*1024/);
 assert.match(builder, /QuantType\.QInt8/);
 assert.match(builder, /model_quantized\.onnx/);
 assert.match(builder, /provenance\.json/);
@@ -78,7 +79,7 @@ if (process.env.REQUIRE_LIFEJACKET_ASSETS === '1') {
     assert.ok(fs.statSync(file).size > 0, `generated asset is empty: ${path.relative(root, file)}`);
   }
   const modelBytes = fs.statSync(model).size;
-  assert.ok(modelBytes < 35 * 1024 * 1024, `Q8 model exceeds 35 MiB: ${modelBytes}`);
+  assert.ok(modelBytes < 40 * 1024 * 1024, `Q8 model exceeds 40 MiB: ${modelBytes}`);
   const provenance = JSON.parse(fs.readFileSync(provenancePath, 'utf8'));
   assert.equal(provenance.source.repository, 'atjsh/llmlingua-2-js-mobilebert-meetingbank');
   assert.equal(provenance.source.revision, '900ed52628d7b153a276a220483d26d5f8dfe0f7');
