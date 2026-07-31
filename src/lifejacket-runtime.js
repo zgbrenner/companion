@@ -1,10 +1,9 @@
 import {
   AutoConfig,
+  AutoModelForTokenClassification,
   AutoTokenizer,
-  MobileBertPreTrainedModel,
-  TokenClassifierOutput,
   env,
-} from './vendor/transformers.web.min.js';
+} from './vendor/lifejacket/transformers.web.min.js';
 
 const CORE = globalThis.CompanionLifejacketCore;
 const MODEL_ID = 'lifejacket';
@@ -13,16 +12,10 @@ const MAX_SEQUENCE_LENGTH = 128;
 const MAX_INPUT_CHARS = 120_000;
 const MAX_CHUNK_CHARS = 360;
 
-class MobileBertForTokenClassification extends MobileBertPreTrainedModel {
-  async _call(modelInputs) {
-    return new TokenClassifierOutput(await super._call(modelInputs));
-  }
-}
-
 env.allowRemoteModels = false;
 env.allowLocalModels = true;
 env.localModelPath = chrome.runtime.getURL('src/models/');
-env.backends.onnx.wasm.wasmPaths = chrome.runtime.getURL('src/vendor/ort/');
+env.backends.onnx.wasm.wasmPaths = chrome.runtime.getURL('src/vendor/lifejacket/ort/');
 env.backends.onnx.wasm.numThreads = 1;
 env.backends.onnx.wasm.proxy = false;
 
@@ -36,7 +29,7 @@ async function loadRuntime() {
         config,
         local_files_only: true,
       });
-      const model = await MobileBertForTokenClassification.from_pretrained(MODEL_ID, {
+      const model = await AutoModelForTokenClassification.from_pretrained(MODEL_ID, {
         config,
         dtype: 'q8',
         device: 'wasm',
