@@ -29,7 +29,7 @@ for (const key of [
   'lifejacketFileConversion',
 ]) assert.match(source, new RegExp(key));
 assert.match(source, /cuc:lifejacket-compress/);
-assert.match(source, /cuc:convert-file/);
+assert.match(source, /cuc:lifejacket-convert-file/);
 assert.match(source, /Send optimized/);
 assert.match(source, /Send original/);
 assert.match(source, /Cancel/);
