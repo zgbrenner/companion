@@ -1,0 +1,124 @@
+name: Build and verify COMPANION
+description: Reproducibly build the local Lifejacket assets, test the extension, and package the Web Store ZIP.
+
+inputs:
+  run-tests:
+    description: Run the complete Chromium extension suite.
+    required: false
+    default: "true"
+  build-package:
+    description: Build the deterministic Chrome Web Store ZIP.
+    required: false
+    default: "true"
+  install-chromium:
+    description: Install the pinned Playwright Chromium runtime.
+    required: false
+    default: "true"
+  node-version:
+    description: Node.js version.
+    required: false
+    default: "22"
+  python-version:
+    description: Python version.
+    required: false
+    default: "3.12"
+
+outputs:
+  version:
+    description: Extension version from manifest.json.
+    value: ${{ steps.metadata.outputs.version }}
+  zip_path:
+    description: Relative path to the deterministic Web Store ZIP.
+    value: ${{ steps.metadata.outputs.zip_path }}
+  checksum_path:
+    description: Relative path to the ZIP SHA-256 file.
+    value: ${{ steps.metadata.outputs.checksum_path }}
+  model_hash:
+    description: SHA-256 of the bundled quantized Lifejacket model.
+    value: ${{ steps.metadata.outputs.model_hash }}
+  package_hash:
+    description: SHA-256 of the Web Store ZIP, when packaging is enabled.
+    value: ${{ steps.metadata.outputs.package_hash }}
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: npm
+        cache-dependency-path: package-lock.json
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+        cache: pip
+        cache-dependency-path: requirements-lifejacket-build.txt
+
+    - name: Cache pinned Lifejacket model inputs and output
+      uses: actions/cache@v4
+      with:
+        path: |
+          .cache/lifejacket
+          src/models/lifejacket
+        key: lifejacket-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tools/build-lifejacket-model.py', 'requirements-lifejacket-build.txt') }}
+
+    - name: Install locked JavaScript dependencies
+      shell: bash
+      run: npm ci --ignore-scripts
+
+    - name: Install pinned model-build dependencies
+      shell: bash
+      run: python -m pip install --disable-pip-version-check -r requirements-lifejacket-build.txt
+
+    - name: Build bundled Lifejacket runtime and Q8 model
+      shell: bash
+      run: npm run build:lifejacket
+
+    - name: Install pinned Chromium
+      if: inputs.run-tests == 'true' && inputs.install-chromium == 'true'
+      shell: bash
+      run: npx playwright install --with-deps chromium
+
+    - name: Generate current launch and store-review assets
+      if: inputs.run-tests == 'true'
+      shell: bash
+      run: python3 tools/generate-launch-assets.py
+
+    - name: Run complete extension test suite
+      if: inputs.run-tests == 'true'
+      shell: bash
+      env:
+        REQUIRE_LIFEJACKET_ASSETS: "1"
+        REQUIRE_GENERATED_LAUNCH_ASSETS: "1"
+      run: |
+        set -o pipefail
+        node tests/run.mjs 2>&1 | tee extension-test-output.log
+
+    - name: Build deterministic Web Store package
+      if: inputs.build-package == 'true'
+      shell: bash
+      run: npm run package:webstore
+
+    - name: Export build metadata
+      id: metadata
+      shell: bash
+      run: |
+        set -euo pipefail
+        version="$(node -p "JSON.parse(require('fs').readFileSync('manifest.json','utf8')).version")"
+        zip_path="dist/companion-${version}.zip"
+        checksum_path="${zip_path}.sha256"
+        model_hash="$(sha256sum src/models/lifejacket/onnx/model_quantized.onnx | cut -d' ' -f1)"
+        package_hash=""
+        if [ -f "$zip_path" ]; then
+          package_hash="$(sha256sum "$zip_path" | cut -d' ' -f1)"
+        fi
+        {
+          echo "version=$version"
+          echo "zip_path=$zip_path"
+          echo "checksum_path=$checksum_path"
+          echo "model_hash=$model_hash"
+          echo "package_hash=$package_hash"
+        } >> "$GITHUB_OUTPUT"
