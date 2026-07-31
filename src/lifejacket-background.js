@@ -1,7 +1,12 @@
 const MAX_INPUT_CHARS = 120_000;
 const REQUEST_TIMEOUT_MS = 45_000;
+const FILE_REQUEST_TIMEOUT_MS = 70_000;
 const MIN_KEEP_RATIO = 0.4;
 const MAX_KEEP_RATIO = 0.85;
+const MAX_CONVERT_DATAURL_CHARS = 30_000_000;
+const CONVERTIBLE_EXTENSIONS = new Set([
+  'pdf', 'docx', 'pptx', 'xlsx', 'odt', 'odp', 'ods', 'rtf', 'csv', 'html', 'htm',
+]);
 
 const ALLOWED_HOSTS = new Set([
   'claude.ai',
@@ -26,15 +31,34 @@ function lifejacketSenderOrigin(sender) {
   }
 }
 
-function validateLifejacketRequest(message, sender) {
+function validateLifejacketSender(sender) {
   if (sender?.id !== chrome.runtime.id) return 'Invalid sender.';
-  if (sender.frameId !== 0) return 'Lifejacket compression is limited to the top frame.';
+  if (sender.frameId !== 0) return 'Lifejacket processing is limited to the top frame.';
   if (!lifejacketSenderOrigin(sender)) return 'Unsupported sender origin.';
+  return null;
+}
+
+function validateLifejacketRequest(message, sender) {
+  const senderError = validateLifejacketSender(sender);
+  if (senderError) return senderError;
   if (typeof message?.text !== 'string' || !message.text.trim()) return 'Prompt text is required.';
   if (message.text.length > MAX_INPUT_CHARS) return `Prompt size exceeds ${MAX_INPUT_CHARS} characters.`;
   const keepRatio = Number(message.keepRatio);
   if (!Number.isFinite(keepRatio) || keepRatio < MIN_KEEP_RATIO || keepRatio > MAX_KEEP_RATIO) {
     return `Compression ratio must be between ${MIN_KEEP_RATIO} and ${MAX_KEEP_RATIO}.`;
+  }
+  return null;
+}
+
+function validateFileRequest(message, sender) {
+  const senderError = validateLifejacketSender(sender);
+  if (senderError) return senderError;
+  const ext = String(message?.ext || '').toLowerCase();
+  if (!CONVERTIBLE_EXTENSIONS.has(ext)) return 'Unsupported file type.';
+  if (typeof message?.dataUrl !== 'string'
+    || !message.dataUrl.startsWith('data:')
+    || message.dataUrl.length > MAX_CONVERT_DATAURL_CHARS) {
+    return 'Invalid or oversized file data.';
   }
   return null;
 }
@@ -54,10 +78,10 @@ async function ensureLifejacketOffscreenDocument() {
   await lifejacketOffscreenCreating;
 }
 
-function withLifejacketTimeout(promise) {
+function withLifejacketTimeout(promise, timeoutMs = REQUEST_TIMEOUT_MS, label = 'Lifejacket compression') {
   let timer = null;
   const timeout = new Promise((_, reject) => {
-    timer = setTimeout(() => reject(new Error('Lifejacket compression timed out.')), REQUEST_TIMEOUT_MS);
+    timer = setTimeout(() => reject(new Error(`${label} timed out.`)), timeoutMs);
   });
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
@@ -84,27 +108,59 @@ function normalizeLifejacketResponse(response) {
   };
 }
 
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message?.type !== 'cuc:lifejacket-compress') return undefined;
+function normalizeFileResponse(response) {
+  if (!response || typeof response !== 'object' || response.ok !== true) {
+    throw new Error(String(response?.error || 'File conversion failed.').slice(0, 240));
+  }
+  const markdown = String(response.markdown || '');
+  if (!markdown.trim()) throw new Error('The file contained no extractable text.');
+  return { ok: true, markdown };
+}
 
-  const validationError = validateLifejacketRequest(message, sender);
-  if (validationError) {
-    sendResponse({ ok: false, error: validationError });
-    return false;
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.type === 'cuc:lifejacket-compress') {
+    const validationError = validateLifejacketRequest(message, sender);
+    if (validationError) {
+      sendResponse({ ok: false, error: validationError });
+      return false;
+    }
+
+    const keepRatio = Number(message.keepRatio);
+    (async () => {
+      await ensureLifejacketOffscreenDocument();
+      const response = await withLifejacketTimeout(chrome.runtime.sendMessage({
+        type: 'cuc:lifejacket-compress-offscreen',
+        text: message.text,
+        keepRatio,
+      }));
+      return normalizeLifejacketResponse(response);
+    })().then(
+      result => sendResponse(result),
+      error => sendResponse({ ok: false, error: String(error?.message || error).slice(0, 240) }),
+    );
+    return true;
   }
 
-  const keepRatio = Number(message.keepRatio);
-  (async () => {
-    await ensureLifejacketOffscreenDocument();
-    const response = await withLifejacketTimeout(chrome.runtime.sendMessage({
-      type: 'cuc:lifejacket-compress-offscreen',
-      text: message.text,
-      keepRatio,
-    }));
-    return normalizeLifejacketResponse(response);
-  })().then(
-    result => sendResponse(result),
-    error => sendResponse({ ok: false, error: String(error?.message || error).slice(0, 240) }),
-  );
-  return true;
+  if (message?.type === 'cuc:lifejacket-convert-file') {
+    const validationError = validateFileRequest(message, sender);
+    if (validationError) {
+      sendResponse({ ok: false, error: validationError });
+      return false;
+    }
+    (async () => {
+      await ensureLifejacketOffscreenDocument();
+      const response = await withLifejacketTimeout(chrome.runtime.sendMessage({
+        type: 'cuc:offscreen-convert',
+        dataUrl: message.dataUrl,
+        ext: String(message.ext).toLowerCase(),
+      }), FILE_REQUEST_TIMEOUT_MS, 'File conversion');
+      return normalizeFileResponse(response);
+    })().then(
+      result => sendResponse(result),
+      error => sendResponse({ ok: false, error: String(error?.message || error).slice(0, 240) }),
+    );
+    return true;
+  }
+
+  return undefined;
 });
