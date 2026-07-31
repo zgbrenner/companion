@@ -1,3 +1,4 @@
+import nodeAssert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -7,8 +8,8 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const optionsHtml = fs.readFileSync(path.join(root, 'src/options.html'), 'utf8');
 const optionsJs = fs.readFileSync(path.join(root, 'src/options.js'), 'utf8');
 
-assert.doesNotMatch(optionsHtml, /Caveman Mode/i, 'current Settings copy must use Lifejacket Mode');
-assert.match(optionsHtml, /Lifejacket Mode/);
+nodeAssert.doesNotMatch(optionsHtml, /Caveman Mode/i, 'current Settings copy must use Lifejacket Mode');
+nodeAssert.match(optionsHtml, /Lifejacket Mode/);
 for (const id of [
   'showLifejacketMode',
   'lifejacketMode',
@@ -16,11 +17,11 @@ for (const id of [
   'lifejacketReplyBrevity',
   'lifejacketFileConversion',
 ]) {
-  assert.match(optionsHtml, new RegExp(`id=["']${id}["']`), `Settings exposes ${id}`);
-  assert.match(optionsJs, new RegExp(`["']${id}["']`), `Settings persists ${id}`);
+  nodeAssert.match(optionsHtml, new RegExp(`id=["']${id}["']`), `Settings exposes ${id}`);
+  nodeAssert.match(optionsJs, new RegExp(`["']${id}["']`), `Settings persists ${id}`);
 }
-assert.match(optionsHtml, /<script src="lifejacket-settings\.js"><\/script>/);
-assert.ok(
+nodeAssert.match(optionsHtml, /<script src="lifejacket-settings\.js"><\/script>/);
+nodeAssert.ok(
   optionsHtml.indexOf('lifejacket-settings.js') < optionsHtml.indexOf('options.js'),
   'Lifejacket migration must load before the settings application',
 );
