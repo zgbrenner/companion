@@ -27,3 +27,167 @@ jobs:
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 1
+
+  probe-kompress:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/lifejacket-mode
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install probe dependencies
+        run: |
+          python -m pip install --disable-pip-version-check huggingface_hub onnx onnxruntime transformers numpy
+          npm install --no-save @huggingface/transformers@4.2.0 onnxruntime-web@1.26.0-dev.20260416-b7804b056c
+      - name: Download, inspect, quantize, and smoke-test with ONNX Runtime
+        run: |
+          python - <<'PY' 2>&1 | tee kompress-python.log
+          import hashlib
+          import json
+          import pathlib
+          import shutil
+
+          import numpy as np
+          import onnx
+          import onnxruntime as ort
+          from huggingface_hub import HfApi, snapshot_download
+          from onnxruntime.quantization import QuantType, quantize_dynamic
+          from transformers import AutoTokenizer
+
+          repo = "chopratejas/kompress-small"
+          revision = "eacbdc589d039a1a39f76a92844979ad4e266bcd"
+          api = HfApi()
+          info = api.model_info(repo, revision=revision, files_metadata=True)
+          metadata = {
+              "repo": repo,
+              "revision": revision,
+              "license": (info.card_data or {}).get("license") if info.card_data else None,
+              "pipeline_tag": info.pipeline_tag,
+              "siblings": [],
+          }
+          for item in info.siblings or []:
+              lfs = item.lfs or {}
+              metadata["siblings"].append({
+                  "path": item.rfilename,
+                  "size": item.size,
+                  "blob_id": item.blob_id,
+                  "lfs_sha256": lfs.get("sha256") if isinstance(lfs, dict) else getattr(lfs, "sha256", None),
+              })
+          cache = pathlib.Path(snapshot_download(
+              repo_id=repo,
+              revision=revision,
+              allow_patterns=["*.json", "*.txt", "*.model", "*.onnx*"],
+          ))
+          source = cache / "model.onnx"
+          if not source.exists():
+              candidates = list(cache.rglob("*.onnx"))
+              if len(candidates) != 1:
+                  raise SystemExit(f"unable to resolve source ONNX: {candidates}")
+              source = candidates[0]
+
+          def digest(path):
+              h = hashlib.sha256()
+              with path.open("rb") as handle:
+                  for block in iter(lambda: handle.read(1024 * 1024), b""):
+                      h.update(block)
+              return h.hexdigest()
+
+          metadata["downloaded_files"] = []
+          for path in sorted(cache.rglob("*")):
+              if path.is_file() and not path.is_symlink():
+                  metadata["downloaded_files"].append({
+                      "path": str(path.relative_to(cache)),
+                      "size": path.stat().st_size,
+                      "sha256": digest(path),
+                  })
+
+          graph = onnx.load(str(source), load_external_data=False)
+          metadata["graph_inputs"] = [value.name for value in graph.graph.input]
+          metadata["graph_outputs"] = [value.name for value in graph.graph.output]
+          metadata["external_data_locations"] = sorted({
+              item.value
+              for tensor in graph.graph.initializer
+              for item in tensor.external_data
+              if item.key == "location"
+          })
+
+          target_root = pathlib.Path("probe-model")
+          target_root.mkdir(exist_ok=True)
+          (target_root / "onnx").mkdir(exist_ok=True)
+          for name in ["config.json", "tokenizer.json", "tokenizer_config.json", "special_tokens_map.json", "vocab.txt", "merges.txt"]:
+              src = cache / name
+              if src.exists():
+                  shutil.copy2(src, target_root / name)
+
+          output = target_root / "onnx" / "model_quantized.onnx"
+          quantize_dynamic(
+              model_input=str(source),
+              model_output=str(output),
+              per_channel=True,
+              reduce_range=False,
+              weight_type=QuantType.QInt8,
+              use_external_data_format=False,
+              extra_options={"WeightSymmetric": True},
+          )
+          metadata["quantized"] = {
+              "path": str(output),
+              "size": output.stat().st_size,
+              "sha256": digest(output),
+          }
+
+          tokenizer = AutoTokenizer.from_pretrained(repo, revision=revision)
+          sample = "Please summarize the project plan, keep Alice, Bob, invoice 42, and the June 15 deadline, while removing repeated polite filler."
+          encoded = tokenizer(sample, return_tensors="np")
+          session = ort.InferenceSession(str(output), providers=["CPUExecutionProvider"])
+          feeds = {name: encoded[name].astype(np.int64) for name in [item.name for item in session.get_inputs()] if name in encoded}
+          result = session.run(None, feeds)
+          metadata["python_smoke"] = {
+              "providers": session.get_providers(),
+              "input_names": [item.name for item in session.get_inputs()],
+              "output_names": [item.name for item in session.get_outputs()],
+              "output_shapes": [list(np.asarray(value).shape) for value in result],
+          }
+          pathlib.Path("kompress-probe.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+          print(json.dumps(metadata["quantized"], indent=2))
+          print(json.dumps(metadata["python_smoke"], indent=2))
+          PY
+      - name: Smoke-test the quantized graph through Transformers.js WASM
+        continue-on-error: true
+        run: |
+          cat > /tmp/kompress-smoke.mjs <<'JS'
+          import path from "node:path";
+          import { AutoModelForTokenClassification, AutoTokenizer, env } from "@huggingface/transformers";
+
+          env.allowRemoteModels = false;
+          env.allowLocalModels = true;
+          env.localModelPath = `${path.resolve(".")}/`;
+          env.backends.onnx.wasm.wasmPaths = `${path.resolve("node_modules/onnxruntime-web/dist")}/`;
+          env.backends.onnx.wasm.numThreads = 1;
+
+          const tokenizer = await AutoTokenizer.from_pretrained("probe-model");
+          const model = await AutoModelForTokenClassification.from_pretrained("probe-model", {
+            dtype: "q8",
+            device: "wasm",
+          });
+          const input = await tokenizer("Keep Alice, invoice 42, and the June 15 deadline; remove repeated filler.");
+          const output = await model(input);
+          console.log(JSON.stringify({ dims: output.logits.dims, dtype: output.logits.type }));
+          JS
+          node /tmp/kompress-smoke.mjs 2>&1 | tee kompress-js.log
+      - name: Upload probe evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kompress-browser-probe
+          path: |
+            kompress-probe.json
+            kompress-python.log
+            kompress-js.log
+          if-no-files-found: error
+          retention-days: 3
