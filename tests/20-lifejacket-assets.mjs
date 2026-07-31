@@ -37,30 +37,35 @@ const vendor = read('tools/vendor-lifejacket-runtime.mjs');
 assert.match(vendor, /@huggingface\/transformers/);
 assert.match(vendor, /4\.2\.0/);
 assert.match(vendor, /1\.26\.0-dev\.20260416-b7804b056c/);
+assert.match(vendor, /src['"],\s*['"]vendor['"],\s*['"]lifejacket['"]/);
 assert.match(vendor, /transformers\.web\.min\.js/);
 assert.match(vendor, /ort-wasm/);
 assert.match(vendor, /vendor-manifest\.json/);
 assert.match(vendor, /allowRemoteModels/);
+assert.match(vendor, /officeparser\.browser\.slim\.iife\.js/);
+assert.match(vendor, /pdf\.worker\.min\.mjs/);
 
 const runtime = read('src/lifejacket-runtime.js');
 assert.match(runtime, /env\.allowRemoteModels\s*=\s*false/);
 assert.match(runtime, /env\.allowLocalModels\s*=\s*true/);
 assert.match(runtime, /env\.localModelPath/);
-assert.match(runtime, /wasmPaths/);
-assert.match(runtime, /MobileBertPreTrainedModel/);
-assert.match(runtime, /TokenClassifierOutput/);
+assert.match(runtime, /src\/vendor\/lifejacket\/ort\//);
+assert.match(runtime, /AutoModelForTokenClassification/);
 assert.match(runtime, /dtype:\s*['"]q8['"]/);
 assert.match(runtime, /cuc:lifejacket-compress-offscreen/);
+assert.match(runtime, /\.\/vendor\/lifejacket\/transformers\.web\.min\.js/);
 assert.doesNotMatch(runtime, /https?:\/\//);
 
 assert.ok(exists('src/models/lifejacket/.gitkeep'));
+assert.ok(exists('src/vendor/officeparser.browser.slim.iife.js'));
+assert.ok(exists('src/vendor/pdf.worker.min.mjs'));
 
 if (process.env.REQUIRE_LIFEJACKET_ASSETS === '1') {
   const model = path.join(root, 'src/models/lifejacket/onnx/model_quantized.onnx');
   const provenancePath = path.join(root, 'src/models/lifejacket/provenance.json');
   const sumsPath = path.join(root, 'src/models/lifejacket/SHA256SUMS');
-  const transformer = path.join(root, 'src/vendor/transformers.web.min.js');
-  const vendorManifest = path.join(root, 'src/vendor/vendor-manifest.json');
+  const transformer = path.join(root, 'src/vendor/lifejacket/transformers.web.min.js');
+  const vendorManifest = path.join(root, 'src/vendor/lifejacket/vendor-manifest.json');
   for (const file of [model, provenancePath, sumsPath, transformer, vendorManifest]) {
     assert.ok(fs.existsSync(file), `required generated asset missing: ${path.relative(root, file)}`);
     assert.ok(fs.statSync(file).size > 0, `generated asset is empty: ${path.relative(root, file)}`);
@@ -74,7 +79,7 @@ if (process.env.REQUIRE_LIFEJACKET_ASSETS === '1') {
   const hash = crypto.createHash('sha256').update(fs.readFileSync(model)).digest('hex');
   assert.equal(provenance.output.onnx.sha256, hash);
   assert.equal(provenance.output.onnx.bytes, modelBytes);
-  const ortFiles = fs.readdirSync(path.join(root, 'src/vendor/ort')).filter(name => /\.wasm$/.test(name));
+  const ortFiles = fs.readdirSync(path.join(root, 'src/vendor/lifejacket/ort')).filter(name => /\.wasm$/.test(name));
   assert.ok(ortFiles.length > 0, 'at least one local ONNX Runtime WASM binary is packaged');
 }
 
