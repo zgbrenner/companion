@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>COMPANION Settings</title>
+  <style>
+    html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #f5f7f6; }
+    iframe { width: 100%; height: 100%; border: 0; opacity: 0; transition: opacity 120ms ease; }
+    iframe.ready { opacity: 1; }
+    #options-error { position: fixed; inset: 0; display: grid; place-items: center; padding: 24px; color: #27312e; font: 16px/1.5 system-ui, sans-serif; }
+    #options-error[hidden] { display: none; }
+    @media (prefers-color-scheme: dark) { html, body { background: #161a19; } #options-error { color: #eef4f2; } }
+    @media (prefers-reduced-motion: reduce) { iframe { transition: none; } }
+  </style>
+</head>
+<body>
+  <iframe id="settings-frame" src="options.html" title="COMPANION settings"></iframe>
+  <div id="options-error" role="alert" hidden>COMPANION could not load the settings page. Close this tab and reopen Settings.</div>
+  <script src="shared.js"></script>
+  <script src="lifejacket-settings.js"></script>
+  <script src="options-lifejacket.js"></script>
+</body>
+</html>
