@@ -1,0 +1,24 @@
+name: export-pr25-temp
+
+on:
+  push:
+    branches:
+      - feature/lifejacket-mode
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/upload-artifact@v4
+        with:
+          name: companion-pr25-source
+          path: .
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 1
