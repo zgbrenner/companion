@@ -13,6 +13,10 @@
     ['double-quoted', /"(?:\\.|[^"\\\n])*"/g],
     ['single-quoted', /'(?:\\.|[^'\\\n]){2,}'/g],
     ['number-bearing', /\b[\p{L}_./:-]*\d[\p{L}\p{N}_./:+-]*\b/gu],
+    // Compression models are most dangerous when they drop a small word that
+    // reverses a requirement. Preserve negation, obligation, bounds, and
+    // exception markers byte-for-byte before the model sees surrounding prose.
+    ['semantic-guard', /\b(?:not|no|never|none|neither|nor|without|unless|except|only|must|shall|should|cannot|can't|won't|don't|doesn't|didn't|isn't|aren't|wasn't|weren't|at\s+least|at\s+most|before|after)\b/gi],
   ];
 
   function structuredLineReason(line) {
