@@ -93,6 +93,23 @@ const chatGptSender = {
   assert.equal(forwarded.ext, 'pdf');
 }
 
+{
+  const { keepChannel, response } = await send({
+    type: 'cuc:convert-file',
+    dataUrl: 'data:application/pdf;base64,JVBERi0=',
+    ext: 'pdf',
+  }, chatGptSender);
+  assert.equal(keepChannel, true, 'existing cross-provider content message is accepted on ChatGPT');
+  assert.deepEqual(response, { ok: true, markdown: '# Converted locally' });
+  assert.equal(forwarded.type, 'cuc:offscreen-convert');
+}
+
+assert.equal(
+  listener({ type: 'cuc:convert-file', dataUrl: 'data:x;base64,WA==', ext: 'pdf' }, validSender, () => {}),
+  undefined,
+  'Claude compatibility messages remain owned by the mature Claude background route',
+);
+
 for (const [label, sender, message, expected] of [
   ['forged extension', { ...validSender, id: 'other' }, { type: 'cuc:lifejacket-compress', text: 'x', keepRatio: 0.65 }, /sender/i],
   ['subframe', { ...validSender, frameId: 2 }, { type: 'cuc:lifejacket-compress', text: 'x', keepRatio: 0.65 }, /frame/i],
@@ -129,5 +146,6 @@ assert.match(source, /sender\.frameId/);
 assert.match(source, /chatgpt\.com/);
 assert.match(source, /claude\.ai/);
 assert.match(source, /cuc:lifejacket-convert-file/);
+assert.match(source, /message\?\.type === 'cuc:convert-file' && isChatGptSender/);
 
 console.log('PASS  Lifejacket service-worker and offscreen routing');
