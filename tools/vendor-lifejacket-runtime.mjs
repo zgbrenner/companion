@@ -8,9 +8,14 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const require = createRequire(import.meta.url);
 const TRANSFORMERS_VERSION = '4.2.0';
 const ORT_WEB_VERSION = '1.26.0-dev.20260416-b7804b056c';
-const outputRoot = path.join(root, 'src', 'vendor');
+const sharedVendorRoot = path.join(root, 'src', 'vendor');
+const outputRoot = path.join(root, 'src', 'vendor', 'lifejacket');
 const ortOutput = path.join(outputRoot, 'ort');
 const licenseOutput = path.join(outputRoot, 'licenses');
+const protectedSharedAssets = [
+  path.join(sharedVendorRoot, 'officeparser.browser.slim.iife.js'),
+  path.join(sharedVendorRoot, 'pdf.worker.min.mjs'),
+];
 
 function packageRoot(name) {
   let directory = path.dirname(require.resolve(name, { paths: [root] }));
@@ -39,6 +44,14 @@ function readPackage(directory) {
   return JSON.parse(fs.readFileSync(path.join(directory, 'package.json'), 'utf8'));
 }
 
+const sharedAssetHashes = new Map();
+for (const file of protectedSharedAssets) {
+  if (!fs.existsSync(file) || !fs.statSync(file).isFile()) {
+    throw new Error(`Required shared conversion dependency is missing: ${path.relative(root, file)}`);
+  }
+  sharedAssetHashes.set(file, sha256(file));
+}
+
 const transformersRoot = packageRoot('@huggingface/transformers');
 const ortRoot = packageRoot('onnxruntime-web');
 const transformersPackage = readPackage(transformersRoot);
@@ -50,6 +63,8 @@ if (ortPackage.version !== ORT_WEB_VERSION) {
   throw new Error(`Expected onnxruntime-web ${ORT_WEB_VERSION}, found ${ortPackage.version}`);
 }
 
+// Delete only Lifejacket's generated namespace. src/vendor also contains the
+// sandboxed Office parser and PDF worker, which must survive every ML rebuild.
 fs.rmSync(outputRoot, { recursive: true, force: true });
 fs.mkdirSync(ortOutput, { recursive: true });
 fs.mkdirSync(licenseOutput, { recursive: true });
@@ -82,6 +97,12 @@ if (/import\s*\(\s*['"]https?:\/\//.test(runtimeSource) || /from\s+['"]https?:\/
   throw new Error('Lifejacket runtime contains a remote module import');
 }
 
+for (const [file, expectedHash] of sharedAssetHashes) {
+  if (!fs.existsSync(file) || sha256(file) !== expectedHash) {
+    throw new Error(`Lifejacket vendoring modified a shared conversion dependency: ${path.relative(root, file)}`);
+  }
+}
+
 const files = [];
 for (const file of fs.readdirSync(outputRoot, { recursive: true })) {
   const absolute = path.join(outputRoot, file);
@@ -103,6 +124,8 @@ const manifest = {
     allowRemoteModels: false,
     executionProvider: 'wasm',
     wasmThreads: 1,
+    namespace: 'src/vendor/lifejacket',
+    preservesSharedVendorAssets: true,
   },
   files,
 };
