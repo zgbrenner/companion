@@ -5,26 +5,22 @@ import { fileURLToPath } from 'node:url';
 import { launchExtension, openPage, assert } from './lib.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const optionsHtml = fs.readFileSync(path.join(root, 'src/options.html'), 'utf8');
-const optionsJs = fs.readFileSync(path.join(root, 'src/options.js'), 'utf8');
+const manifest = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json'), 'utf8'));
+const wrapperHtml = fs.readFileSync(path.join(root, 'src/options-lifejacket.html'), 'utf8');
+const wrapperJs = fs.readFileSync(path.join(root, 'src/options-lifejacket.js'), 'utf8');
 
-nodeAssert.doesNotMatch(optionsHtml, /Caveman Mode/i, 'current Settings copy must use Lifejacket Mode');
-nodeAssert.match(optionsHtml, /Lifejacket Mode/);
+nodeAssert.equal(manifest.options_page, 'src/options-lifejacket.html');
+nodeAssert.match(wrapperHtml, /<iframe[^>]+src="options\.html"/);
+nodeAssert.match(wrapperHtml, /lifejacket-settings\.js/);
+nodeAssert.match(wrapperJs, /Lifejacket Mode/);
+nodeAssert.doesNotMatch(wrapperHtml, /Caveman Mode/i);
 for (const id of [
   'showLifejacketMode',
   'lifejacketMode',
   'lifejacketPromptCompression',
   'lifejacketReplyBrevity',
   'lifejacketFileConversion',
-]) {
-  nodeAssert.match(optionsHtml, new RegExp(`id=["']${id}["']`), `Settings exposes ${id}`);
-  nodeAssert.match(optionsJs, new RegExp(`["']${id}["']`), `Settings persists ${id}`);
-}
-nodeAssert.match(optionsHtml, /<script src="lifejacket-settings\.js"><\/script>/);
-nodeAssert.ok(
-  optionsHtml.indexOf('lifejacket-settings.js') < optionsHtml.indexOf('options.js'),
-  'Lifejacket migration must load before the settings application',
-);
+]) nodeAssert.match(wrapperJs, new RegExp(`["']${id}["']|${id}`), `Settings persists ${id}`);
 
 const { context, worker, extensionId } = await launchExtension();
 try {
@@ -41,24 +37,32 @@ try {
     });
   });
 
-  const { page, errors } = await openPage(context, extensionId, 'options.html');
-  await page.waitForSelector('#lifejacketPromptCompression');
+  const { page, errors } = await openPage(context, extensionId, 'options-lifejacket.html');
+  await page.waitForSelector('#settings-frame.ready');
+  const settingsFrame = page.frameLocator('#settings-frame');
+  await settingsFrame.locator('#lifejacketPromptCompression').waitFor();
 
-  const state = await page.evaluate(() => Object.fromEntries([
+  const state = Object.fromEntries(await Promise.all([
     'showLifejacketMode',
     'lifejacketMode',
     'lifejacketPromptCompression',
     'lifejacketReplyBrevity',
     'lifejacketFileConversion',
-  ].map(id => [id, document.getElementById(id)?.getAttribute('aria-checked')])));
+  ].map(async id => [id, await settingsFrame.locator(`#${id}`).getAttribute('aria-checked')])));
   assert(state.showLifejacketMode === 'true');
   assert(state.lifejacketMode === 'false');
   assert(state.lifejacketPromptCompression === 'true');
   assert(state.lifejacketReplyBrevity === 'true');
   assert(state.lifejacketFileConversion === 'true');
+  assert(await settingsFrame.locator('#lifejacketPromptCompression').isDisabled(), 'children are disabled while the master is off');
 
-  await page.locator('#lifejacketMode').click();
-  await page.locator('#lifejacketPromptCompression').click();
+  await settingsFrame.locator('#lifejacketMode').click();
+  await settingsFrame.locator('#lifejacketPromptCompression').waitFor({ state: 'visible' });
+  await page.waitForFunction(() => {
+    const frame = document.querySelector('#settings-frame');
+    return frame?.contentDocument?.querySelector('#lifejacketPromptCompression')?.disabled === false;
+  });
+  await settingsFrame.locator('#lifejacketPromptCompression').click();
   await page.waitForTimeout(350);
   const persisted = await worker.evaluate(async () => (await chrome.storage.local.get('cuc:settings'))['cuc:settings']);
   assert(persisted.lifejacketMode === true, 'master switch persists independently');
@@ -66,7 +70,8 @@ try {
   assert(persisted.lifejacketReplyBrevity === true, 'untouched reply preference is preserved');
   assert(persisted.lifejacketFileConversion === true, 'untouched file preference is preserved');
 
-  await page.locator('#reset-defaults').click();
+  await settingsFrame.locator('#reset-defaults').click();
+  await page.waitForSelector('#settings-frame.ready');
   await page.waitForTimeout(350);
   const restored = await worker.evaluate(async () => (await chrome.storage.local.get('cuc:settings'))['cuc:settings']);
   assert(restored.lifejacketMode === false, 'restore defaults turns the master off');
@@ -77,7 +82,7 @@ try {
   assert(errors.length === 0, `Settings errors: ${errors.join(' | ')}`);
 
   await page.close();
-  console.log('PASS  Lifejacket Settings controls and persistence');
+  console.log('PASS  Lifejacket Settings wrapper, controls, and persistence');
 } finally {
   await context.close();
 }
