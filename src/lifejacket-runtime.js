@@ -11,6 +11,7 @@ const MODEL_LABEL = 'MobileBERT LLMLingua-2 Q8';
 const MAX_SEQUENCE_LENGTH = 128;
 const MAX_INPUT_CHARS = 120_000;
 const MAX_CHUNK_CHARS = 360;
+const MAX_UNKNOWN_TOKEN_RATIO = 0.2;
 
 env.allowRemoteModels = false;
 env.allowLocalModels = true;
@@ -54,6 +55,12 @@ function classOneProbability(logit0, logit1) {
 function tokenStrings(tokenizer, text) {
   const value = tokenizer.tokenize(text);
   return Array.isArray(value) ? value : [];
+}
+
+function unknownTokenRatio(tokens) {
+  if (!Array.isArray(tokens) || tokens.length === 0) return 0;
+  const unknown = tokens.filter(token => token === '[UNK]').length;
+  return unknown / tokens.length;
 }
 
 function sentencePieces(text) {
@@ -137,12 +144,17 @@ async function scoreChunk(text, runtime) {
     throw new Error('Lifejacket model returned invalid token-classification logits');
   }
   const usable = Math.min(tokens.length, Math.max(0, sequenceLength - 2));
+  const usableTokens = tokens.slice(0, usable);
   const probabilities = [];
   for (let index = 0; index < usable; index += 1) {
     const offset = (index + 1) * classes;
     probabilities.push(classOneProbability(Number(data[offset]), Number(data[offset + 1])));
   }
-  return { tokens: tokens.slice(0, usable), probabilities };
+  return {
+    tokens: usableTokens,
+    probabilities,
+    unknownRatio: unknownTokenRatio(usableTokens),
+  };
 }
 
 function lexicalScores(text, scored, tokenizer, keepRatio) {
@@ -197,19 +209,28 @@ function rebuildLexical({ segments, selected }) {
 }
 
 async function compressPlainText(text, keepRatio, runtime) {
-  if (!text.trim()) return { text, chunks: 0 };
+  if (!text.trim()) return { text, chunks: 0, lowCoverageChunks: 0 };
   const chunks = chunksForText(text, runtime.tokenizer);
   const output = [];
+  let lowCoverageChunks = 0;
   for (const chunk of chunks) {
     if (!chunk.trim()) {
       output.push(chunk);
       continue;
     }
+    // Always invoke the model first. When its WordPiece vocabulary cannot
+    // represent enough of the text, keep that chunk unchanged instead of
+    // trusting token scores computed mostly from [UNK] placeholders.
     const scored = await scoreChunk(chunk, runtime);
+    if (scored.unknownRatio > MAX_UNKNOWN_TOKEN_RATIO) {
+      output.push(chunk);
+      lowCoverageChunks += 1;
+      continue;
+    }
     const lexical = lexicalScores(chunk, scored, runtime.tokenizer, keepRatio);
     output.push(rebuildLexical(lexical));
   }
-  return { text: output.join(''), chunks: chunks.length };
+  return { text: output.join(''), chunks: chunks.length, lowCoverageChunks };
 }
 
 async function compressPrompt(originalValue, keepRatioValue) {
@@ -223,6 +244,7 @@ async function compressPrompt(originalValue, keepRatioValue) {
   const protectedPrompt = CORE.protectPrompt(original);
   const output = [];
   let chunks = 0;
+  let lowCoverageChunks = 0;
   for (const segment of protectedPrompt.segments) {
     if (segment.type === 'protected') {
       output.push(segment.text);
@@ -231,6 +253,7 @@ async function compressPrompt(originalValue, keepRatioValue) {
     const compressed = await compressPlainText(segment.text, keepRatio, runtime);
     output.push(compressed.text);
     chunks += compressed.chunks;
+    lowCoverageChunks += compressed.lowCoverageChunks;
   }
   // An all-protected prompt still invokes the model, satisfying the always-on
   // compressor contract while the protected output remains byte-for-byte exact.
@@ -240,11 +263,17 @@ async function compressPrompt(originalValue, keepRatioValue) {
     candidate: output.join('').trim(),
     protectedSpans: protectedPrompt.protectedSpans,
   });
+  const coverageWarning = lowCoverageChunks > 0
+    ? `${lowCoverageChunks} chunk${lowCoverageChunks === 1 ? '' : 's'} kept unchanged because model language coverage was low.`
+    : null;
+  const warning = [finalized.warning, coverageWarning].filter(Boolean).join(' ') || null;
   return {
     ...finalized,
+    warning,
     model: MODEL_LABEL,
     durationMs: Math.round(performance.now() - startedAt),
     chunks: Math.max(1, chunks),
+    lowCoverageChunks,
     modelInvoked: true,
   };
 }
