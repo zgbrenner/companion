@@ -16,7 +16,7 @@ const ALLOWED_HOSTS = new Set([
 
 let lifejacketOffscreenCreating = null;
 
-function lifejacketSenderOrigin(sender) {
+function lifejacketSenderUrl(sender) {
   const raw = String(sender?.url || sender?.tab?.url || '');
   try {
     const parsed = new URL(raw);
@@ -25,10 +25,19 @@ function lifejacketSenderOrigin(sender) {
     const allowed = ALLOWED_HOSTS.has(host)
       || host.endsWith('.claude.ai')
       || host.endsWith('.chatgpt.com');
-    return allowed ? parsed.origin : null;
+    return allowed ? parsed : null;
   } catch {
     return null;
   }
+}
+
+function lifejacketSenderOrigin(sender) {
+  return lifejacketSenderUrl(sender)?.origin || null;
+}
+
+function isChatGptSender(sender) {
+  const host = lifejacketSenderUrl(sender)?.hostname?.toLowerCase() || '';
+  return host === 'chat.openai.com' || host === 'chatgpt.com' || host.endsWith('.chatgpt.com');
 }
 
 function validateLifejacketSender(sender) {
@@ -117,6 +126,27 @@ function normalizeFileResponse(response) {
   return { ok: true, markdown };
 }
 
+function routeFileConversion(message, sender, sendResponse) {
+  const validationError = validateFileRequest(message, sender);
+  if (validationError) {
+    sendResponse({ ok: false, error: validationError });
+    return false;
+  }
+  (async () => {
+    await ensureLifejacketOffscreenDocument();
+    const response = await withLifejacketTimeout(chrome.runtime.sendMessage({
+      type: 'cuc:offscreen-convert',
+      dataUrl: message.dataUrl,
+      ext: String(message.ext).toLowerCase(),
+    }), FILE_REQUEST_TIMEOUT_MS, 'File conversion');
+    return normalizeFileResponse(response);
+  })().then(
+    result => sendResponse(result),
+    error => sendResponse({ ok: false, error: String(error?.message || error).slice(0, 240) }),
+  );
+  return true;
+}
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type === 'cuc:lifejacket-compress') {
     const validationError = validateLifejacketRequest(message, sender);
@@ -142,24 +172,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message?.type === 'cuc:lifejacket-convert-file') {
-    const validationError = validateFileRequest(message, sender);
-    if (validationError) {
-      sendResponse({ ok: false, error: validationError });
-      return false;
-    }
-    (async () => {
-      await ensureLifejacketOffscreenDocument();
-      const response = await withLifejacketTimeout(chrome.runtime.sendMessage({
-        type: 'cuc:offscreen-convert',
-        dataUrl: message.dataUrl,
-        ext: String(message.ext).toLowerCase(),
-      }), FILE_REQUEST_TIMEOUT_MS, 'File conversion');
-      return normalizeFileResponse(response);
-    })().then(
-      result => sendResponse(result),
-      error => sendResponse({ ok: false, error: String(error?.message || error).slice(0, 240) }),
-    );
-    return true;
+    return routeFileConversion(message, sender, sendResponse);
+  }
+
+  // The cross-provider content script deliberately keeps the original
+  // `cuc:convert-file` message so Claude's mature converter route remains
+  // untouched. Claude is handled by background.js; only ChatGPT reaches this
+  // compatibility alias, avoiding duplicate responses from two listeners.
+  if (message?.type === 'cuc:convert-file' && isChatGptSender(sender)) {
+    return routeFileConversion(message, sender, sendResponse);
   }
 
   return undefined;
