@@ -17,7 +17,6 @@
     "build:extension": "npm run build:lifejacket && node tests/run.mjs && bash tools/package-webstore.sh"
   },
   "devDependencies": {
-    "@huggingface/transformers": "4.2.0",
     "axe-core": "4.12.1",
     "playwright": "1.61.1"
   }
