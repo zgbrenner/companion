@@ -5,6 +5,9 @@ on:
   push:
     branches:
       - feat/lifejacket-mode
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: read
