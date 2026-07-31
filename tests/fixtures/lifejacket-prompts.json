@@ -6,13 +6,13 @@
     "minimumRankingOverlap": 0.90,
     "maximumProbabilityMae": 0.12,
     "maximumP95LatencyMs": 1200,
-    "maximumModelBytes": 36700160
+    "maximumModelBytes": 41943040
   },
   "prompts": [
     {
       "id": "business-summary",
       "category": "business",
-      "text": "Please review the attached quarterly operating summary and identify the three material changes, the likely business impact of each change, and the single most urgent decision leadership needs to make this week. Preserve every stated number and uncertainty." 
+      "text": "Please review the attached quarterly operating summary and identify the three material changes, the likely business impact of each change, and the single most urgent decision leadership needs to make this week. Preserve every stated number and uncertainty."
     },
     {
       "id": "legal-analysis",
