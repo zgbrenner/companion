@@ -2,17 +2,15 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>COMPANION — file conversion service</title>
+  <title>COMPANION local processing services</title>
 </head>
 <body>
-  <!-- Offscreen document: the PRIVILEGED half of file conversion. It has
-       chrome.* access and extension-origin privileges, so it can talk to the
-       background worker and read the bundled PDF worker file — but it does NOT
-       run the third-party parser itself. It hosts a sandboxed iframe (opaque
-       origin, no chrome access) and relays bytes in / Markdown out. That keeps
-       any parser exploit contained to the sandbox, away from storage, the
-       network, and Claude's session. -->
+  <!-- The privileged offscreen host keeps the local quantized compressor warm
+       and relays user-selected files into a separate opaque-origin sandbox.
+       Neither service stores prompt or file content. -->
   <iframe id="sandbox" src="sandbox.html" sandbox="allow-scripts" referrerpolicy="no-referrer"></iframe>
+  <script src="lifejacket-core.js"></script>
   <script src="offscreen.js"></script>
+  <script type="module" src="lifejacket-runtime.js"></script>
 </body>
 </html>
