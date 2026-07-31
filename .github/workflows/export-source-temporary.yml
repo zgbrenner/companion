@@ -1,4 +1,4 @@
-name: export-source-temporary
+name: probe-licensed-lifejacket-model
 
 on:
   workflow_dispatch:
@@ -13,39 +13,32 @@ permissions:
   contents: read
 
 jobs:
-  export:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: feat/lifejacket-mode
-      - uses: actions/upload-artifact@v4
-        with:
-          name: companion-lifejacket-source
-          path: .
-          include-hidden-files: true
-          if-no-files-found: error
-          retention-days: 1
-
   probe-kompress:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: feat/lifejacket-mode
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Install probe dependencies
+
+      - name: Install pinned export and browser dependencies
+        shell: bash
         run: |
-          python -m pip install --disable-pip-version-check huggingface_hub onnx onnxruntime transformers numpy
-          npm install --no-save @huggingface/transformers@4.2.0 onnxruntime-web@1.26.0-dev.20260416-b7804b056c
-      - name: Download, inspect, quantize, and smoke-test with ONNX Runtime
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check \
+            "optimum-onnx[onnxruntime]==0.1.0" \
+            "transformers==5.14.1" \
+            "onnx==1.22.0" \
+            "onnxruntime==1.22.1" \
+            "huggingface_hub==0.36.0"
+          python -m pip install --disable-pip-version-check torch --index-url https://download.pytorch.org/whl/cpu
+          npm install --no-save "@huggingface/transformers@4.2.0"
+
+      - name: Export, quantize, inspect, and validate Kompress-Small
         shell: bash
         run: |
           set -euo pipefail
@@ -58,119 +51,111 @@ jobs:
           import numpy as np
           import onnx
           import onnxruntime as ort
-          from huggingface_hub import HfApi, snapshot_download
+          from huggingface_hub import HfApi
           from onnxruntime.quantization import QuantType, quantize_dynamic
+          from optimum.exporters.onnx import main_export
           from transformers import AutoTokenizer
 
-          repo = "chopratejas/kompress-small"
-          revision = "eacbdc589d039a1a39f76a92844979ad4e266bcd"
-          api = HfApi()
-          info = api.model_info(repo, revision=revision, files_metadata=True)
-          metadata = {
-              "repo": repo,
-              "revision": revision,
-              "license": (info.card_data or {}).get("license") if info.card_data else None,
-              "pipeline_tag": info.pipeline_tag,
-              "siblings": [],
-          }
-          for item in info.siblings or []:
-              lfs = item.lfs or {}
-              metadata["siblings"].append({
-                  "path": item.rfilename,
-                  "size": item.size,
-                  "blob_id": item.blob_id,
-                  "lfs_sha256": lfs.get("sha256") if isinstance(lfs, dict) else getattr(lfs, "sha256", None),
-              })
+          REPO = "chopratejas/kompress-small"
+          REVISION = "eacbdc589d039a1a39f76a92844979ad4e266bcd"
+          ROOT = pathlib.Path("probe-model")
+          ROOT.mkdir(exist_ok=True)
 
-          cache = pathlib.Path(snapshot_download(
-              repo_id=repo,
-              revision=revision,
-              allow_patterns=["*.json", "*.txt", "*.model", "*.onnx*"],
-          ))
-          source_root = pathlib.Path("probe-source")
-          source_root.mkdir(exist_ok=True)
-          for src in sorted(cache.rglob("*")):
-              if src.is_file():
-                  relative = src.relative_to(cache)
-                  destination = source_root / relative
-                  destination.parent.mkdir(parents=True, exist_ok=True)
-                  shutil.copy2(src, destination, follow_symlinks=True)
+          main_export(
+              model_name_or_path=REPO,
+              output=ROOT,
+              task="token-classification",
+              revision=REVISION,
+              device="cpu",
+              dtype="fp32",
+              framework="pt",
+              monolith=True,
+              no_post_process=True,
+              do_validation=True,
+              trust_remote_code=False,
+              library_name="transformers",
+          )
 
-          source = source_root / "model.onnx"
-          if not source.exists():
-              candidates = list(source_root.rglob("*.onnx"))
-              if len(candidates) != 1:
-                  raise SystemExit(f"unable to resolve source ONNX: {candidates}")
-              source = candidates[0]
+          candidates = [path for path in ROOT.rglob("*.onnx") if "quant" not in path.name]
+          if len(candidates) != 1:
+              raise SystemExit(f"expected one exported ONNX graph, found: {candidates}")
+          source = candidates[0]
+          onnx_dir = ROOT / "onnx"
+          onnx_dir.mkdir(exist_ok=True)
+          target = onnx_dir / "model_quantized.onnx"
 
-          def digest(path):
-              h = hashlib.sha256()
-              with path.open("rb") as handle:
-                  for block in iter(lambda: handle.read(1024 * 1024), b""):
-                      h.update(block)
-              return h.hexdigest()
-
-          metadata["downloaded_files"] = []
-          for path in sorted(source_root.rglob("*")):
-              if path.is_file():
-                  metadata["downloaded_files"].append({
-                      "path": str(path.relative_to(source_root)),
-                      "size": path.stat().st_size,
-                      "sha256": digest(path),
-                  })
-
-          graph = onnx.load(str(source), load_external_data=False)
-          metadata["graph_inputs"] = [value.name for value in graph.graph.input]
-          metadata["graph_outputs"] = [value.name for value in graph.graph.output]
-          metadata["external_data_locations"] = sorted({
-              item.value
-              for tensor in graph.graph.initializer
-              for item in tensor.external_data
-              if item.key == "location"
-          })
-
-          target_root = pathlib.Path("probe-model")
-          target_root.mkdir(exist_ok=True)
-          (target_root / "onnx").mkdir(exist_ok=True)
-          for name in ["config.json", "tokenizer.json", "tokenizer_config.json", "special_tokens_map.json", "vocab.txt", "merges.txt"]:
-              src = source_root / name
-              if src.exists():
-                  shutil.copy2(src, target_root / name)
-
-          output = target_root / "onnx" / "model_quantized.onnx"
           quantize_dynamic(
               model_input=str(source),
-              model_output=str(output),
+              model_output=str(target),
               per_channel=True,
               reduce_range=False,
               weight_type=QuantType.QInt8,
               use_external_data_format=False,
               extra_options={"WeightSymmetric": True},
           )
-          metadata["quantized"] = {
-              "path": str(output),
-              "size": output.stat().st_size,
-              "sha256": digest(output),
-          }
 
-          tokenizer = AutoTokenizer.from_pretrained(str(target_root), local_files_only=True)
-          sample = "Please summarize the project plan, keep Alice, Bob, invoice 42, and the June 15 deadline, while removing repeated polite filler."
+          if source.parent != onnx_dir:
+              source.unlink()
+
+          def sha256(path):
+              digest = hashlib.sha256()
+              with path.open("rb") as handle:
+                  for block in iter(lambda: handle.read(1024 * 1024), b""):
+                      digest.update(block)
+              return digest.hexdigest()
+
+          graph = onnx.load(str(target), load_external_data=True)
+          onnx.checker.check_model(graph)
+          session = ort.InferenceSession(str(target), providers=["CPUExecutionProvider"])
+          tokenizer = AutoTokenizer.from_pretrained(str(ROOT), local_files_only=True)
+          sample = (
+              "Please summarize the project plan while preserving Alice, Bob, invoice 42, "
+              "the June 15 deadline, and every required caveat, but remove repeated polite filler."
+          )
           encoded = tokenizer(sample, return_tensors="np")
-          session = ort.InferenceSession(str(output), providers=["CPUExecutionProvider"])
-          input_names = [item.name for item in session.get_inputs()]
-          feeds = {name: encoded[name].astype(np.int64) for name in input_names if name in encoded}
-          result = session.run(None, feeds)
-          metadata["python_smoke"] = {
-              "providers": session.get_providers(),
-              "input_names": input_names,
-              "output_names": [item.name for item in session.get_outputs()],
-              "output_shapes": [list(np.asarray(value).shape) for value in result],
+          feeds = {
+              item.name: encoded[item.name].astype(np.int64)
+              for item in session.get_inputs()
+              if item.name in encoded
           }
-          pathlib.Path("kompress-probe.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
-          print(json.dumps(metadata["quantized"], indent=2))
-          print(json.dumps(metadata["python_smoke"], indent=2))
+          outputs = session.run(None, feeds)
+          if not outputs or np.asarray(outputs[0]).shape[-1] != 2:
+              raise SystemExit(f"unexpected logits shape: {[np.asarray(value).shape for value in outputs]}")
+
+          info = HfApi().model_info(REPO, revision=REVISION, files_metadata=True)
+          report = {
+              "repo": REPO,
+              "revision": REVISION,
+              "license": (info.card_data or {}).get("license") if info.card_data else None,
+              "pipeline_tag": info.pipeline_tag,
+              "quantized": {
+                  "path": str(target),
+                  "size": target.stat().st_size,
+                  "sha256": sha256(target),
+              },
+              "graph": {
+                  "inputs": [item.name for item in session.get_inputs()],
+                  "outputs": [item.name for item in session.get_outputs()],
+                  "opset": max((item.version for item in graph.opset_import), default=None),
+                  "output_shapes": [list(np.asarray(value).shape) for value in outputs],
+              },
+              "files": [
+                  {
+                      "path": str(path.relative_to(ROOT)),
+                      "size": path.stat().st_size,
+                      "sha256": sha256(path),
+                  }
+                  for path in sorted(ROOT.rglob("*"))
+                  if path.is_file()
+              ],
+          }
+          if report["license"] != "apache-2.0":
+              raise SystemExit(f"unexpected model license: {report['license']}")
+          pathlib.Path("kompress-probe.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
+          print(json.dumps(report, indent=2))
           PY
-      - name: Smoke-test the quantized graph through Transformers.js WebAssembly
+
+      - name: Load the exact q8 graph with Transformers.js WebAssembly
         shell: bash
         run: |
           set -euo pipefail
@@ -194,15 +179,19 @@ jobs:
             dtype: "q8",
             device: "wasm",
           });
-          const input = await tokenizer("Keep Alice, invoice 42, and the June 15 deadline; remove repeated filler.");
+          const input = await tokenizer(
+            "Keep Alice, Bob, invoice 42, and the June 15 deadline; remove repeated filler."
+          );
           const output = await model(input);
-          if (!Array.isArray(output.logits.dims) || output.logits.dims.at(-1) !== 2) {
-            throw new Error(`unexpected logits shape: ${output.logits.dims}`);
+          const dims = output.logits.dims;
+          if (!Array.isArray(dims) || dims.at(-1) !== 2) {
+            throw new Error(`unexpected logits shape: ${dims}`);
           }
-          console.log(JSON.stringify({ dims: output.logits.dims, dtype: output.logits.type }));
+          console.log(JSON.stringify({ dims, dtype: output.logits.type }));
           JS
           node kompress-smoke.mjs 2>&1 | tee kompress-js.log
-      - name: Upload probe evidence
+
+      - name: Upload authoritative probe evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
