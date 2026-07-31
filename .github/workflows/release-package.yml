@@ -1,191 +1,278 @@
 name: release-package
 
 on:
-  workflow_dispatch:
   push:
     tags:
       - "v*"
-  pull_request:
-    paths:
-      - manifest.json
-      - icons/**
-      - src/**
-      - tests/**
-      - tools/package-webstore.sh
-      - tools/generate-launch-assets.py
-      - store/**
-      - docs/launch/**
-      - RELEASE_NOTES_1.2.0.md
-      - .github/workflows/release-package.yml
-
-permissions:
-  contents: read
+  workflow_dispatch:
+    inputs:
+      create_release:
+        description: Create or update the matching GitHub release.
+        type: boolean
+        default: true
+      publish_store:
+        description: Upload and submit the verified package through Chrome Web Store API v2.
+        type: boolean
+        default: false
+      staged_publish:
+        description: Stage the package after review instead of publishing immediately.
+        type: boolean
+        default: true
 
 concurrency:
   group: release-package-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
-  build-release-candidate:
+  build-release:
+    name: Build, test, attest, and bundle
     runs-on: ubuntu-latest
-    timeout-minutes: 25
-    env:
-      PLAYWRIGHT_VERSION: "1.61.1"
-      AXE_CORE_VERSION: "4.12.1"
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    outputs:
+      version: ${{ steps.build.outputs.version }}
+      release_tag: ${{ steps.version.outputs.release_tag }}
+      artifact_name: ${{ steps.version.outputs.artifact_name }}
+      zip_name: ${{ steps.version.outputs.zip_name }}
+      package_hash: ${{ steps.build.outputs.package_hash }}
+      model_hash: ${{ steps.build.outputs.model_hash }}
     steps:
-      - name: Check out source
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Node
-        uses: actions/setup-node@v4
+      - name: Build and verify the complete extension
+        id: build
+        uses: ./.github/actions/build-extension
         with:
-          node-version: 22
+          run-tests: "true"
+          build-package: "true"
+          install-chromium: "true"
 
-      - name: Cache Playwright Chromium
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ env.PLAYWRIGHT_VERSION }}
-
-      - name: Install pinned browser verification dependencies
-        run: |
-          npm install --no-save "playwright@${PLAYWRIGHT_VERSION}" "axe-core@${AXE_CORE_VERSION}"
-          npx playwright install --with-deps chromium
-
-      - name: Install launch-artwork tooling
-        run: python3 -m pip install --disable-pip-version-check pillow 'fonttools[woff]' brotli
-
-      - name: Render current extension surfaces
-        run: node tests/18-brand-snapshots.mjs
-
-      - name: Decompress bundled fonts for launch artwork
-        shell: bash
-        run: |
-          python3 - <<'PY'
-          from fontTools.ttLib import TTFont
-          for source, destination in (
-              ('src/fonts/league-spartan-bold.woff2', '/tmp/companion-league-spartan.ttf'),
-              ('src/fonts/atkinson-hyperlegible-next-variable.woff2', '/tmp/companion-atkinson.ttf'),
-          ):
-              font = TTFont(source)
-              font.flavor = None
-              font.save(destination)
-          PY
-
-      - name: Generate Chrome Web Store and launch artwork
-        env:
-          COMPANION_BRAND_FONT: /tmp/companion-league-spartan.ttf
-          COMPANION_UI_FONT: /tmp/companion-atkinson.ttf
-          COMPANION_UI_BOLD_FONT: /tmp/companion-atkinson.ttf
-        run: python3 tools/generate-launch-assets.py
-
-      - name: Run full numbered test suite
-        shell: bash
-        env:
-          REQUIRE_GENERATED_ASSETS: "1"
-        run: |
-          set +e
-          node tests/run.mjs 2>&1 | tee release-test-output.log
-          status=${PIPESTATUS[0]}
-          exit "$status"
-
-      - name: Build deterministic Chrome Web Store package
-        shell: bash
-        run: |
-          chmod +x tools/package-webstore.sh
-          tools/package-webstore.sh
-
-      - name: Audit package and checksum
+      - name: Verify release ref and version
+        id: version
         shell: bash
         run: |
           set -euo pipefail
-          version="$(node -p "require('./manifest.json').version")"
-          zip_path="dist/companion-${version}.zip"
-          checksum_path="${zip_path}.sha256"
+          version="${{ steps.build.outputs.version }}"
+          release_tag="v${version}"
+          zip_name="companion-${version}.zip"
+          artifact_name="companion-${version}-release-bundle"
+          notes="RELEASE_NOTES_${version}.md"
+          test -s "$notes"
+          if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "$GITHUB_REF_NAME" != "$release_tag" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match manifest version $version" >&2
+            exit 1
+          fi
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] && [ "$GITHUB_REF_NAME" != "main" ]; then
+            echo "Manual releases must run from main, not $GITHUB_REF_NAME" >&2
+            exit 1
+          fi
+          {
+            echo "release_tag=$release_tag"
+            echo "zip_name=$zip_name"
+            echo "artifact_name=$artifact_name"
+          } >> "$GITHUB_OUTPUT"
 
-          test -s "$zip_path"
-          test -s "$checksum_path"
-          unzip -t "$zip_path"
-          (
-            cd dist
-            sha256sum -c "$(basename "$checksum_path")"
+      - name: Run Lifejacket model agreement and latency gate
+        shell: bash
+        run: python3 tools/evaluate-lifejacket-model.py
+
+      - name: Generate deterministic CycloneDX SBOM
+        run: node tools/generate-sbom.mjs
+
+      - name: Verify checksums and package contents
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ steps.build.outputs.version }}"
+          package="dist/companion-${version}.zip"
+          checksum="${package}.sha256"
+          test -s "$package"
+          test -s "$checksum"
+          unzip -t "$package"
+          (cd dist && sha256sum -c "$(basename "$checksum")")
+          test "$(sha256sum "$package" | cut -d' ' -f1)" = "${{ steps.build.outputs.package_hash }}"
+          test "$(sha256sum src/models/lifejacket/onnx/model_quantized.onnx | cut -d' ' -f1)" = "${{ steps.build.outputs.model_hash }}"
+          unzip -Z1 "$package" > "dist/companion-${version}-contents.txt"
+
+      - name: Attest release ZIP provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            dist/companion-${{ steps.build.outputs.version }}.zip
+            dist/companion-${{ steps.build.outputs.version }}.zip.sha256
+            dist/companion-${{ steps.build.outputs.version }}.cdx.json
+
+      - name: Upload verified release bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.version.outputs.artifact_name }}
+          path: |
+            dist/companion-${{ steps.build.outputs.version }}.zip
+            dist/companion-${{ steps.build.outputs.version }}.zip.sha256
+            dist/companion-${{ steps.build.outputs.version }}-inventory.json
+            dist/companion-${{ steps.build.outputs.version }}-contents.txt
+            dist/companion-${{ steps.build.outputs.version }}.cdx.json
+            dist/lifejacket-assets.json
+            dist/lifejacket-model-quality.json
+            dist/lifejacket-model-quality.md
+            src/models/lifejacket/provenance.json
+            src/models/lifejacket/SHA256SUMS
+            extension-test-output.log
+            RELEASE_NOTES_${{ steps.build.outputs.version }}.md
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Write release summary
+        shell: bash
+        run: |
+          {
+            echo "## Verified COMPANION release"
+            echo
+            echo "- Version: \`${{ steps.build.outputs.version }}\`"
+            echo "- Tag: \`${{ steps.version.outputs.release_tag }}\`"
+            echo "- Package SHA-256: \`${{ steps.build.outputs.package_hash }}\`"
+            echo "- Lifejacket model SHA-256: \`${{ steps.build.outputs.model_hash }}\`"
+            echo "- SBOM: \`dist/companion-${{ steps.build.outputs.version }}.cdx.json\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  github-release:
+    name: Publish GitHub release
+    needs: build-release
+    if: github.event_name == 'push' || inputs.create_release
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-release
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.build-release.outputs.artifact_name }}
+          path: release-bundle
+      - name: Create or update release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.build-release.outputs.release_tag }}
+          VERSION: ${{ needs.build-release.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          notes="RELEASE_NOTES_${VERSION}.md"
+          files=(
+            "release-bundle/dist/companion-${VERSION}.zip"
+            "release-bundle/dist/companion-${VERSION}.zip.sha256"
+            "release-bundle/dist/companion-${VERSION}-inventory.json"
+            "release-bundle/dist/companion-${VERSION}.cdx.json"
+            "release-bundle/dist/lifejacket-model-quality.json"
           )
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" "${files[@]}" --clobber
+          else
+            gh release create "$RELEASE_TAG" "${files[@]}" \
+              --target "$GITHUB_SHA" \
+              --title "COMPANION ${VERSION}" \
+              --notes-file "$notes" \
+              --verify-tag
+          fi
 
-          unzip -l "$zip_path" | tee release-package-contents.txt
+  chrome-web-store:
+    name: Upload through Chrome Web Store API v2
+    needs: [build-release, github-release]
+    if: >-
+      always() &&
+      needs.build-release.result == 'success' &&
+      needs.github-release.result == 'success' &&
+      ((github.event_name == 'workflow_dispatch' && inputs.publish_store) ||
+       (github.event_name == 'push' && vars.AUTO_PUBLISH_CHROME_WEB_STORE == 'true'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: chrome-web-store
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.build-release.outputs.artifact_name }}
+          path: release-bundle
 
-          python3 - "$zip_path" <<'PY'
-          import json
-          import pathlib
-          import sys
-          import zipfile
+      - name: Authenticate service account
+        id: auth
+        uses: google-github-actions/auth@v3
+        with:
+          credentials_json: ${{ secrets.CHROME_WEB_STORE_SERVICE_ACCOUNT_JSON }}
+          token_format: access_token
+          access_token_scopes: https://www.googleapis.com/auth/chromewebstore
 
-          path = pathlib.Path(sys.argv[1])
-          with zipfile.ZipFile(path) as archive:
-              names = archive.namelist()
-              roots = {name.split('/', 1)[0] for name in names}
-              if roots != {'manifest.json', 'icons', 'src'}:
-                  raise SystemExit(f'unexpected archive roots: {sorted(roots)}')
-              manifest = json.loads(archive.read('manifest.json'))
-              if manifest.get('name') != 'COMPANION':
-                  raise SystemExit('package name is not COMPANION')
-              if manifest.get('version') != '1.2.0':
-                  raise SystemExit('package version is not 1.2.0')
-              forbidden = [
-                  name for name in names
-                  if name.startswith(('tests/', 'docs/', 'store/', '.github/'))
-                  or name.endswith(('.map', '.ttf', '.orig', '.rej', '.swp', '.tmp', '.bak'))
-                  or '/.env' in f'/{name.lower()}'
-                  or 'space-grotesk' in name.lower()
-              ]
-              if forbidden:
-                  raise SystemExit(f'forbidden package entries: {forbidden}')
-              print(f'Package audit passed: {len(names)} files')
-          PY
-
-      - name: Stage release artifact bundle
+      - name: Upload verified ZIP and submit for review
+        env:
+          ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
+          CHROME_WEB_STORE_PUBLISHER_ID: ${{ secrets.CHROME_WEB_STORE_PUBLISHER_ID }}
+          CHROME_WEB_STORE_EXTENSION_ID: ${{ secrets.CHROME_WEB_STORE_EXTENSION_ID }}
+          VERSION: ${{ needs.build-release.outputs.version }}
+          STAGED_PUBLISH: ${{ github.event_name == 'push' || inputs.staged_publish }}
         shell: bash
         run: |
           set -euo pipefail
-          version="$(node -p "require('./manifest.json').version")"
-          mkdir -p release-artifact
-          cp "dist/companion-${version}.zip" release-artifact/
-          cp "dist/companion-${version}.zip.sha256" release-artifact/
-          cp RELEASE_NOTES_1.2.0.md release-artifact/
-          cp release-package-contents.txt release-artifact/
-          cp release-test-output.log release-artifact/
+          test -n "$ACCESS_TOKEN"
+          test -n "$CHROME_WEB_STORE_PUBLISHER_ID"
+          test -n "$CHROME_WEB_STORE_EXTENSION_ID"
+          package="release-bundle/dist/companion-${VERSION}.zip"
+          test -s "$package"
+          base="https://chromewebstore.googleapis.com/v2/publishers/${CHROME_WEB_STORE_PUBLISHER_ID}/items/${CHROME_WEB_STORE_EXTENSION_ID}"
+          upload="https://chromewebstore.googleapis.com/upload/v2/publishers/${CHROME_WEB_STORE_PUBLISHER_ID}/items/${CHROME_WEB_STORE_EXTENSION_ID}:upload"
 
-      - name: Stage launch artwork bundle
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p launch-artifact/store/screenshots launch-artifact/docs/launch/assets
-          cp store/promo-tile-440x280.png launch-artifact/store/
-          cp store/marquee-1400x560.png launch-artifact/store/
-          cp store/screenshots/0*.png launch-artifact/store/screenshots/
-          cp docs/launch/assets/*.png launch-artifact/docs/launch/assets/
-          cp store/listing.md launch-artifact/store/
-          cp store/privacy-policy.md launch-artifact/store/
-          cp store/permission-justifications.md launch-artifact/store/
-          cp store/submission-checklist.md launch-artifact/store/
-          cp store/test-instructions.md launch-artifact/store/
-          cp store/reviewer-notes.md launch-artifact/store/
-          cp docs/launch/LAUNCH_PLAYBOOK.md launch-artifact/docs/launch/
-          cp docs/launch/LAUNCH_COPY.md launch-artifact/docs/launch/
-          cp docs/launch/PRESS_KIT.md launch-artifact/docs/launch/
-          cp docs/launch/PRIVACY_SAFE_GROWTH_METRICS.md launch-artifact/docs/launch/
+          curl --silent --show-error --fail-with-body \
+            -X POST \
+            -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+            -H "X-Goog-Upload-Protocol: raw" \
+            -H "X-Goog-Upload-File-Name: $(basename "$package")" \
+            -H "Content-Type: application/zip" \
+            --data-binary "@${package}" \
+            "$upload" | tee chrome-web-store-upload.json
 
-      - name: Upload release candidate
+          state=""
+          for attempt in $(seq 1 24); do
+            curl --silent --show-error --fail-with-body \
+              -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+              "${base}:fetchStatus" | tee chrome-web-store-status.json
+            state="$(jq -r '.lastAsyncUploadState // .uploadState // empty' chrome-web-store-status.json)"
+            case "$state" in
+              SUCCEEDED) break ;;
+              FAILED) echo "Chrome Web Store upload failed" >&2; exit 1 ;;
+              *) sleep 5 ;;
+            esac
+          done
+          test "$state" = "SUCCEEDED"
+
+          publish_type="STAGED_PUBLISH"
+          if [ "$STAGED_PUBLISH" = "false" ]; then
+            publish_type="DEFAULT_PUBLISH"
+          fi
+          jq -n --arg publishType "$publish_type" \
+            '{publishType: $publishType, blockOnWarnings: true}' > chrome-web-store-publish-request.json
+          curl --silent --show-error --fail-with-body \
+            -X POST \
+            -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+            -H "Content-Type: application/json" \
+            --data-binary @chrome-web-store-publish-request.json \
+            "${base}:publish" | tee chrome-web-store-publish.json
+
+      - name: Upload Chrome Web Store API evidence
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: companion-v1.2.0-release-candidate
-          path: release-artifact
-          if-no-files-found: error
-          retention-days: 30
-
-      - name: Upload Chrome Web Store and launch assets
-        uses: actions/upload-artifact@v4
-        with:
-          name: companion-v1.2.0-launch-assets
-          path: launch-artifact
-          if-no-files-found: error
-          retention-days: 30
+          name: chrome-web-store-${{ needs.build-release.outputs.version }}
+          path: |
+            chrome-web-store-upload.json
+            chrome-web-store-status.json
+            chrome-web-store-publish-request.json
+            chrome-web-store-publish.json
+          if-no-files-found: warn
+          retention-days: 90
