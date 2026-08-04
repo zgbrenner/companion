@@ -55,7 +55,7 @@ jobs:
       - name: Read package version
         id: metadata
         shell: bash
-        run: echo "version=$(node -p \"require('./manifest.json').version\")" >> "$GITHUB_OUTPUT"
+        run: node -e "console.log('version=' + require('./manifest.json').version)" >> "$GITHUB_OUTPUT"
 
       - name: Install launch-artwork tooling
         run: python3 -m pip install --disable-pip-version-check pillow 'fonttools[woff]' brotli
