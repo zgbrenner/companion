@@ -17,6 +17,7 @@ import urllib.parse
 
 import onnx
 import onnxruntime
+from onnx import TensorProto, helper, numpy_helper
 from onnxruntime.quantization import QuantType, quantize_dynamic
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -35,10 +36,97 @@ MODEL_FILES = (
     "vocab.txt",
 )
 OUTPUT_MODEL = OUTPUT_ROOT / "onnx" / "model_quantized.onnx"
-# The pinned MobileBERT checkpoint measures 39,411,097 bytes after stable
-# per-channel QInt8 MatMul/Gemm quantization. A 40 MiB ceiling leaves less than
-# 6.5% slack while still failing a silent regression back toward FP32 size.
+# The pinned MobileBERT checkpoint remains below the 40 MiB ceiling after
+# per-channel QUInt8 quantization and selective FP16 preservation. The final
+# encoder layer, classifier, and layer-22 bottleneck output are sensitive to
+# dynamic integer quantization; preserving their weights avoids collapsed or
+# language-dependent logits without shipping the full FP32 checkpoint.
 MAX_OUTPUT_BYTES = 40 * 1024 * 1024
+
+
+def quantization_exclusions(model: onnx.ModelProto) -> list[str]:
+    """Return the model nodes that must retain high-fidelity weights."""
+
+    excluded = [
+        node.name
+        for node in model.graph.node
+        if node.op_type == "MatMul"
+        and (
+            node.name.startswith("/mobilebert/encoder/layer.23/")
+            or node.name
+            in {
+                "/mobilebert/encoder/layer.22/output/bottleneck/dense/MatMul",
+                "/classifier/MatMul",
+            }
+        )
+    ]
+    required = {
+        "/mobilebert/encoder/layer.22/output/bottleneck/dense/MatMul",
+        "/classifier/MatMul",
+    }
+    if not required.issubset(excluded) or not any(
+        name.startswith("/mobilebert/encoder/layer.23/") for name in excluded
+    ):
+        raise RuntimeError("pinned MobileBERT graph is missing expected sensitive MatMul nodes")
+    return sorted(excluded)
+
+
+def preserve_sensitive_weights_as_fp16(
+    model: onnx.ModelProto, excluded_nodes: list[str]
+) -> list[str]:
+    """Store excluded weights as FP16 and cast them back to FP32 at runtime.
+
+    The cast keeps the surrounding graph in FP32, which is important for the
+    quantized MobileBERT graph and for ONNX Runtime Web compatibility. The
+    lower-precision initializer halves the storage cost of the intentionally
+    unquantized weights while introducing only FP16 rounding error.
+    """
+
+    original_nodes = list(model.graph.node)
+    target_nodes = [
+        node
+        for node in original_nodes
+        if node.name in excluded_nodes and node.op_type == "MatMul" and len(node.input) > 1
+    ]
+    target_weights = {node.input[1] for node in target_nodes}
+    replaced_weights: list[str] = []
+    cast_nodes: list[onnx.NodeProto] = []
+    new_initializers: list[onnx.TensorProto] = []
+
+    for initializer in model.graph.initializer:
+        if initializer.name not in target_weights or initializer.data_type != TensorProto.FLOAT:
+            new_initializers.append(initializer)
+            continue
+
+        fp16_initializer = numpy_helper.from_array(
+            numpy_helper.to_array(initializer).astype("float16"),
+            name=initializer.name,
+        )
+        new_initializers.append(fp16_initializer)
+        cast_output = f"companion_sensitive_weight_{len(cast_nodes)}_fp32"
+        cast_nodes.append(
+            helper.make_node(
+                "Cast",
+                [initializer.name],
+                [cast_output],
+                name=f"CompanionSensitiveWeightCast_{len(cast_nodes)}",
+                to=TensorProto.FLOAT,
+            )
+        )
+        for node in target_nodes:
+            for input_index, input_name in enumerate(node.input):
+                if input_name == initializer.name:
+                    node.input[input_index] = cast_output
+        replaced_weights.append(initializer.name)
+
+    if not replaced_weights:
+        raise RuntimeError("no sensitive FP32 weights were found to preserve")
+
+    model.graph.ClearField("initializer")
+    model.graph.initializer.extend(new_initializers)
+    model.graph.ClearField("node")
+    model.graph.node.extend(cast_nodes + original_nodes)
+    return replaced_weights
 
 
 def sha256(path: Path) -> str:
@@ -58,7 +146,7 @@ def download(relative_path: str, destination: Path) -> None:
     )
     request = urllib.request.Request(
         url,
-        headers={"User-Agent": "COMPANION-Lifejacket-build/1.3.0"},
+        headers={"User-Agent": "COMPANION-Lifejacket-build/1.4.0"},
     )
     last_error: Exception | None = None
     for attempt in range(4):
@@ -122,17 +210,22 @@ def main() -> int:
 
     with tempfile.TemporaryDirectory(prefix="companion-lifejacket-") as temporary_directory:
         temporary_output = Path(temporary_directory) / "model_quantized.onnx"
+        excluded_nodes = quantization_exclusions(onnx.load(str(source_model), load_external_data=True))
         quantize_dynamic(
             model_input=str(source_model),
             model_output=str(temporary_output),
             per_channel=True,
             reduce_range=False,
-            weight_type=QuantType.QInt8,
+            weight_type=QuantType.QUInt8,
             op_types_to_quantize=["MatMul", "Gemm"],
+            nodes_to_exclude=excluded_nodes,
             extra_options={"MatMulConstBOnly": True},
         )
-        onnx.checker.check_model(str(temporary_output), full_check=False)
-        if temporary_output.stat().st_size >= MAX_OUTPUT_BYTES:
+        quantized_model = onnx.load(str(temporary_output), load_external_data=True)
+        preserved_weights = preserve_sensitive_weights_as_fp16(quantized_model, excluded_nodes)
+        onnx.checker.check_model(quantized_model, full_check=False)
+        onnx.save(quantized_model, str(temporary_output))
+        if temporary_output.stat().st_size > MAX_OUTPUT_BYTES:
             raise RuntimeError(
                 f"Quantized model exceeds {MAX_OUTPUT_BYTES} bytes: {temporary_output.stat().st_size}"
             )
@@ -140,6 +233,13 @@ def main() -> int:
         os.chmod(OUTPUT_MODEL, 0o644)
 
     output_hash = sha256(OUTPUT_MODEL)
+    model_file_hashes = {
+        relative: {
+            "bytes": (OUTPUT_ROOT / relative).stat().st_size,
+            "sha256": sha256(OUTPUT_ROOT / relative),
+        }
+        for relative in MODEL_FILES
+    }
     provenance = {
         "schema": 1,
         "model": {
@@ -157,14 +257,18 @@ def main() -> int:
                 "sha256": SOURCE_ONNX_SHA256,
             },
         },
+        "model_files": model_file_hashes,
         "build": {
             "onnx": onnx.__version__,
             "onnxruntime": onnxruntime.__version__,
             "quantization": {
                 "kind": "dynamic",
                 "per_channel": True,
-                "weight_type": "QInt8",
+                "reduce_range": False,
+                "weight_type": "QUInt8",
                 "operators": ["MatMul", "Gemm"],
+                "excluded_nodes": excluded_nodes,
+                "fp16_weight_casts": preserved_weights,
             },
         },
         "output": {

@@ -49,9 +49,9 @@ The release build downloads the exact 99,170,493-byte FP32 ONNX source whose SHA
 caaadce5fa0fafce898c8ac2c152652a929ed5a2f55929eceb2f3325de4a2f07
 ```
 
-It then performs deterministic dynamic INT8 quantization and writes `model_quantized.onnx`. The source model is never fetched at runtime. The extension ships the quantized model, tokenizer, configuration, local Transformers.js module, and local ONNX Runtime Web assets inside the Web Store ZIP.
+It then performs deterministic dynamic per-channel QUInt8 quantization, preserves the sensitive final-layer weights as FP16 with runtime casts, and writes `model_quantized.onnx`. The source model is never fetched at runtime. The extension ships the Q8 model, tokenizer, configuration, local Transformers.js module, and local ONNX Runtime Web assets inside the Web Store ZIP.
 
-The derivative checkpoint does not publish a rigorous MobileBERT-versus-TinyBERT quality evaluation. The build therefore treats model quality as a release gate rather than a marketing assumption. CI verifies protected-span preservation, compression bounds, golden-prompt behavior, FP32-versus-INT8 token-decision agreement, model provenance, and package-size limits.
+The derivative checkpoint does not publish a rigorous MobileBERT-versus-TinyBERT quality evaluation. The build therefore treats model quality as a release gate rather than a marketing assumption. CI verifies protected-span preservation, compression bounds, golden-prompt behavior, FP32-versus-Q8 token-decision agreement, model provenance, and package-size limits.
 
 ## Runtime architecture
 

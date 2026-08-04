@@ -1,110 +1,43 @@
-# COMPANION 1.3.0
+# COMPANION v1.3.0
 
-## Lifejacket Mode
+## ChatGPT first-class hardening
 
-COMPANION 1.3.0 replaces the previous prompt-efficiency experience with **Lifejacket Mode**, a local, review-before-send safety net for Claude and ChatGPT web composers.
+COMPANION v1.3.0 makes ChatGPT Chat and Work web support a first-class, privacy-preserving path alongside the existing Claude integration.
 
-Lifejacket has one master switch and three independently saved controls:
+The core accuracy rule remains:
 
-- **Shorten the user's prompt** with a bundled MobileBERT LLMLingua-2-style Q8 compressor.
-- **Ask for shorter answers** by adding one visible brevity instruction at the end of the final prompt.
-- **Convert files to Markdown** locally before inserting the result into the current draft.
+> Native numbers or nothing.
 
-The master switch can be turned off without losing the three child preferences.
+COMPANION displays numeric usage only when the provider exposes a supported native value. It does not estimate missing limits, infer account quotas, or scrape message text.
 
-## Local Q8 prompt compression
+## What changed
 
-The release bundles a pinned, dynamically quantized INT8 checkpoint built from `atjsh/llmlingua-2-js-mobilebert-meetingbank` at revision `900ed52628d7b153a276a220483d26d5f8dfe0f7`.
+- Recognizes the native OpenAI rate-limit shape used by ChatGPT, including primary and secondary windows and numeric Unix-second or Unix-millisecond reset timestamps.
+- Preserves exact native token counters and renders native credit balances separately from usage.
+- Keeps Chat and Work context aligned between the page widget and toolbar popup, including when the popup is opened from a routed surface.
+- Applies one freshness policy consistently: fresh, aging, stale, and expired readings are labeled, and expired values are hidden instead of flashing as current.
+- Expands composer detection for current ChatGPT layouts and resets the local new-conversation fallback key when a new chat is started.
+- Bounds page-world response reads and normalized numeric values before they cross into the extension.
+- Keeps same-provider toolbar badge updates monotonic and leaves the shared badge API behind the serialized owner.
+- Adds regression coverage for the native response shape, balance-only responses, popup routing, stale badge ordering, and browser rendering.
 
-Measured release values:
+## Surface boundaries
 
-- verified FP32 source: 99,170,493 bytes;
-- packaged Q8 ONNX model: 39,411,097 bytes;
-- size reduction: 60.3%;
-- runtime: local CPU/WASM through Transformers.js and ONNX Runtime Web;
-- runtime model downloads: none.
+- ChatGPT Chat on the web: supported.
+- ChatGPT Work on the web: supported when enabled for the account or workspace.
+- Legacy Codex-aware web route detection remains for compatibility with routes that expose it, but it is not a claim that the current ChatGPT web product offers a selectable Codex surface.
+- The standalone native Codex desktop application cannot host a Chrome content script and is outside the extension's injection boundary.
+- Claude.ai support and the local Caveman Mode, prompt-trimming preview, and file-to-Markdown sandbox remain available.
 
-When compression is enabled, the model runs before every supported non-empty send. Lifejacket may intentionally return the original prompt when the candidate is unsafe or not useful.
+## Privacy and safety
 
-## Review and fallback behavior
-
-Before anything is sent, Lifejacket opens an editable preview with:
-
-- **Send optimized**
-- **Send original**
-- **Cancel**
-
-Code, URLs, email addresses, quotations, numbers, structured rows, negation, obligations, and bounds receive conservative protection. A result is rejected when protected content disappears or changes order, the prompt becomes larger, too much content is removed, model coverage is poor, or inference fails.
-
-Prompts with weak tokenizer coverage are not guessed at. The model is invoked, low-coverage chunks remain unchanged, and the preview explains why.
-
-## Reply brevity is separate
-
-The optional reply instruction is appended visibly to the end of the final prompt:
-
-> Reply briefly. Lead with the answer and keep every necessary fact, step, and caveat.
-
-Prompt compression can be off while reply brevity remains on, and vice versa.
-
-## Local file conversion
-
-Lifejacket supports PDF, Office, OpenDocument, RTF, CSV, HTML, Markdown, and text files.
-
-- Markdown and text are read locally in the page-isolated extension script.
-- Other formats use the existing opaque-origin parser sandbox.
-- Converted Markdown is appended to the existing draft.
-- Files are limited to 20 MB and inserted text to 800,000 characters.
-- Optical Character Recognition is not included.
-
-## Privacy and security
-
-- No COMPANION account, backend, analytics, or telemetry.
-- No prompt, reply, or file-content storage.
-- No runtime model or executable-code downloads.
-- No new provider host permissions.
-- Top-frame and origin validation on privileged routes.
-- Original prompt preserved on compression failure.
-- Existing document parser dependencies isolated from the model build.
-- The release carries applicable Apache-2.0 and MIT notices.
-
-## Build and release automation
-
-The 1.3.0 release pipeline now includes:
-
-- locked npm and Python build dependencies;
-- pinned model and runtime source hashes;
-- reproducible Q8 model generation;
-- real Chromium extension tests on Claude and ChatGPT-style surfaces;
-- Q8-to-FP32 fidelity, ranking, probability-drift, latency, and size gates;
-- deterministic Chrome Web Store ZIP reproduction;
-- CodeQL, dependency review, npm audit, Python audit, and secret scanning;
-- package inventory, checksums, and CycloneDX SBOM;
-- GitHub build-provenance attestations;
-- GitHub Release automation;
-- optional protected Chrome Web Store API v2 upload and staged publishing.
-
-## Upgrade behavior
-
-Existing prompt-efficiency settings migrate once:
-
-- the prior master setting becomes the Lifejacket master setting;
-- the prior visibility setting becomes the Lifejacket visibility setting;
-- all three new child tools default to on;
-- the retired runtime is disabled to prevent two send interceptors from competing.
-
-Lifejacket remains off by default for new installations. Users must turn it on explicitly.
+- No account, backend, analytics, telemetry, advertising, or tracking is added.
+- Raw OpenAI response bodies stay in the page world. Only bounded normalized numeric fields and a query-free pathname cross the private channel.
+- Prompts, replies, files, cookies, profile fields, and URL query values are not stored or sent to the developer.
+- Unsupported, malformed, stale, or implausibly future values fail closed.
 
 ## Verification
 
-Run the complete local test suite after generating the pinned model/runtime assets:
+The release candidate is covered by the numbered Chromium suite, including extension boot, settings, popup routing, accessibility, Claude and ChatGPT rendering, OpenAI bridge privacy, native usage and freshness behavior, local-data reset, badge ownership and restart recovery, brand assets, font integrity, package reproducibility, and release readiness.
 
-```bash
-npm ci --ignore-scripts
-python3 -m pip install -r requirements-lifejacket-build.txt
-npm run build:lifejacket
-npx playwright install chromium
-node tests/run.mjs
-bash tools/package-webstore.sh
-```
-
-See `docs/LIFEJACKET_MODE.md` for architecture, limitations, provenance, and failure behavior.
+Install the ZIP and checksum from the `release-package` GitHub Actions artifact, or build the deterministic Web Store package with `tools/package-webstore.sh`.

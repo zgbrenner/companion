@@ -1,4 +1,4 @@
-// Public release contract for COMPANION v1.2.0.
+// Public release contract for the current COMPANION release.
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { EXT_PATH, assert } from "./lib.mjs";
@@ -8,11 +8,12 @@ const read = path => readFileSync(pathFor(path), "utf8");
 const mustExist = path => assert(existsSync(pathFor(path)), `${path} exists`);
 
 const manifest = JSON.parse(read("manifest.json"));
+const version = manifest.version;
 assert(manifest.name === "COMPANION", "release keeps the all-caps product name");
-assert(manifest.version === "1.2.0", "release version is 1.2.0");
+assert(version === "1.4.0", "release version is 1.4.0");
 
 const changelog = read("CHANGELOG.md");
-assert(changelog.includes("### 1.2.0"), "changelog has a finalized 1.2.0 section");
+assert(changelog.includes(`### ${version}`), `changelog has a finalized ${version} section`);
 assert(!changelog.includes("### Unreleased (OpenAI hardening)"), "OpenAI work is no longer labeled unreleased");
 
 const readme = read("README.md");
@@ -29,7 +30,7 @@ assert(listing.includes("132 characters or fewer"), "store listing records the s
 assert(!listing.includes("Companion only talks to claude.ai"), "store copy does not make the stale Claude-only claim");
 
 const privacy = read("store/privacy-policy.md");
-assert(privacy.includes("Last updated: July 21, 2026"), "privacy policy date is current");
+assert(privacy.includes("Last updated: August 4, 2026"), "privacy policy date is current");
 for (const term of ["claude.ai", "chatgpt.com", "chat.openai.com", "OpenAI usage snapshot", "No analytics"]) {
   assert(privacy.includes(term), `privacy policy includes ${term}`);
 }
@@ -37,7 +38,7 @@ assert(!privacy.includes("communicates with **claude.ai only**"), "privacy polic
 
 const permissions = read("store/permission-justifications.md");
 for (const term of [
-  "### alarms",
+  "### `alarms`",
   "chatgpt.com",
   "chat.openai.com",
   "No, I am not using remote code",
@@ -49,12 +50,12 @@ for (const term of [
 }
 
 const checklist = read("store/submission-checklist.md");
-for (const term of ["COMPANION v1.2.0", "2-step verification", "deferred publishing", "store/test-instructions.md", "1400×560"]) {
+for (const term of [`COMPANION v${version}`, "2-step verification", "deferred publishing", "store/test-instructions.md", "1400×560"]) {
   assert(checklist.includes(term), `submission checklist includes ${term}`);
 }
 
 for (const path of [
-  "RELEASE_NOTES_1.2.0.md",
+  `RELEASE_NOTES_${version}.md`,
   "store/test-instructions.md",
   "store/reviewer-notes.md",
   "docs/launch/LAUNCH_PLAYBOOK.md",
@@ -63,18 +64,21 @@ for (const path of [
   "docs/launch/PRIVACY_SAFE_GROWTH_METRICS.md",
   "docs/superpowers/specs/2026-07-21-release-growth-design.md",
   "docs/superpowers/plans/2026-07-21-release-growth.md",
+  ".gitattributes",
   ".github/workflows/release-package.yml",
   "tools/generate-launch-assets.py",
 ]) mustExist(path);
 
 const releaseWorkflow = read(".github/workflows/release-package.yml");
+const lineEndings = read(".gitattributes");
+assert(lineEndings.includes("*.sh text eol=lf"), "shell entry points force LF endings");
 for (const term of [
   "workflow_dispatch",
   "tools/package-webstore.sh",
   "tools/generate-launch-assets.py",
   "sha256sum",
   "actions/upload-artifact@v4",
-  "companion-v1.2.0-launch-assets",
+  "companion-v${{ steps.metadata.outputs.version }}-launch-assets",
 ]) {
   assert(releaseWorkflow.includes(term), `release workflow includes ${term}`);
 }

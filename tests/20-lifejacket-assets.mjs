@@ -30,7 +30,9 @@ assert.match(builder, /900ed52628d7b153a276a220483d26d5f8dfe0f7/);
 assert.match(builder, /99170493/);
 assert.match(builder, /caaadce5fa0fafce898c8ac2c152652a929ed5a2f55929eceb2f3325de4a2f07/);
 assert.match(builder, /MAX_OUTPUT_BYTES\s*=\s*40\s*\*\s*1024\s*\*\s*1024/);
-assert.match(builder, /QuantType\.QInt8/);
+assert.match(builder, /QuantType\.QUInt8/);
+assert.match(builder, /nodes_to_exclude=excluded_nodes/);
+assert.match(builder, /preserve_sensitive_weights_as_fp16/);
 assert.match(builder, /model_quantized\.onnx/);
 assert.match(builder, /provenance\.json/);
 assert.match(builder, /SHA256SUMS/);
@@ -43,11 +45,16 @@ assert.match(vendor, /sha512-8BRCoBMH0XsWaEIamuR0LrJGAfftgHAfb2Vrffy0VKlSAE\/MnU
 assert.match(vendor, /sha512-MD6Ss4GSpQBo6zqoJzyT9LRbKYs7x\/JVN23FT24EcEvlqF4VuzPOeH6X38orZPKHQDbprn7K\+SBpu0\/mj2CQiw==/);
 assert.match(vendor, /runtime-packages/);
 assert.match(vendor, /installsPackageDependencies:\s*false/);
-assert.match(vendor, /src['"],\s*['"]vendor['"],\s*['"]lifejacket['"]/);
+assert.match(vendor, /path\.join\(root,\s*['"]src['"],\s*['"]vendor['"]\)/);
+assert.match(vendor, /path\.join\(outputRoot,\s*['"]transformers\.web\.min\.js['"]\)/);
 assert.match(vendor, /transformers\.web\.min\.js/);
 assert.match(vendor, /ort-wasm/);
 assert.match(vendor, /vendor-manifest\.json/);
 assert.match(vendor, /allowRemoteModels/);
+assert.match(vendor, /MAX_PACKAGE_BYTES/);
+assert.match(vendor, /redirect:\s*['"]error['"]/);
+assert.match(vendor, /randomUUID\(\)/);
+assert.match(vendor, /promises\.open\([^\n]+['"]wx['"]/);
 assert.match(vendor, /officeparser\.browser\.slim\.iife\.js/);
 assert.match(vendor, /pdf\.worker\.min\.mjs/);
 
@@ -84,6 +91,13 @@ if (process.env.REQUIRE_LIFEJACKET_ASSETS === '1') {
   assert.equal(provenance.source.repository, 'atjsh/llmlingua-2-js-mobilebert-meetingbank');
   assert.equal(provenance.source.revision, '900ed52628d7b153a276a220483d26d5f8dfe0f7');
   assert.equal(provenance.source.onnx.sha256, 'caaadce5fa0fafce898c8ac2c152652a929ed5a2f55929eceb2f3325de4a2f07');
+  assert.equal(provenance.build.quantization.weight_type, 'QUInt8');
+  assert.ok(provenance.build.quantization.excluded_nodes.length >= 19);
+  assert.ok(provenance.build.quantization.fp16_weight_casts.length >= 17);
+  for (const file of ['config.json', 'tokenizer.json', 'tokenizer_config.json', 'special_tokens_map.json', 'vocab.txt']) {
+    assert.ok(provenance.model_files[file]?.bytes > 0, `provenance hashes ${file}`);
+    assert.match(provenance.model_files[file]?.sha256 || '', /^[a-f0-9]{64}$/);
+  }
   const hash = crypto.createHash('sha256').update(fs.readFileSync(model)).digest('hex');
   assert.equal(provenance.output.onnx.sha256, hash);
   assert.equal(provenance.output.onnx.bytes, modelBytes);

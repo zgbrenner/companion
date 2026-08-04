@@ -120,8 +120,8 @@ jobs:
             echo "Broad host access is forbidden" >&2
             exit 1
           fi
-          if unzip -p "$package" manifest.json | grep -q 'unsafe-eval'; then
-            echo "unsafe-eval is forbidden on extension pages" >&2
+          if unzip -p "$package" manifest.json | grep -Eq "(^|[;[:space:]])'unsafe-eval'([;[:space:]]|$)"; then
+            echo "the broad unsafe-eval CSP token is forbidden on extension pages" >&2
             exit 1
           fi
       - name: Upload audited package inventory

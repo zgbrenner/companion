@@ -1,7 +1,7 @@
 # COMPANION Security and Privacy Architecture
 
-**Version:** 1.3.0  
-**Last updated:** July 31, 2026
+**Version:** 1.4.0
+**Last updated:** August 4, 2026
 
 COMPANION is a Chrome Manifest V3 extension for supported Claude and ChatGPT web surfaces. It has no developer backend, account system, analytics, telemetry, advertising, or remote code.
 
@@ -85,7 +85,7 @@ Compression text is limited to 120,000 characters. File data is bounded before t
 Lifejacket uses a bundled MobileBERT LLMLingua-2-style token classifier:
 
 - pinned model revision and source SHA-256;
-- dynamic per-channel signed INT8/Q8 weights;
+- dynamic per-channel QUInt8/Q8 weights with selective FP16 preservation for sensitive layers;
 - local CPU/WASM execution on one thread;
 - remote model loading disabled;
 - no remote module imports;
@@ -153,7 +153,7 @@ The Settings page clears local and session storage and removes the toolbar badge
 
 Extension pages allow only bundled scripts. `wasm-unsafe-eval` is present solely because ONNX Runtime Web must compile the bundled WASM binary. It does not permit remote JavaScript.
 
-The extension-page policy permits scripts from `'self'`, permits workers from `'self'` and `blob:`, blocks objects and foreign base URLs, restricts connections to the extension and exact provider origins, and does not include ordinary `'unsafe-eval'`.
+The extension-page policy permits scripts and workers from `'self'`, blocks blob-backed extension workers, blocks objects and foreign base URLs, restricts connections to the extension and exact provider origins, and does not include ordinary `'unsafe-eval'`. The file-conversion sandbox has its own opaque-origin policy for its isolated parser worker.
 
 The separate parser sandbox permits the minimum script/WASM capabilities required by the vendored parser while denying network access.
 
@@ -174,7 +174,7 @@ The model build:
 
 1. downloads from a pinned Hugging Face commit;
 2. validates exact source size and SHA-256;
-3. applies deterministic QInt8 MatMul/Gemm quantization;
+3. applies deterministic per-channel QUInt8 MatMul/Gemm quantization with explicitly documented FP16 preservation for sensitive weights;
 4. runs ONNX structural validation;
 5. enforces a 40 MiB model ceiling and 55 MiB generated-asset ceiling;
 6. writes provenance and `SHA256SUMS`;

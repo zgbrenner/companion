@@ -10,7 +10,7 @@ It has one master switch and three independently saved child controls:
 
 Lifejacket is optional. Turning off the master switch disables all three tools without erasing the child preferences.
 
-## Compressor selected for v1.3.0
+## Compressor selected for v1.4.0
 
 | Property | Pinned value |
 | --- | --- |
@@ -20,12 +20,12 @@ Lifejacket is optional. Turning off the master switch disables all three tools w
 | Compression method | LLMLingua-2 extractive token classification |
 | Source ONNX size | 99,170,493 bytes |
 | Source ONNX SHA-256 | `caaadce5fa0fafce898c8ac2c152652a929ed5a2f55929eceb2f3325de4a2f07` |
-| Packaged model | Dynamic per-channel signed INT8, exposed to Transformers.js as `Q8` |
-| Measured packaged size | 39,411,097 bytes |
+| Packaged model | Dynamic per-channel `QUInt8` with selective FP16-preserved weights, exposed to Transformers.js as `Q8` |
+| Measured packaged size | 40,312,452 bytes |
 | Runtime | Transformers.js 4.2.0 and ONNX Runtime Web |
 | Execution provider | Local CPU/WASM, one thread |
 
-The Q8 model is 60.3% smaller than the pinned FP32 source. The release gate fails if it reaches 40 MiB, which leaves less than 6.5% growth above the measured output.
+The Q8 model is 59.4% smaller than the pinned FP32 source. The release gate fails if it reaches 40 MiB, which leaves roughly 3.9% growth above the measured output. The final encoder layer, classifier, and layer-22 bottleneck output retain FP16 weights and cast them to FP32 at runtime; this preserves multilingual fidelity while keeping the graph compatible with the local browser runtime.
 
 MobileBERT was selected because it provides a substantially smaller browser package than the larger BERT and multilingual LLMLingua-2 checkpoints while retaining the same token-classification task shape. The choice is practical, not magical: an English-oriented MobileBERT vocabulary has weaker coverage for some scripts and specialized text. Lifejacket measures that coverage for every chunk and keeps low-coverage chunks unchanged.
 

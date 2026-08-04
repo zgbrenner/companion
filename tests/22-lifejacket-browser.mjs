@@ -20,7 +20,7 @@ try {
       showWidget: true,
       lifejacketMode: true,
       showLifejacketMode: true,
-      lifejacketPromptCompression: false,
+      lifejacketPromptCompression: true,
       lifejacketReplyBrevity: true,
       lifejacketFileConversion: true,
       lifejacketKeepRatio: 0.65,
@@ -29,8 +29,8 @@ try {
 
   const body = `<!doctype html><html lang="en"><body>
     <input id="title-editor" value="Rename">
-    <main style="min-height:90vh;display:flex;align-items:flex-end;justify-content:center">
-      <section data-testid="composer-shell" style="width:680px;border:1px solid #ddd;border-radius:24px;padding:10px">
+    <main style="min-height:90vh;padding:40px 16px">
+      <section data-testid="composer-shell" style="width:min(680px,100%);margin:0 auto;border:1px solid #ddd;border-radius:24px;padding:10px">
         <form data-testid="composer"><div id="prompt-textarea" role="textbox" contenteditable="true"></div><button type="submit" aria-label="Send prompt">Send</button></form>
       </section>
     </main></body></html>`;
@@ -50,70 +50,81 @@ try {
         window.sentPrompts.push(document.querySelector('#prompt-textarea').innerText);
       });
     });
-    await page.waitForSelector('#companion-lifejacket');
+    await page.waitForSelector('#cuc-lifejacket');
+    await page.waitForFunction(() => {
+      const link = document.querySelector('#cuc-lifejacket')?.shadowRoot?.querySelector('link[rel="stylesheet"]');
+      return Boolean(link?.sheet);
+    });
 
     const state = await page.evaluate(() => {
-      const root = document.querySelector('#companion-lifejacket').shadowRoot;
-      const checked = key => root.querySelector(`[data-lj-setting="${key}"]`)?.getAttribute('aria-checked');
+      const root = document.querySelector('#cuc-lifejacket').shadowRoot;
+      const checked = key => root.querySelector(`[data-lifejacket-setting="${key}"]`)?.getAttribute('aria-checked');
       return {
         text: root.textContent,
         master: checked('lifejacketMode'),
         compression: checked('lifejacketPromptCompression'),
         brevity: checked('lifejacketReplyBrevity'),
         files: checked('lifejacketFileConversion'),
-        fileHidden: root.querySelector('[data-lj="file"]')?.hidden,
+        fileHidden: root.querySelector('[data-lifejacket="file-control"]')?.hidden,
       };
     });
     assert(state.text.includes('Lifejacket Mode'), `${label}: title`);
     assert(state.text.includes('Compress prompts'), `${label}: compressor control`);
-    assert(state.text.includes('Shorter replies'), `${label}: brevity control`);
-    assert(state.text.includes('Files to Markdown'), `${label}: file control`);
-    assert(state.master === 'true' && state.compression === 'false' && state.brevity === 'true' && state.files === 'true');
+    assert(state.text.includes('Ask for shorter replies'), `${label}: brevity control`);
+    assert(state.text.includes('Convert files to Markdown'), `${label}: file control`);
+    assert(
+      state.master === 'true' && state.compression === 'true' && state.brevity === 'true' && state.files === 'true',
+      `${label}: settings state ${JSON.stringify(state)}`,
+    );
     assert(state.fileHidden === false, `${label}: file control visible`);
 
-    const compression = page.locator('#companion-lifejacket').locator('[data-lj-setting="lifejacketPromptCompression"]');
+    const compression = page.locator('#cuc-lifejacket').locator('[data-lifejacket-setting="lifejacketPromptCompression"]');
     await compression.click();
-    await page.waitForFunction(() => document.querySelector('#companion-lifejacket').shadowRoot
-      .querySelector('[data-lj-setting="lifejacketPromptCompression"]').getAttribute('aria-checked') === 'true');
+    await page.waitForFunction(() => document.querySelector('#cuc-lifejacket').shadowRoot
+      .querySelector('[data-lifejacket-setting="lifejacketPromptCompression"]').getAttribute('aria-checked') === 'false');
+    assert(!(await worker.evaluate(async () => (await chrome.storage.local.get('cuc:settings'))['cuc:settings'].lifejacketPromptCompression)));
+    await compression.click();
+    await page.waitForFunction(() => document.querySelector('#cuc-lifejacket').shadowRoot
+      .querySelector('[data-lifejacket-setting="lifejacketPromptCompression"]').getAttribute('aria-checked') === 'true');
     assert(await worker.evaluate(async () => (await chrome.storage.local.get('cuc:settings'))['cuc:settings'].lifejacketPromptCompression));
-    await compression.click();
 
     const original = 'Explain the result and preserve important caveats.';
     const suffix = 'Reply briefly. Lead with the answer and keep every necessary fact, step, and caveat.';
     await page.locator('#prompt-textarea').fill(original);
     await page.locator('#prompt-textarea').press('Enter');
     await page.waitForFunction(expected => {
-      const root = document.querySelector('#companion-lifejacket').shadowRoot;
-      return !root.querySelector('[data-lj="overlay"]').hidden
-        && root.querySelector('[data-lj="optimized"]').value.endsWith(expected)
-        && !root.querySelector('[data-lj-action="send-optimized"]').disabled;
+      const root = document.querySelector('#cuc-lifejacket').shadowRoot;
+      return !root.querySelector('[data-lifejacket="preview-dialog"]').hidden
+        && root.querySelector('[data-lifejacket="preview-text"]').value.endsWith(expected)
+        && !root.querySelector('[data-lifejacket-action="send-optimized"]').disabled
+        && !root.querySelector('[data-lifejacket="preview-status"]').textContent.includes('Compressing');
     }, suffix);
 
     const preview = await page.evaluate(() => {
-      const root = document.querySelector('#companion-lifejacket').shadowRoot;
+      const root = document.querySelector('#cuc-lifejacket').shadowRoot;
       return {
-        optimized: root.querySelector('[data-lj="optimized"]').value,
-        original: root.querySelector('[data-lj="original"]').textContent,
+        optimized: root.querySelector('[data-lifejacket="preview-text"]').value,
+        original: root.querySelector('[data-lifejacket="original-text"]').textContent,
       };
     });
-    assert(preview.optimized.startsWith(original) && preview.optimized.endsWith(suffix));
+    assert(preview.optimized.trim().length > 0 && preview.optimized.endsWith(suffix));
     assert(preview.original.includes(original));
 
     if (sendOptimized) {
-      await page.locator('#companion-lifejacket').locator('[data-lj-action="send-optimized"]').click();
+      await page.locator('#cuc-lifejacket').locator('[data-lifejacket-action="send-optimized"]').click();
       await page.waitForFunction(() => window.sentPrompts.length === 1);
       assert((await page.evaluate(() => window.sentPrompts[0])).endsWith(suffix));
     } else {
-      await page.locator('#companion-lifejacket').locator('[data-lj-action="cancel"]').click();
+      await page.locator('#cuc-lifejacket').locator('[data-lifejacket-action="cancel"].lj-button-quiet').click();
       assert(await page.locator('#prompt-textarea').innerText() === original);
     }
 
     await page.locator('#title-editor').press('Enter');
     await page.waitForTimeout(75);
-    assert(await page.evaluate(() => document.querySelector('#companion-lifejacket').shadowRoot.querySelector('[data-lj="overlay"]').hidden));
+    assert(await page.evaluate(() => document.querySelector('#cuc-lifejacket').shadowRoot.querySelector('[data-lifejacket="preview-dialog"]').hidden));
 
     await page.locator('#prompt-textarea').fill('Existing context');
-    await page.locator('#companion-lifejacket').locator('[data-lj="file-input"]').setInputFiles({
+    await page.locator('#cuc-lifejacket').locator('[data-lifejacket="file-input"]').setInputFiles({
       name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('Local file text'),
     });
     await page.waitForFunction(() => document.querySelector('#prompt-textarea').innerText.includes('Local file text'));

@@ -1,4 +1,4 @@
-# Chrome Web Store Reviewer Test Instructions — COMPANION v1.3.0
+# Chrome Web Store Reviewer Test Instructions — COMPANION v1.4.0
 
 These instructions are written for Chrome Web Store review and internal release testing.
 
@@ -17,7 +17,7 @@ OpenAI and Claude expose different data to different account types. The extensio
 3. Enable **Developer mode**.
 4. Choose **Load unpacked**.
 5. Select the extracted directory containing `manifest.json`.
-6. Confirm the extension loads as **COMPANION**, version `1.3.0`, with the Orbit C icon.
+6. Confirm the extension loads as **COMPANION**, version `1.4.0`, with the Orbit C icon.
 
 The ZIP already contains the quantized model and WebAssembly runtime. No model is fetched after installation.
 

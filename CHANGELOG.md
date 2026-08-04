@@ -2,6 +2,24 @@
 
 All notable changes to COMPANION are recorded here. The most recent release is at the top.
 
+### 1.4.0 (Lifejacket + ChatGPT release)
+
+- Merged the complete Lifejacket local prompt, reply, and file workflow with first-class ChatGPT Chat and Work support.
+- Repaired MobileBERT Q8 quantization with selective sensitive-layer preservation; the release model now passes fidelity, latency, and size gates.
+- Fixed the settings wrapper, aligned browser coverage with the shipped shadow-DOM selectors, and exercised compression through the local offscreen route.
+- Added model metadata hashes, bounded HTTPS-only runtime downloads, exclusive temporary files, bounded compression concurrency, and safer release workflow permissions.
+- Added deterministic release provenance, package/review assets, and current v1.4.0 documentation.
+
+### 1.3.0 (ChatGPT first-class hardening)
+
+- Made ChatGPT Chat and Work web support a first-class path while retaining narrow compatibility detection for legacy Codex web routes. The standalone Codex desktop app remains outside Chrome extension injection.
+- Normalized the native OpenAI rate-limit response shape, including numeric Unix-second and Unix-millisecond reset timestamps, primary and secondary windows, exact token counters, and native credit balances.
+- Rendered native credit balances separately from usage so a balance is never mistaken for consumption or a quota estimate.
+- Unified freshness handling across the in-page widget and popup so expired readings never flash as current values, and the popup preserves the active Chat or Work surface during routing.
+- Hardened the OpenAI page observer with bounded response reads and bounded numeric values, expanded resilient composer selectors, and rotated new-chat fallback state correctly.
+- Kept the shared toolbar badge monotonic for same-provider readings and removed the redundant OpenAI badge writer so badge ownership remains serialized in one place.
+- Added focused regression coverage for native balances, Unix reset timestamps, popup surface routing, stale badge ordering, and ChatGPT browser rendering.
+
 ### 1.2.0 (multi-provider + Orbit C)
 
 - Introduced the Orbit C identity, all-caps COMPANION wordmark, and locally bundled League Spartan and Atkinson Hyperlegible Next typography across the toolbar, popups, settings, and provider widgets.

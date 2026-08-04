@@ -7,4 +7,6 @@ src/models/lifejacket/*
 !src/models/lifejacket/.gitkeep
 src/models/lifejacket/onnx/
 src/vendor/lifejacket/
+__pycache__/
+*.pyc
 .DS_Store

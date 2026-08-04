@@ -1,4 +1,4 @@
-# Chrome Web Store Submission Checklist — COMPANION v1.2.0
+# Chrome Web Store Submission Checklist — COMPANION v1.4.0
 
 This checklist covers package creation, Chrome Web Store review, controlled testing, and coordinated public launch.
 
@@ -23,14 +23,14 @@ This checklist covers package creation, Chrome Web Store review, controlled test
 
 - [ ] Confirm `manifest.json` contains:
   - [ ] name `COMPANION`
-  - [ ] version `1.2.0`
+  - [ ] version `1.4.0`
   - [ ] exact Claude and ChatGPT HTTPS host permissions only
   - [ ] `storage`, `activeTab`, `notifications`, `offscreen`, and `alarms`
   - [ ] no `<all_urls>` permission
   - [ ] no broad `tabs` permission
   - [ ] no remote update URL or remote-code loader
-- [ ] Confirm `CHANGELOG.md` contains a finalized `1.2.0` section.
-- [ ] Confirm `RELEASE_NOTES_1.2.0.md` matches the shipped functionality.
+- [ ] Confirm `CHANGELOG.md` contains a finalized `1.4.0` section.
+- [ ] Confirm `RELEASE_NOTES_1.4.0.md` matches the shipped functionality.
 - [ ] Run the full numbered test suite and retain the transcript.
 - [ ] Review `docs/SECURITY.md` and `store/reviewer-notes.md` one final time.
 
@@ -43,7 +43,7 @@ The release workflow is the preferred source of the upload ZIP.
 - [ ] Confirm the checksum matches locally:
 
   ```bash
-  sha256sum -c companion-1.2.0.zip.sha256
+  sha256sum -c companion-1.4.0.zip.sha256
   ```
 
 - [ ] Alternatively, build locally:
@@ -73,7 +73,7 @@ Test the exact extracted release package, not a working-tree folder.
 - [ ] New conversation and existing conversation
 - [ ] Page refresh and in-app navigation
 - [ ] Provider-aware toolbar popup
-- [ ] Caveman prompt preview with trimmed, original, edited, and cancelled paths
+- [ ] Lifejacket preview with optimized, original, edited, and cancelled paths
 - [ ] One PDF and one Office file conversion
 - [ ] Desktop notification toggle
 - [ ] Toolbar badge behavior
@@ -101,7 +101,7 @@ Chrome Web Store screenshot dimensions must be consistent.
 
 - [ ] Store icon: `icons/icon128.png`
 - [ ] Small promotional tile: `store/promo-tile-440x280.png`
-- [ ] Optional marquee: `store/marquee-1400x560.png`
+- [ ] Optional marquee: `store/marquee-1400x560.png` (1400×560)
 - [ ] Upload up to five 1280×800 screenshots:
   1. `store/screenshots/01-overview.png`
   2. `store/screenshots/02-claude-usage.png`
@@ -126,7 +126,7 @@ Use `store/permission-justifications.md`.
 - [ ] Justify ChatGPT and OpenAI web host permissions.
 - [ ] Remote code: select **No, I am not using remote code**.
 - [ ] Disclose Website content.
-- [ ] Disclose Personal communications because an enabled, user-initiated Caveman preview transiently handles draft prompt text locally.
+- [ ] Disclose Personal communications because an enabled, user-initiated Lifejacket preview transiently handles draft prompt text locally.
 - [ ] If the current dashboard separately lists User activity or User-generated content, select the categories that accurately describe composer sends and user-selected file conversion.
 - [ ] Select all required Limited Use certifications that remain true.
 - [ ] Enter the public privacy-policy URL.
@@ -156,7 +156,7 @@ Accuracy is more important than minimizing the number of disclosed categories. L
 - [ ] Add the final Chrome Web Store URL to `README.md`, launch copy, Product Hunt draft, and social posts.
 - [ ] Decide whether to make the GitHub repository public. Public source is an important trust and growth asset for this privacy-focused extension.
 - [ ] Set repository description, topics, social preview, issue templates, and discussions if enabled.
-- [ ] Prepare the `v1.2.0` GitHub release using `RELEASE_NOTES_1.2.0.md`.
+- [ ] Prepare the `v1.4.0` GitHub release using `RELEASE_NOTES_1.4.0.md`.
 - [ ] Confirm the public privacy-policy and support links work while signed out.
 - [ ] Confirm the launch assets and posts contain the final store URL.
 
@@ -166,7 +166,7 @@ Follow `docs/launch/LAUNCH_PLAYBOOK.md`.
 
 - [ ] Publish the approved Chrome Web Store listing.
 - [ ] Publish the GitHub repository if public source is part of the launch.
-- [ ] Publish the `v1.2.0` GitHub release.
+- [ ] Publish the `v1.4.0` GitHub release.
 - [ ] Launch on Product Hunt only when the listing is live and installable.
 - [ ] Publish the Hacker News, Reddit, X, LinkedIn, and community posts at sensible intervals rather than simultaneously spamming every channel.
 - [ ] Ask for feedback and honest reviews after users have experienced the product. Do not coordinate votes, incentivize ratings, or mass-message strangers.

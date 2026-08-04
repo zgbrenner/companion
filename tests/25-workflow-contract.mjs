@@ -26,6 +26,7 @@ assert.match(action, /runs:\s*\n\s*using:\s*["']?composite/i);
 assert.match(action, /actions\/setup-node@v4/);
 assert.match(action, /actions\/setup-python@v5/);
 assert.match(action, /npm ci --ignore-scripts/);
+assert.match(action, /cache-dependency-path: package-lock\.json/);
 assert.match(action, /requirements-lifejacket-build\.txt/);
 assert.match(action, /build:lifejacket/);
 for (const output of ['version', 'zip_path', 'checksum_path', 'model_hash', 'package_hash']) {
@@ -37,8 +38,7 @@ assert.match(testsWorkflow, /permissions:\s*\n\s*contents:\s*read/);
 assert.match(testsWorkflow, /concurrency:/);
 assert.match(testsWorkflow, /timeout-minutes:/g);
 assert.match(testsWorkflow, /\.\/\.github\/actions\/build-extension/);
-assert.match(testsWorkflow, /\.cache\/lifejacket/);
-assert.match(testsWorkflow, /package-lock\.json/);
+assert.match(action, /\.cache\/lifejacket/);
 assert.match(testsWorkflow, /REQUIRE_LIFEJACKET_ASSETS/);
 assert.match(testsWorkflow, /node tests\/run\.mjs/);
 assert.match(testsWorkflow, /actions\/upload-artifact@v4/);
@@ -49,7 +49,7 @@ assert.match(modelWorkflow, /workflow_dispatch:/);
 assert.match(modelWorkflow, /pull_request:/);
 assert.match(modelWorkflow, /evaluate-lifejacket-model\.py/);
 assert.match(modelWorkflow, /lifejacket-prompts\.json/);
-assert.match(modelWorkflow, /agreement/i);
+assert.match(modelWorkflow, /quality/i);
 assert.match(modelWorkflow, /latency/i);
 assert.match(modelWorkflow, /actions\/upload-artifact@v4/);
 
@@ -81,7 +81,7 @@ assert.match(release, /environment:\s*\n?\s*name:\s*chrome-web-store|environment
 
 const dependabot = read('.github/dependabot.yml');
 for (const ecosystem of ['npm', 'pip', 'github-actions']) {
-  assert.match(dependabot, new RegExp(`package-ecosystem:\s*["']${ecosystem}["']`));
+  assert.match(dependabot, new RegExp(`package-ecosystem:\\s*["']${ecosystem}["']`));
 }
 assert.match(dependabot, /interval:\s*["']weekly["']/);
 

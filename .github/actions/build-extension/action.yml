@@ -82,10 +82,31 @@ runs:
       shell: bash
       run: npx playwright install --with-deps chromium
 
+    - name: Render current extension surfaces
+      if: inputs.run-tests == 'true'
+      shell: bash
+      run: node tests/18-brand-snapshots.mjs
+
     - name: Generate current launch and store-review assets
       if: inputs.run-tests == 'true'
       shell: bash
-      run: python3 tools/generate-launch-assets.py
+      env:
+        COMPANION_BRAND_FONT: /tmp/companion-league-spartan.ttf
+        COMPANION_UI_FONT: /tmp/companion-atkinson.ttf
+        COMPANION_UI_BOLD_FONT: /tmp/companion-atkinson.ttf
+      run: |
+        set -euo pipefail
+        python3 - <<'PY'
+        from fontTools.ttLib import TTFont
+        for source, destination in (
+            ('src/fonts/league-spartan-bold.woff2', '/tmp/companion-league-spartan.ttf'),
+            ('src/fonts/atkinson-hyperlegible-next-variable.woff2', '/tmp/companion-atkinson.ttf'),
+        ):
+            font = TTFont(source)
+            font.flavor = None
+            font.save(destination)
+        PY
+        python3 tools/generate-launch-assets.py
 
     - name: Run complete extension test suite
       if: inputs.run-tests == 'true'

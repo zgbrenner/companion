@@ -51,6 +51,14 @@
   }
 
   function patchVisibilityRow(doc) {
+    const currentButton = doc.querySelector('#showLifejacketMode, [data-setting="showLifejacketMode"]');
+    if (currentButton) {
+      const currentRow = currentButton.closest('.row');
+      if (!currentRow) throw new Error('Lifejacket visibility setting row was not found.');
+      interceptControl(currentButton, 'showLifejacketMode');
+      return currentRow;
+    }
+
     const legacyButton = doc.querySelector('#showCavemanMode, [data-setting="showCavemanMode"]');
     const row = legacyButton?.closest('.row');
     if (!legacyButton || !row) throw new Error('Lifejacket visibility setting anchor was not found.');
@@ -75,6 +83,15 @@
   }
 
   function addLifejacketGroup(doc, afterRow) {
+    const existingButtons = [...doc.querySelectorAll(
+      '[data-setting="lifejacketMode"], [data-setting="lifejacketPromptCompression"], '
+      + '[data-setting="lifejacketReplyBrevity"], [data-setting="lifejacketFileConversion"]',
+    )];
+    if (existingButtons.length === 4) {
+      for (const button of existingButtons) interceptControl(button, button.dataset.setting);
+      return;
+    }
+
     const group = doc.createElement('fieldset');
     group.className = 'metrics-group';
     group.id = 'lifejacket-settings-group';

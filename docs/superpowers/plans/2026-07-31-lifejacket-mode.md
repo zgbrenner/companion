@@ -100,7 +100,7 @@ Install `@huggingface/transformers@4.2.0` with lifecycle scripts disabled. Copy 
 
 - [ ] **Step 4: Implement model download, verification, and Q8 build**
 
-Download only from the pinned Hugging Face repository and revision. Verify the 99,170,493-byte source ONNX and SHA-256 `caaadce5fa0fafce898c8ac2c152652a929ed5a2f55929eceb2f3325de4a2f07`, dynamically quantize supported matrix weights to signed INT8, validate the output graph, copy tokenizer/config files, and write provenance plus checksums.
+Download only from the pinned Hugging Face repository and revision. Verify the 99,170,493-byte source ONNX and SHA-256 `caaadce5fa0fafce898c8ac2c152652a929ed5a2f55929eceb2f3325de4a2f07`, dynamically quantize supported matrix weights to per-channel QUInt8, preserve the documented sensitive weights as FP16 with runtime casts, validate the output graph, copy tokenizer/config files, and write provenance plus checksums.
 
 - [ ] **Step 5: Implement the offscreen inference runtime**
 

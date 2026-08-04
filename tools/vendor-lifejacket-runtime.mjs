@@ -11,6 +11,8 @@ const ortOutput = path.join(outputRoot, 'ort');
 const licenseOutput = path.join(outputRoot, 'licenses');
 const packageCache = path.join(root, '.cache', 'lifejacket', 'npm');
 const extractionRoot = path.join(root, '.cache', 'lifejacket', 'runtime-packages');
+const MAX_PACKAGE_BYTES = 64 * 1024 * 1024;
+const PACKAGE_REGISTRY_HOST = 'registry.npmjs.org';
 const protectedSharedAssets = [
   path.join(sharedVendorRoot, 'officeparser.browser.slim.iife.js'),
   path.join(sharedVendorRoot, 'pdf.worker.min.mjs'),
@@ -72,18 +74,42 @@ async function downloadPackage(spec) {
       fs.rmSync(archive, { force: true });
     }
   }
-  const temporary = `${archive}.tmp-${process.pid}`;
+  const temporary = `${archive}.tmp-${process.pid}-${crypto.randomUUID()}`;
+  const requestedUrl = new URL(spec.url);
+  if (requestedUrl.protocol !== 'https:' || requestedUrl.hostname !== PACKAGE_REGISTRY_HOST) {
+    throw new Error(`Package URL is outside the pinned HTTPS registry: ${spec.url}`);
+  }
   const response = await fetch(spec.url, {
-    redirect: 'follow',
-    headers: { 'user-agent': 'COMPANION-Lifejacket-build/1.3.0' },
+    redirect: 'error',
+    headers: { 'user-agent': 'COMPANION-Lifejacket-build/1.4.0' },
   });
   if (!response.ok) throw new Error(`Unable to download ${spec.name}: HTTP ${response.status}`);
-  const bytes = Buffer.from(await response.arrayBuffer());
-  fs.writeFileSync(temporary, bytes, { mode: 0o644 });
+  const responseUrl = new URL(response.url || spec.url);
+  if (responseUrl.protocol !== 'https:' || responseUrl.hostname !== PACKAGE_REGISTRY_HOST) {
+    throw new Error(`Package response is outside the pinned HTTPS registry: ${responseUrl}`);
+  }
+  const declaredBytes = Number(response.headers.get('content-length'));
+  if (Number.isFinite(declaredBytes) && declaredBytes > MAX_PACKAGE_BYTES) {
+    throw new Error(`Package download exceeds ${MAX_PACKAGE_BYTES} bytes: ${declaredBytes}`);
+  }
+  const handle = await fs.promises.open(temporary, 'wx', 0o600);
   try {
+    if (!response.body) throw new Error(`Package response has no body: ${spec.name}`);
+    let downloadedBytes = 0;
+    for await (const chunk of response.body) {
+      const bytes = Buffer.from(chunk);
+      downloadedBytes += bytes.length;
+      if (downloadedBytes > MAX_PACKAGE_BYTES) {
+        throw new Error(`Package download exceeds ${MAX_PACKAGE_BYTES} bytes`);
+      }
+      await handle.write(bytes);
+    }
+    await handle.sync();
+    await handle.close();
     verifyIntegrity(temporary, spec.integrity);
     fs.renameSync(temporary, archive);
   } finally {
+    await handle.close().catch(() => {});
     fs.rmSync(temporary, { force: true });
   }
   return archive;

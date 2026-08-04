@@ -4,6 +4,7 @@ const FILE_REQUEST_TIMEOUT_MS = 70_000;
 const MIN_KEEP_RATIO = 0.4;
 const MAX_KEEP_RATIO = 0.85;
 const MAX_CONVERT_DATAURL_CHARS = 30_000_000;
+const MAX_PENDING_COMPRESSIONS = 2;
 const CONVERTIBLE_EXTENSIONS = new Set([
   'pdf', 'docx', 'pptx', 'xlsx', 'odt', 'odp', 'ods', 'rtf', 'csv', 'html', 'htm',
 ]);
@@ -15,6 +16,20 @@ const ALLOWED_HOSTS = new Set([
 ]);
 
 let lifejacketOffscreenCreating = null;
+let lifejacketCompressionQueue = Promise.resolve();
+let pendingCompressions = 0;
+
+function enqueueLifejacketCompression(task) {
+  if (pendingCompressions >= MAX_PENDING_COMPRESSIONS) {
+    return Promise.reject(new Error('Lifejacket is busy; try again in a moment.'));
+  }
+  pendingCompressions += 1;
+  const next = lifejacketCompressionQueue.then(task, task);
+  lifejacketCompressionQueue = next.catch(() => undefined);
+  return next.finally(() => {
+    pendingCompressions -= 1;
+  });
+}
 
 function lifejacketSenderUrl(sender) {
   const raw = String(sender?.url || sender?.tab?.url || '');
@@ -158,11 +173,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     const keepRatio = Number(message.keepRatio);
     (async () => {
       await ensureLifejacketOffscreenDocument();
-      const response = await withLifejacketTimeout(chrome.runtime.sendMessage({
-        type: 'cuc:lifejacket-compress-offscreen',
-        text: message.text,
-        keepRatio,
-      }));
+      const response = await withLifejacketTimeout(
+        enqueueLifejacketCompression(() => chrome.runtime.sendMessage({
+          type: 'cuc:lifejacket-compress-offscreen',
+          text: message.text,
+          keepRatio,
+        })),
+      );
       return normalizeLifejacketResponse(response);
     })().then(
       result => sendResponse(result),

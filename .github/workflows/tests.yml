@@ -43,6 +43,9 @@ jobs:
       - name: Install pinned Chromium
         run: npx playwright install --with-deps chromium
 
+      - name: Render current extension surfaces
+        run: node tests/18-brand-snapshots.mjs
+
       - name: Generate launch and review assets
         run: python3 tools/generate-launch-assets.py
 

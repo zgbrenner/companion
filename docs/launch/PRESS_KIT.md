@@ -16,7 +16,7 @@ COMPANION is a privacy-first Chrome extension that shows provider-reported Claud
 
 ## 40-word description
 
-COMPANION automatically adapts to Claude, ChatGPT Chat, ChatGPT Work, and Codex-aware web surfaces. It displays native numeric usage when providers expose it, warns before trustworthy limits run hot, and provides local prompt-trimming and file-to-Markdown tools without analytics or telemetry.
+COMPANION automatically adapts to Claude, ChatGPT Chat, and ChatGPT Work, with narrow legacy Codex route compatibility when such a route appears. It displays native numeric usage when providers expose it, warns before trustworthy limits run hot, and provides local Lifejacket prompt-compression and file-to-Markdown tools without analytics or telemetry.
 
 ## 100-word description
 
@@ -30,20 +30,20 @@ The extension follows one rule: **native numbers or nothing**.
 
 On Claude, COMPANION displays the usage and limit information Claude makes available to the signed-in account, including exact usage-credit spend, rolling session and weekly limits, Opus usage, reset times, and local spend history. On ChatGPT web surfaces, COMPANION passively observes first-party page responses and renders only supported numeric usage, quota, credit, limit, reset, or token fields. When OpenAI does not expose a trustworthy value for the current account or surface, COMPANION shows an honest waiting state instead of inferring a quota from message text.
 
-The extension also provides optional local efficiency tools. Caveman Mode asks for concise replies that preserve important facts and caveats. A conservative prompt-trimming preview lets the user approve, edit, reject, or cancel a local rewrite before anything is sent. User-selected PDF, Office, text, HTML, CSV, and OpenDocument files can be converted to Markdown inside a no-network sandbox.
+The extension also provides optional local efficiency tools through Lifejacket Mode. It can append a visible concise-reply instruction, propose a conservative Q8 prompt-compression preview that the user can approve, edit, reject, or cancel, and convert user-selected PDF, Office, text, HTML, CSV, and OpenDocument files to Markdown inside a no-network sandbox.
 
 Privacy is an architectural constraint, not an analytics setting. COMPANION has no developer server, account system, advertising, analytics, telemetry, or tracking. Raw OpenAI account responses remain inside the ChatGPT page. Prompt and reply text is not stored or transmitted by COMPANION. Host access is limited to exact Claude and ChatGPT HTTPS origins.
 
-COMPANION supports Claude, ChatGPT Chat, ChatGPT Work, and Codex-aware ChatGPT web routes. The standalone native Codex desktop application does not host Chrome extensions, so it is outside the extension's injection boundary.
+COMPANION supports Claude, ChatGPT Chat, and ChatGPT Work on the web. Narrow legacy Codex route compatibility is conditional on the route appearing. The standalone native Codex desktop application does not host Chrome extensions, so it is outside the extension's injection boundary.
 
 ## Key facts
 
 - Product: Chrome Manifest V3 extension
-- Release: v1.2.0
+- Release: v1.4.0
 - Price at launch: free
 - Source model: open source when the repository is made public
 - Supported browser family: Chromium-based browsers that support the required Manifest V3 APIs
-- Supported web surfaces: Claude.ai, ChatGPT Chat, ChatGPT Work, and Codex-aware ChatGPT web routes
+- Supported web surfaces: Claude.ai, ChatGPT Chat, and ChatGPT Work
 - Native Codex desktop support: no, because the native shell is not a Chrome extension host
 - Account requirement: no COMPANION account
 - Developer backend: none
@@ -68,7 +68,7 @@ COMPANION supports Claude, ChatGPT Chat, ChatGPT Work, and Codex-aware ChatGPT w
 ### Efficiency tools
 
 - Concise-response instruction
-- Conservative local prompt-trimming preview
+- Conservative local Lifejacket prompt-compression preview
 - Local file-to-Markdown conversion
 - Optional threshold notifications and toolbar badge
 - Per-metric and per-feature settings
@@ -121,7 +121,7 @@ Claude dollar figures come from Claude's native usage-credit counter. Token figu
 
 ### Does it read chats?
 
-Prompt text is handled transiently only when the user enables Caveman Mode and initiates a local preview. It is not stored or transmitted by COMPANION. Provider reply text is not collected.
+Prompt text is handled transiently only when the user enables Lifejacket Mode and initiates a local preview. It is not stored or transmitted by COMPANION. Provider reply text is not collected.
 
 ### Does it upload files?
 
@@ -137,18 +137,18 @@ A bounded Chrome alarm removes a stale high OpenAI toolbar warning after two hou
 
 ### Does it work in the standalone Codex desktop app?
 
-No. A Chrome extension cannot inject into a native desktop shell that does not host Chrome extensions. COMPANION supports Codex-aware ChatGPT web routes and shared agentic usage exposed on the web.
+No. A Chrome extension cannot inject into a native desktop shell that does not host Chrome extensions. COMPANION supports ChatGPT Chat and Work on the web, with narrow legacy Codex route compatibility when such a route appears.
 
 ### How is it funded?
 
-At v1.2.0, COMPANION is released as a free independent project. Do not publish a different funding claim unless the model changes.
+At v1.4.0, COMPANION is released as a free independent project. Do not publish a different funding claim unless the model changes.
 
 ## Suggested story angles
 
 - A usage extension that refuses to show a number when the provider exposes none
 - How to normalize AI account data without moving raw responses across the extension boundary
 - A privacy-first extension with no developer backend or telemetry
-- One local workflow layer across Claude, ChatGPT, Work, and Codex-aware web routes
+- One local workflow layer across Claude, ChatGPT Chat, and ChatGPT Work
 - Why local file conversion belongs in a no-network sandbox
 - Designing honest freshness and expiry for provider usage data
 

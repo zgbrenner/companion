@@ -31,7 +31,7 @@ for required in \
   fi
 done
 
-node tools/verify-lifejacket-assets.mjs
+node tools/verify-lifejacket-assets.mjs # writes dist/lifejacket-assets.json
 
 VERSION="$(python3 - <<'PY'
 import json
@@ -66,17 +66,17 @@ if [ -n "$STRAY" ]; then
 fi
 
 REMOTE_CODE_PATTERN="(raw\\.githubusercontent\\.com|<script[^>]+src=['\"]https?://|importScripts\\(['\"]https?://|import\\(['\"]https?://)"
+REMOTE_SCAN="$(mktemp)"
+trap 'rm -f -- "$REMOTE_SCAN"' EXIT
 if grep -RInE \
   --exclude='transformers.web.min.js' \
   --include='*.js' --include='*.html' --include='manifest.json' \
   "$REMOTE_CODE_PATTERN" \
-  manifest.json src >/tmp/companion-remote-code-scan.txt 2>/dev/null; then
+  manifest.json src >"$REMOTE_SCAN" 2>/dev/null; then
   echo "error: possible remote-code or self-update reference found:" >&2
-  cat /tmp/companion-remote-code-scan.txt >&2
-  rm -f /tmp/companion-remote-code-scan.txt
+  cat "$REMOTE_SCAN" >&2
   exit 1
 fi
-rm -f /tmp/companion-remote-code-scan.txt
 
 python3 - "$ZIP_PATH" "$INVENTORY_PATH" <<'PY'
 from __future__ import annotations

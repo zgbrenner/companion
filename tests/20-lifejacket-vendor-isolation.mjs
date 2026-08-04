@@ -12,9 +12,10 @@ assert.match(
   /src['"],\s*['"]vendor['"],\s*['"]lifejacket['"]|src[^\n]+vendor[^\n]+lifejacket/,
   'Lifejacket ML dependencies must be isolated under src/vendor/lifejacket',
 );
+assert.match(vendorTool, /const outputRoot = path\.join\(sharedVendorRoot, ['"]lifejacket['"]\)/);
 assert.doesNotMatch(
   vendorTool,
-  /rmSync\(\s*(?:outputRoot|path\.join\([^)]*['"]vendor['"][^)]*\))\s*,\s*\{[^}]*recursive:\s*true/,
+  /rmSync\(\s*sharedVendorRoot\s*,\s*\{[^}]*recursive:\s*true/,
   'the build must never recursively delete the shared src/vendor directory',
 );
 

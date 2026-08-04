@@ -119,6 +119,7 @@
     if (!validInput(provider, observedAt)) return false;
     return serialize(async () => {
       const prior = await getState();
+      if (prior?.provider === provider && Number.isFinite(prior.observedAt) && observedAt < prior.observedAt) return false;
       if (prior?.alarmName) await clearAlarm(prior.alarmName);
 
       const safeText = typeof text === "string" ? text.slice(0, 8) : "";

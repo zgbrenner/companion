@@ -57,6 +57,18 @@ const provenance = JSON.parse(fs.readFileSync(provenancePath, 'utf8'));
 if (provenance.source?.onnx?.sha256 !== 'caaadce5fa0fafce898c8ac2c152652a929ed5a2f55929eceb2f3325de4a2f07') {
   throw new Error('Lifejacket source model provenance does not match the pinned checkpoint');
 }
+const modelFileProvenance = provenance.model_files;
+if (!modelFileProvenance || typeof modelFileProvenance !== 'object') {
+  throw new Error('Lifejacket model metadata provenance is missing');
+}
+for (const [relative, expected] of Object.entries(modelFileProvenance)) {
+  const file = path.resolve(modelRoot, relative);
+  if (!file.startsWith(`${modelRoot}${path.sep}`)) throw new Error(`Invalid model metadata path: ${relative}`);
+  requireFile(file);
+  if (fs.statSync(file).size !== expected.bytes || sha256(file) !== expected.sha256) {
+    throw new Error(`Model metadata provenance mismatch: ${relative}`);
+  }
+}
 const modelBytes = fs.statSync(modelPath).size;
 const modelHash = sha256(modelPath);
 if (modelBytes >= MAX_MODEL_BYTES) throw new Error(`Lifejacket Q8 model exceeds ${MAX_MODEL_BYTES} bytes`);
@@ -68,7 +80,7 @@ if (fs.existsSync(path.join(modelRoot, 'onnx', 'model.onnx'))) {
 }
 
 const expectedSums = new Map(
-  fs.readFileSync(sumsPath, 'utf8').trim().split('\n').filter(Boolean).map(line => {
+  fs.readFileSync(sumsPath, 'utf8').trim().split(/\r?\n/).filter(Boolean).map(line => {
     const match = /^([a-f0-9]{64})  (.+)$/.exec(line);
     if (!match) throw new Error(`Malformed Lifejacket checksum line: ${line}`);
     return [match[2], match[1]];

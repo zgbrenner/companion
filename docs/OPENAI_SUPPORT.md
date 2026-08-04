@@ -1,14 +1,14 @@
-# ChatGPT, Work, and Codex Support
+# ChatGPT Support
 
-COMPANION 1.2 adds a separate OpenAI adapter alongside the existing Claude adapter. It automatically detects the active provider and surface, then presents the same core efficiency tools in a visual style that fits the page.
+COMPANION 1.4 adds a hardened OpenAI adapter alongside the existing Claude adapter. It automatically detects the active provider and ChatGPT surface, then presents the same core efficiency tools in a visual style that fits the page.
 
 ## Supported surfaces
 
-| Surface | In-page widget | Caveman Mode | File to Markdown | Native usage data |
+| Surface | In-page widget | Lifejacket Mode | File to Markdown | Native usage data |
 | --- | ---: | ---: | ---: | ---: |
 | ChatGPT Chat on the web | Yes | Yes | Yes | When OpenAI exposes it |
-| ChatGPT Work on the web | Yes | Yes | Yes | Agentic pool when exposed |
-| Codex-aware ChatGPT web route | Yes | Yes | Yes | Shared agentic pool when exposed |
+| ChatGPT Work on the web | Yes | Yes | Yes | Agentic pool when exposed for the account or workspace |
+| Legacy Codex-aware ChatGPT web route | Compatibility only | Compatibility only | Compatibility only | Only if the route exposes supported data |
 | Standalone Codex desktop shell | No browser injection | Not through this extension | Not through this extension | May still appear on ChatGPT web if shared data is exposed |
 | Claude.ai | Existing full support | Yes | Yes | Existing Claude limits and spend |
 
@@ -39,7 +39,7 @@ On OpenAI surfaces, COMPANION passively inspects only first-party responses whos
 
 COMPANION does not invent a limit, estimate a dollar figure, or scrape messages when a counter is unavailable. The widget says that it is waiting for native usage data instead.
 
-Work and Codex may draw from the same agentic usage pool. COMPANION labels that counter `Agentic usage` so it does not imply that the pool belongs exclusively to one surface.
+ChatGPT Work may draw from a shared agentic usage pool. COMPANION labels that counter `Agentic usage` so it does not imply that the pool belongs exclusively to one surface.
 
 ## Freshness and stale readings
 
@@ -51,7 +51,7 @@ Each OpenAI snapshot carries the time it was observed. The in-page widget and to
 - **Expired:** more than two hours old. COMPANION hides the old numbers instead of presenting them as current.
 - **Missing or implausible timestamp:** values fail closed and remain hidden.
 
-Freshness labels update automatically while the page or popup remains open. Using ChatGPT, Work, or a Codex-aware web surface allows COMPANION to observe a new native reading when OpenAI returns one.
+Freshness labels update automatically while the page or popup remains open. Using ChatGPT Chat or Work allows COMPANION to observe a new native reading when OpenAI returns one.
 
 ## Privacy and bridge design
 
@@ -74,7 +74,7 @@ The channel mailbox exists only during extension startup. It is removed as soon 
 
 A Manifest V3 Chrome extension can inject into supported browser pages. It cannot inject its content script into a native desktop application shell that is not hosting an extension-enabled web page.
 
-COMPANION therefore supports Codex-aware web surfaces and shared agentic usage that OpenAI exposes on ChatGPT web. It does not claim to modify the standalone Codex desktop interface.
+COMPANION therefore supports ChatGPT Chat and Work on the web. It retains narrow legacy Codex route detection for compatibility, but does not claim to modify the standalone Codex desktop interface.
 
 ## Troubleshooting
 
@@ -82,9 +82,9 @@ If the widget does not appear:
 
 1. Confirm the extension has access to `chatgpt.com`.
 2. Reload the ChatGPT tab after updating the unpacked extension.
-3. Open a normal Chat, Work, or Codex-aware web composer.
+3. Open a normal ChatGPT Chat or Work composer.
 4. Check COMPANION Settings and confirm the widget is enabled.
 
-If Caveman Mode opens a preview but the message does not send, review the preview and use the ChatGPT send button once. COMPANION deliberately never sends hidden text without a visible user action.
+If Lifejacket opens a preview but the message does not send, review the preview and use the visible **Send optimized** or **Send original** action once. COMPANION deliberately never sends hidden text without a visible user action.
 
-If usage rows are empty, the current OpenAI response may not expose supported counters, or the last reading may have expired. Caveman Mode and file conversion still work normally.
+If usage rows are empty, the current OpenAI response may not expose supported counters, or the last reading may have expired. Lifejacket and file conversion still work normally.

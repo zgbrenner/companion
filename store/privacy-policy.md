@@ -1,6 +1,6 @@
 # Privacy Policy — COMPANION
 
-**Last updated: July 31, 2026**
+**Last updated: August 4, 2026**
 
 This policy explains how the **COMPANION** browser extension handles data. COMPANION is an independent, unofficial project. It is not affiliated with or endorsed by Anthropic, OpenAI, Microsoft, Hugging Face, or the model author.
 

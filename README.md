@@ -9,7 +9,7 @@
 <p><strong>Native numbers or nothing. Local transformations or nothing.</strong> See provider-reported usage when it is available, use Lifejacket Mode to reduce avoidable prompt and reply tokens, and keep prompts, replies, files, and history private.</p>
 
 <p>
-  <img alt="Version 1.3.0" src="https://img.shields.io/badge/version-1.3.0-7C6CFF?style=for-the-badge" />
+  <img alt="Version 1.4.0" src="https://img.shields.io/badge/version-1.4.0-7C6CFF?style=for-the-badge" />
   <img alt="Chrome Manifest V3" src="https://img.shields.io/badge/Chrome-Manifest%20V3-111827?style=for-the-badge&logo=googlechrome&logoColor=white" />
   <img alt="No analytics or telemetry" src="https://img.shields.io/badge/analytics%20%26%20telemetry-none-168363?style=for-the-badge" />
 </p>
@@ -19,12 +19,12 @@
   <a href="docs/LIFEJACKET_MODE.md">Lifejacket Mode</a> ·
   <a href="docs/SECURITY.md">Security</a> ·
   <a href="store/privacy-policy.md">Privacy policy</a> ·
-  <a href="RELEASE_NOTES_1.3.0.md">Release notes</a>
+  <a href="RELEASE_NOTES_1.4.0.md">Release notes</a>
 </p>
 
 <img alt="COMPANION widget" src="docs/images/widget.png" width="900">
 
-<sub>The Chrome Web Store URL will be added after v1.3.0 completes review. Release artifacts are built and tested from pinned inputs.</sub>
+<sub>The Chrome Web Store URL will be added after v1.4.0 completes review. Release artifacts are built and tested from pinned inputs.</sub>
 
 </div>
 
@@ -60,7 +60,7 @@ Lifejacket is an optional master mode with three independent child controls.
 
 When enabled, every supported non-empty send invokes a bundled MobileBERT LLMLingua-2-style Q8 token classifier locally through CPU/WASM.
 
-The release model is built from a pinned 99,170,493-byte FP32 checkpoint into a measured 39,411,097-byte signed INT8 package. Model weights, tokenizer files, the browser runtime, checksums, and license notices ship inside the extension. Nothing is downloaded at runtime.
+The release model is built from a pinned 99,170,493-byte FP32 checkpoint into a measured 40,312,452-byte Q8 package using per-channel QUInt8 quantization plus selective FP16-preserved weights. Model weights, tokenizer files, the browser runtime, checksums, and license notices ship inside the extension. Nothing is downloaded at runtime.
 
 Before accepting a result, Lifejacket protects code, URLs, email addresses, quotations, numbers, structured rows, negation, obligations, and bounds. It falls back to the original when:
 
@@ -181,7 +181,7 @@ opaque-origin parser sandbox ──► Markdown preview/composer
 
 ### Chrome Web Store
 
-The public Chrome Web Store link will be inserted after v1.3.0 review and final smoke testing.
+The public Chrome Web Store link will be inserted after v1.4.0 review and final smoke testing.
 
 ### Verified release candidate
 
@@ -196,7 +196,7 @@ Use the artifact produced by the `release-package` GitHub Actions workflow. It c
 - test transcript;
 - release notes.
 
-1. Download and extract `companion-1.3.0.zip`.
+1. Download and extract `companion-1.4.0.zip`.
 2. Open `chrome://extensions`.
 3. Enable **Developer mode**.
 4. Choose **Load unpacked**.
@@ -225,7 +225,7 @@ bash tools/package-webstore.sh
 The deterministic package is written to:
 
 ```text
-dist/companion-1.3.0.zip
+dist/companion-1.4.0.zip
 ```
 
 A SHA-256 checksum and file-by-file inventory are written beside it.
@@ -264,7 +264,7 @@ The committed suite covers:
 | **[OpenAI Support](docs/OPENAI_SUPPORT.md)** | Chat, Work, Codex-aware behavior, usage semantics, and limitations |
 | **[Security and Privacy](docs/SECURITY.md)** | Permissions, data flow, threat model, and audit steps |
 | **[Privacy Policy](store/privacy-policy.md)** | Public Chrome Web Store privacy policy |
-| **[Release Notes](RELEASE_NOTES_1.3.0.md)** | v1.3.0 changes and upgrade behavior |
+| **[Release Notes](RELEASE_NOTES_1.4.0.md)** | v1.4.0 changes and upgrade behavior |
 | **[Changelog](CHANGELOG.md)** | Version history |
 | **[Contributing](CONTRIBUTING.md)** | Development and review guidance |
 
@@ -281,6 +281,10 @@ Prompt compression is lossy. Protected spans, coverage checks, conservative rete
 ### Provider changes
 
 Claude and ChatGPT are web applications. Their internal layouts and response shapes can change. COMPANION fails closed by omitting unsupported usage rows and retaining the original prompt when a transformation cannot be validated.
+
+## Support and contribution
+
+Use GitHub Issues for reproducible bugs and feature requests. For security-sensitive reports, contact `zgbrenner@gmail.com` without including passwords, session cookies, account tokens, private prompts, or private files.
 
 ## FAQ
 

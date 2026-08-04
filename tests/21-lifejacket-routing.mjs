@@ -88,7 +88,8 @@ const chatGptSender = {
     ext: 'pdf',
   }, chatGptSender);
   assert.equal(keepChannel, true);
-  assert.deepEqual(response, { ok: true, markdown: '# Converted locally' });
+  assert.equal(response.ok, true);
+  assert.equal(response.markdown, '# Converted locally');
   assert.equal(forwarded.type, 'cuc:offscreen-convert');
   assert.equal(forwarded.ext, 'pdf');
 }
@@ -100,7 +101,8 @@ const chatGptSender = {
     ext: 'pdf',
   }, chatGptSender);
   assert.equal(keepChannel, true, 'existing cross-provider content message is accepted on ChatGPT');
-  assert.deepEqual(response, { ok: true, markdown: '# Converted locally' });
+  assert.equal(response.ok, true);
+  assert.equal(response.markdown, '# Converted locally');
   assert.equal(forwarded.type, 'cuc:offscreen-convert');
 }
 
@@ -142,9 +144,11 @@ assert.ok(offscreen.indexOf('lifejacket-core.js') < offscreen.indexOf('lifejacke
 assert.match(source, /45_000|45000/);
 assert.match(source, /MAX_INPUT_CHARS\s*=\s*120_000/);
 assert.match(source, /MAX_CONVERT_DATAURL_CHARS\s*=\s*30_000_000/);
+assert.match(source, /MAX_PENDING_COMPRESSIONS\s*=\s*2/);
+assert.match(source, /enqueueLifejacketCompression/);
 assert.match(source, /sender\.frameId/);
-assert.match(source, /chatgpt\.com/);
-assert.match(source, /claude\.ai/);
+assert(source.includes('chatgpt.com'));
+assert(source.includes('claude.ai'));
 assert.match(source, /cuc:lifejacket-convert-file/);
 assert.match(source, /message\?\.type === 'cuc:convert-file' && isChatGptSender/);
 

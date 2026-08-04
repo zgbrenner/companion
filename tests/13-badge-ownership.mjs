@@ -72,6 +72,8 @@ assert(badgeText === "88%", "old OpenAI cleanup cannot clear a newer Claude badg
 
 await badge.set({ provider: "openai", observedAt: t2, text: "97%", color: "#b42318", expiresAt: expiry2 });
 assert(badgeText === "97%", "newer OpenAI badge is displayed");
+await badge.set({ provider: "openai", observedAt: t1, text: "81%", color: "#a15c00", expiresAt: expiry1 });
+assert(badgeText === "97%", "an older OpenAI snapshot cannot replace a newer badge");
 await badge.clearIfCurrent("openai", t1);
 assert(badgeText === "97%", "old OpenAI snapshot cannot clear a newer OpenAI badge");
 

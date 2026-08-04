@@ -1,8 +1,8 @@
-# Chrome Web Store Reviewer Notes — COMPANION v1.2.0
+# Chrome Web Store Reviewer Notes — COMPANION v1.4.0
 
 ## Single purpose
 
-COMPANION is one local efficiency layer for supported Claude and ChatGPT web surfaces. It displays provider-reported numeric usage and limits when available, provides optional threshold warnings, offers a user-controlled local prompt-trim preview, and converts user-selected files to Markdown locally.
+COMPANION is one local efficiency layer for supported Claude and ChatGPT web surfaces. It displays provider-reported numeric usage and limits when available, provides optional threshold warnings, offers a user-controlled Lifejacket prompt-compression preview, and converts user-selected files to Markdown locally.
 
 ## Account-dependent data
 
@@ -21,7 +21,7 @@ A random per-page event channel and a second background validation layer protect
 
 ## Codex boundary
 
-The standalone native Codex desktop application is not a Chrome extension host. COMPANION supports Codex-aware ChatGPT web routes and shared agentic usage exposed on ChatGPT web. The listing and product UI state this limitation.
+The standalone native Codex desktop application is not a Chrome extension host. COMPANION supports ChatGPT Chat and Work on the web and retains narrow legacy Codex route compatibility when such a route appears. The listing and product UI state this limitation.
 
 ## Local file conversion
 
