@@ -60,6 +60,8 @@ assert.match(securityWorkflow, /actions\/dependency-review-action@v4/);
 assert.match(securityWorkflow, /npm audit/);
 assert.match(securityWorkflow, /pip-audit/);
 assert.match(securityWorkflow, /gitleaks/i);
+assert.match(securityWorkflow, /extension_csp/);
+assert.match(securityWorkflow, /content_security_policy/);
 assert.match(securityWorkflow, /permissions:/);
 assert.match(securityWorkflow, /timeout-minutes:/g);
 

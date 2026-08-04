@@ -120,7 +120,8 @@ jobs:
             echo "Broad host access is forbidden" >&2
             exit 1
           fi
-          if unzip -p "$package" manifest.json | grep -Eq "(^|[;[:space:]])'unsafe-eval'([;[:space:]]|$)"; then
+          extension_csp="$(unzip -p "$package" manifest.json | python3 -c 'import json, sys; print(json.load(sys.stdin)["content_security_policy"]["extension_pages"])')"
+          if grep -Eq "(^|[;[:space:]])'unsafe-eval'([;[:space:]]|$)" <<<"$extension_csp"; then
             echo "the broad unsafe-eval CSP token is forbidden on extension pages" >&2
             exit 1
           fi
