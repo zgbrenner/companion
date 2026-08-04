@@ -4,6 +4,7 @@ const OPENAI_NOTIFY_KEY = "cuc:openai-notify-state";
 const MAX_CAVEMAN_ENTRIES = 200;
 const MAX_BUCKETS = 8;
 const MAX_COUNTER_KEYS = 5;
+const MAX_BALANCE_KEYS = 2;
 const MAX_PCT = 1000;
 const MAX_VALUE = 1_000_000_000;
 const ALLOWED_BUCKET_KEYS = new Set(["agentic", "five-hour", "daily", "seven-day", "monthly"]);
@@ -57,9 +58,20 @@ function validConversationKey(value) {
 
 function normalizeReset(value) {
   if (value == null) return null;
-  if (typeof value !== "string" || value.length > 160) return undefined;
-  const parsed = Date.parse(value);
-  return Number.isFinite(parsed) ? new Date(parsed).toISOString() : undefined;
+  let parsed;
+  if (typeof value === "number" && Number.isFinite(value)) {
+    parsed = value < 100_000_000_000 ? value * 1000 : value;
+  } else if (typeof value === "string" && value.length <= 160) {
+    const text = value.trim();
+    if (/^\d+(?:\.\d+)?$/.test(text)) {
+      const numeric = Number(text);
+      parsed = numeric < 100_000_000_000 ? numeric * 1000 : numeric;
+    } else {
+      parsed = Date.parse(text);
+    }
+  }
+  if (!Number.isFinite(parsed) || Math.abs(parsed) > 8_640_000_000_000_000) return undefined;
+  try { return new Date(parsed).toISOString(); } catch { return undefined; }
 }
 
 function normalizeCounter(value, tokenCounter = false) {
@@ -87,10 +99,18 @@ function normalizeCounter(value, tokenCounter = false) {
   return { used: value.used, limit, resetsAt };
 }
 
+function normalizeBalance(value) {
+  if (!isPlainRecord(value) || !hasOnlyKeys(value, new Set(["balance", "unlimited"]))) return null;
+  if (!Number.isFinite(value.balance) || value.balance < 0 || value.balance > MAX_VALUE) return null;
+  if (value.unlimited != null && typeof value.unlimited !== "boolean") return null;
+  return { balance: value.balance, unlimited: value.unlimited ?? null };
+}
+
 function normalizeOpenAIMessage(message) {
   if (!isPlainRecord(message)) return null;
   if (!hasOnlyKeys(message, new Set([
     "type", "surface", "observedAt", "sourcePath", "maxUtilizationPct", "buckets", "counters",
+    "balances",
   ]))) return null;
   if (!ALLOWED_SURFACES.has(message.surface)) return null;
   if (!Number.isFinite(message.observedAt) || message.observedAt < 0 || message.observedAt > Date.now() + 300_000) return null;
@@ -140,6 +160,16 @@ function normalizeOpenAIMessage(message) {
     counters[key] = normalized;
   }
 
+  if (message.balances != null && !isPlainRecord(message.balances)) return null;
+  if (message.balances != null && Object.keys(message.balances).length > MAX_BALANCE_KEYS) return null;
+  const balances = {};
+  for (const [key, value] of Object.entries(message.balances || {})) {
+    if (!["credits", "usd", "messages"].includes(key)) return null;
+    const normalized = normalizeBalance(value);
+    if (!normalized) return null;
+    balances[key] = normalized;
+  }
+
   return {
     provider: "openai",
     surface: message.surface,
@@ -148,6 +178,7 @@ function normalizeOpenAIMessage(message) {
     maxUtilizationPct,
     buckets,
     counters,
+    balances,
   };
 }
 
@@ -155,17 +186,6 @@ async function storeOpenAIUsage(snapshot) {
   await chrome.storage.session.set({ [OPENAI_USAGE_KEY]: snapshot }).catch(async () => {
     await chrome.storage.local.set({ [OPENAI_USAGE_KEY]: snapshot });
   });
-}
-
-function applyOpenAIBadge(maxPct) {
-  try {
-    if (!Number.isFinite(maxPct) || maxPct < 80) return;
-    const pct = Math.min(100, Math.round(maxPct));
-    chrome.action.setBadgeText({ text: `${pct}%` });
-    chrome.action.setBadgeBackgroundColor({ color: pct >= 90 ? "#b42318" : "#a15c00" });
-  } catch {
-    // Badge display is best effort.
-  }
 }
 
 function countdown(resetsAt) {
@@ -268,7 +288,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (!snapshot) return false;
     serializeOpenAI(async () => {
       await storeOpenAIUsage(snapshot);
-      applyOpenAIBadge(snapshot.maxUtilizationPct);
       await maybeNotifyOpenAI(snapshot);
     }).catch(() => {});
     return false;

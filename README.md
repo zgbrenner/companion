@@ -9,7 +9,7 @@
 <p><strong>Native numbers or nothing.</strong> See provider-reported usage when it is available, finish more work before a limit, and keep prompts, replies, files, and history private.</p>
 
 <p>
-  <img alt="Version 1.2.0" src="https://img.shields.io/badge/version-1.2.0-7C6CFF?style=for-the-badge" />
+  <img alt="Version 1.3.0" src="https://img.shields.io/badge/version-1.3.0-7C6CFF?style=for-the-badge" />
   <img alt="Chrome Manifest V3" src="https://img.shields.io/badge/Chrome-Manifest%20V3-111827?style=for-the-badge&logo=googlechrome&logoColor=white" />
   <img alt="No analytics or telemetry" src="https://img.shields.io/badge/analytics%20%26%20telemetry-none-168363?style=for-the-badge" />
 </p>
@@ -18,12 +18,12 @@
   <a href="#install-and-test">Install and test</a> ·
   <a href="docs/SECURITY.md">Security</a> ·
   <a href="store/privacy-policy.md">Privacy policy</a> ·
-  <a href="RELEASE_NOTES_1.2.0.md">Release notes</a>
+  <a href="RELEASE_NOTES_1.3.0.md">Release notes</a>
 </p>
 
 <img alt="COMPANION widget" src="docs/images/widget.png" width="900">
 
-<sub>The Chrome Web Store URL will be added after v1.2.0 is approved. The repository package is ready for trusted release testing.</sub>
+<sub>The Chrome Web Store URL will be added after v1.3.0 is approved. The repository package is ready for trusted release testing.</sub>
 
 </div>
 
@@ -39,7 +39,7 @@ Many tools fill missing data with token estimates that look more certain than th
 
 COMPANION also places local efficiency tools beside the active composer, so the same privacy-first workflow follows you across supported providers.
 
-## One extension, four web surfaces
+## One extension for Claude and ChatGPT web
 
 COMPANION detects the current provider and surface automatically. There is no manual provider switch and no second extension to install.
 
@@ -48,10 +48,10 @@ COMPANION detects the current provider and surface automatically. There is no ma
 | **Claude.ai** | Shows native usage-credit spend, rolling session and weekly limits, Opus usage, reset times, local history, pace warnings, and plan-fit insights when those values are exposed. |
 | **ChatGPT Chat** | Adds a native-looking widget, local Caveman tools, and supported numeric usage fields that OpenAI exposes to the page. |
 | **ChatGPT Work** | Uses restrained Work context styling and shows supported shared agentic usage when available. |
-| **Codex-aware ChatGPT web routes** | Uses graphite and indigo context styling and shows supported shared agentic usage when available. |
+| **Legacy Codex-aware routes** | Retains narrow compatibility detection for legacy web routes if they appear; it does not claim that the standalone Codex desktop app is injectable. |
 
 > [!IMPORTANT]
-> The standalone native Codex desktop application is not a Chrome extension host. COMPANION supports Codex-aware web surfaces and native numeric data exposed through ChatGPT web. It does not claim to inject into the desktop shell.
+> ChatGPT Chat and Work are the supported web surfaces. The standalone native Codex desktop application is not a Chrome extension host. COMPANION retains narrow legacy Codex route detection for compatibility, but does not claim to inject into the desktop shell.
 
 ## What it looks like
 
@@ -59,9 +59,9 @@ COMPANION detects the current provider and surface automatically. There is no ma
 
 <img alt="COMPANION Claude usage popup" src="docs/images/popup.png" width="900">
 
-### ChatGPT, Work, and Codex-aware web support
+### ChatGPT web support
 
-The release workflow renders the current ChatGPT popup and composes the Chrome Web Store and Product Hunt images from that tested surface. Those platform-sized images ship in the `companion-v1.2.0-launch-assets` workflow artifact so they cannot drift from the release commit.
+The release workflow renders the current ChatGPT popup and composes the Chrome Web Store and Product Hunt images from that tested surface. Those platform-sized images ship in the `companion-v1.3.0-launch-assets` workflow artifact so they cannot drift from the release commit.
 
 ### Privacy-first settings
 
@@ -71,7 +71,7 @@ The release workflow renders the current ChatGPT popup and composes the Chrome W
 
 | Feature | What it means |
 | --- | --- |
-| **Automatic provider detection** | Claude, Chat, Work, and Codex-aware styling switch from the current origin, route, and selected mode. |
+| **Automatic provider detection** | Claude, Chat, Work, and legacy Codex compatibility styling switch from the current origin, route, and selected mode. |
 | **Native usage views** | Exact Claude spend and native limits, plus supported numeric OpenAI fields when OpenAI exposes them. |
 | **Freshness and expiry** | OpenAI readings are labeled fresh, aging, stale, or expired instead of remaining on screen indefinitely. |
 | **Caveman Mode** | Ask for concise replies, preview a conservative local prompt trim, and convert files to lean Markdown. |
@@ -171,13 +171,13 @@ The Claude and OpenAI adapters use separate message names, storage keys, network
 
 ### Chrome Web Store
 
-The public Chrome Web Store link will be inserted here after v1.2.0 approval and final smoke testing.
+The public Chrome Web Store link will be inserted here after v1.3.0 approval and final smoke testing.
 
 ### Trusted release candidate
 
 Use the artifact produced by the **release-package** GitHub Actions workflow. It contains the tested Web Store ZIP, checksum, release notes, package inventory, test transcript, and separate launch-artwork bundle.
 
-1. Download and extract `companion-1.2.0.zip`.
+1. Download and extract `companion-1.3.0.zip`.
 2. Open `chrome://extensions`.
 3. Enable **Developer mode**.
 4. Choose **Load unpacked**.
@@ -187,15 +187,15 @@ Use the artifact produced by the **release-package** GitHub Actions workflow. It
 ### Build from source
 
 ```bash
-git clone https://github.com/zgbrenner/claudecompanion.git
-cd claudecompanion
+git clone https://github.com/zgbrenner/companion.git
+cd companion
 tools/package-webstore.sh
 ```
 
 The deterministic package is written to:
 
 ```text
-dist/companion-1.2.0.zip
+dist/companion-1.3.0.zip
 ```
 
 A SHA-256 checksum is written beside it.
@@ -245,10 +245,10 @@ See `.github/workflows/tests.yml` and `.github/workflows/release-package.yml` fo
 | Document | Purpose |
 | --- | --- |
 | **[Quick Start](docs/QUICKSTART.md)** | Installation, everyday use, and troubleshooting |
-| **[OpenAI Support](docs/OPENAI_SUPPORT.md)** | Chat, Work, Codex-aware behavior, usage semantics, and limitations |
+| **[OpenAI Support](docs/OPENAI_SUPPORT.md)** | ChatGPT Chat and Work behavior, compatibility routes, usage semantics, and limitations |
 | **[Security and Privacy](docs/SECURITY.md)** | Permissions, data flow, threat model, and audit steps |
 | **[Privacy Policy](store/privacy-policy.md)** | Public Chrome Web Store privacy policy |
-| **[Release Notes](RELEASE_NOTES_1.2.0.md)** | v1.2.0 highlights and upgrade notes |
+| **[Release Notes](RELEASE_NOTES_1.3.0.md)** | v1.3.0 highlights and upgrade notes |
 | **[Changelog](CHANGELOG.md)** | Version history |
 | **[Contributing](CONTRIBUTING.md)** | Development and review guidance |
 
@@ -293,7 +293,7 @@ The OpenAI adapter uses a random per-page event channel and strict validation in
 <details>
 <summary><strong>Does it work inside the native Codex desktop app?</strong></summary>
 <br>
-No. The native desktop shell is not a Chrome extension host. COMPANION supports Codex-aware ChatGPT web surfaces and shared agentic usage exposed on the web.
+No. The native desktop shell is not a Chrome extension host. ChatGPT Chat and Work are supported on the web; legacy Codex route detection is retained only when such a route is present.
 </details>
 
 <details>

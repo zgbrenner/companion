@@ -1,4 +1,4 @@
-# Chrome Web Store Reviewer Notes — COMPANION v1.2.0
+# Chrome Web Store Reviewer Notes — COMPANION v1.3.0
 
 ## Single purpose
 
@@ -21,7 +21,7 @@ A random per-page event channel and a second background validation layer protect
 
 ## Codex boundary
 
-The standalone native Codex desktop application is not a Chrome extension host. COMPANION supports Codex-aware ChatGPT web routes and shared agentic usage exposed on ChatGPT web. The listing and product UI state this limitation.
+The standalone native Codex desktop application is not a Chrome extension host. COMPANION supports ChatGPT Chat and Work on the web and retains narrow legacy Codex route compatibility when such a route appears. The listing and product UI state this limitation.
 
 ## Local file conversion
 

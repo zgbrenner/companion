@@ -1,6 +1,6 @@
 # Security and Privacy
 
-This document describes COMPANION's security architecture, data handling, permissions, network behavior, threat model, and audit steps. COMPANION is an unofficial Manifest V3 extension for Claude.ai and ChatGPT web surfaces, including Chat, Work, and Codex-aware routes.
+This document describes COMPANION's security architecture, data handling, permissions, network behavior, threat model, and audit steps. COMPANION is an unofficial Manifest V3 extension for Claude.ai and ChatGPT Chat and Work web surfaces, with narrow legacy Codex route compatibility.
 
 ## Security summary
 

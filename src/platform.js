@@ -3,6 +3,7 @@
   const CLAUDE_HOSTS = new Set(["claude.ai"]);
   const MAX_DEPTH = 7;
   const MAX_VISITED_NODES = 500;
+  const MAX_VALUE = 1_000_000_000;
 
   function parseUrl(input) {
     try {
@@ -106,6 +107,16 @@
     return null;
   }
 
+  function firstReset(entries) {
+    for (const [rawKey, value] of entries) {
+      if (!RESET_KEYS.has(canonicalKey(rawKey))) continue;
+      if ((typeof value === "string" && value.trim() && value.length <= 160) || (typeof value === "number" && Number.isFinite(value))) {
+        return value;
+      }
+    }
+    return null;
+  }
+
   const USED_KEYS = new Set([
     "used", "usage", "consumed", "spent", "amount_used", "usage_used",
     "used_credits", "credits_used", "credit_used", "used_tokens", "tokens_used",
@@ -126,6 +137,9 @@
     "next_reset_at", "window_end", "period_end", "expires_at",
   ]);
   const NAME_KEYS = new Set(["name", "label", "type", "window", "bucket", "period", "product"]);
+  const UNIT_KEYS = new Set(["unit", "units", "metric", "resource", "currency"]);
+  const BALANCE_KEYS = new Set(["balance", "remaining", "available", "available_credits", "credits_remaining", "remaining_credits"]);
+  const BOOLEAN_KEYS = new Set(["unlimited"]);
 
   function normalizePct(number, sourceKey) {
     if (!Number.isFinite(number) || number < 0) return null;
@@ -137,9 +151,20 @@
   }
 
   function parseReset(value) {
-    if (typeof value !== "string" || value.length > 160) return null;
-    const parsed = Date.parse(value);
-    return Number.isFinite(parsed) ? new Date(parsed).toISOString() : null;
+    let parsed;
+    if (typeof value === "number" && Number.isFinite(value)) {
+      parsed = value < 100_000_000_000 ? value * 1000 : value;
+    } else if (typeof value === "string" && value.length <= 160) {
+      const text = value.trim();
+      if (/^\d+(?:\.\d+)?$/.test(text)) {
+        const numeric = Number(text);
+        parsed = numeric < 100_000_000_000 ? numeric * 1000 : numeric;
+      } else {
+        parsed = Date.parse(text);
+      }
+    }
+    if (!Number.isFinite(parsed) || Math.abs(parsed) > 8_640_000_000_000_000) return null;
+    try { return new Date(parsed).toISOString(); } catch { return null; }
   }
 
   function classifyBucket(text) {
@@ -148,13 +173,13 @@
     if (/(?:agentic|workspace_agent|workspace_agents|codex|work_usage|work_credit)/.test(key)) {
       return { key: "agentic", label: "Agentic usage" };
     }
-    if (/(?:five_hour|5_hour|5h|session|primary_window|short_window)/.test(key)) {
+    if (/(?:five_hour|5_hour|5h|session|primary(?:_window)?|short_window)/.test(key)) {
       return { key: "five-hour", label: "Session limit" };
     }
     if (/(?:daily|one_day|1_day|24_hour|24h)/.test(key)) {
       return { key: "daily", label: "Daily limit" };
     }
-    if (/(?:seven_day|7_day|7d|weekly|week|secondary_window|long_window)/.test(key)) {
+    if (/(?:seven_day|7_day|7d|weekly|week|secondary(?:_window)?|long_window)/.test(key)) {
       return { key: "seven-day", label: "Weekly limit" };
     }
     if (/(?:monthly|month|billing_period)/.test(key)) {
@@ -187,6 +212,7 @@
 
     const bucketsByKey = new Map();
     const counters = {};
+    const balances = {};
     let visited = 0;
     let tokenInput = null;
     let tokenOutput = null;
@@ -201,6 +227,15 @@
       const currentScore = current ? (current.limit != null ? 2 : 1) + (current.resetsAt ? 1 : 0) : -1;
       const candidateScore = (candidate.limit != null ? 2 : 1) + (candidate.resetsAt ? 1 : 0);
       if (!current || candidateScore > currentScore) counters[unit] = candidate;
+    }
+
+    function setBalance(unit, balance, unlimited = null) {
+      if (unit !== "credits" || !Number.isFinite(balance) || balance < 0 || balance > MAX_VALUE) return;
+      const candidate = { balance, unlimited: typeof unlimited === "boolean" ? unlimited : null };
+      const current = balances[unit];
+      if (!current || (current.unlimited == null && candidate.unlimited != null) || candidate.balance !== current.balance) {
+        balances[unit] = candidate;
+      }
     }
 
     function walk(node, path, depth) {
@@ -220,15 +255,20 @@
 
       const used = firstNumber(entries, USED_KEYS);
       const limit = firstNumber(entries, LIMIT_KEYS);
+      const balance = firstNumber(entries, BALANCE_KEYS);
       const pctEntry = firstNumber(entries, PCT_KEYS);
-      const resetEntry = firstString(entries, RESET_KEYS);
-      const resetsAt = parseReset(resetEntry?.value);
-      const unit = classifyUnit(`${contextText}_${used?.key || ""}_${limit?.key || ""}`);
+      const resetsAt = parseReset(firstReset(entries));
+      const unitEntry = firstString(entries, UNIT_KEYS);
+      const unlimitedEntry = entries.find(([rawKey, value]) => BOOLEAN_KEYS.has(canonicalKey(rawKey)) && typeof value === "boolean");
+      const unit = classifyUnit(`${contextText}_${used?.key || ""}_${limit?.key || ""}_${unitEntry?.value || ""}`);
 
       let pct = pctEntry ? normalizePct(pctEntry.value, pctEntry.key) : null;
       if (pct == null && used && limit && limit.value > 0) pct = normalizePct((used.value / limit.value) * 100, "percent");
 
       if (used) setCounter(unit, used.value, limit?.value ?? null, resetsAt);
+      if (!used && balance && unit === "credits" && /(?:credit|agentic)/.test(contextText)) {
+        setBalance(unit, balance.value, unlimitedEntry?.[1]);
+      }
       if (bucketMeta && pct != null) {
         const candidate = {
           key: bucketMeta.key,
@@ -245,7 +285,7 @@
       for (const [rawKey, rawValue] of entries) {
         const key = canonicalKey(rawKey);
         const number = finiteNumber(rawValue);
-        if (number != null && number >= 0) {
+        if (number != null && number >= 0 && number <= MAX_VALUE) {
           if (["input_tokens", "prompt_tokens", "tokens_input"].includes(key)) tokenInput = Math.max(tokenInput ?? 0, number);
           if (["output_tokens", "completion_tokens", "tokens_output"].includes(key)) tokenOutput = Math.max(tokenOutput ?? 0, number);
           if (["total_tokens", "tokens_total"].includes(key)) tokenTotal = Math.max(tokenTotal ?? 0, number);
@@ -265,7 +305,7 @@
     }
 
     const buckets = Array.from(bucketsByKey.values());
-    if (!buckets.length && !Object.keys(counters).length) return null;
+    if (!buckets.length && !Object.keys(counters).length && !Object.keys(balances).length) return null;
 
     return {
       provider: "openai",
@@ -273,6 +313,7 @@
       sourcePath: typeof sourcePath === "string" && sourcePath.length <= 240 ? sourcePath : null,
       buckets,
       counters,
+      balances,
       maxUtilizationPct: buckets.length ? Math.max(...buckets.map(bucket => bucket.pct)) : null,
     };
   }

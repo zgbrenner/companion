@@ -39,6 +39,7 @@ assert(P.conversationIdFromUrl("https://chatgpt.com/c/67f4d38d-1234-5678-9abc-00
 assert(P.conversationIdFromUrl("https://chatgpt.com/") === null, "new Chat has no invented persistent id");
 
 const reset = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+const unixReset = Math.floor((Date.now() + 2 * 60 * 60 * 1000) / 1000);
 const normalized = P.normalizeOpenAIUsage({
   agentic_usage: {
     used_credits: 27.5,
@@ -51,6 +52,11 @@ const normalized = P.normalizeOpenAIUsage({
       reset_at: reset,
     },
   },
+  rate_limit: {
+    primary_window: { used_percent: 4, reset_at: unixReset },
+    secondary_window: { used_percent: 12, reset_at: unixReset },
+  },
+  credits: { balance: "12", unlimited: false },
   token_usage: {
     input_tokens: 1234,
     output_tokens: 456,
@@ -62,6 +68,12 @@ assert(normalized.buckets.some(b => b.key === "agentic" && Math.abs(b.pct - 27.5
 assert(normalized.buckets.some(b => b.key === "five-hour" && Math.abs(b.pct - 62) < 0.001), "normalizes fractional rolling utilization");
 assert(normalized.counters.credits?.used === 27.5 && normalized.counters.credits?.limit === 100, "keeps exact credit counter");
 assert(normalized.counters.tokens?.input === 1234 && normalized.counters.tokens?.output === 456, "keeps exact token counters");
+assert(normalized.buckets.find(b => b.key === "seven-day")?.resetsAt === new Date(unixReset * 1000).toISOString(), "normalizes Unix-second reset timestamps");
+assert(normalized.balances.credits?.balance === 12 && normalized.balances.credits?.unlimited === false, "keeps native credit balance without treating it as usage");
+const balanceOnly = P.normalizeOpenAIUsage({ credits: { balance: 0, unlimited: false } });
+assert(balanceOnly?.balances.credits?.balance === 0, "keeps a balance-only native response");
+const invalidReset = P.normalizeOpenAIUsage({ limits: { five_hour: { utilization: 0.2, reset_at: 1e20 } } });
+assert(invalidReset?.buckets?.[0]?.resetsAt === null, "fails closed on an out-of-range native reset timestamp");
 assert(P.normalizeOpenAIUsage({ profile: { name: "Ada", plan: "Pro" } }) === null, "ignores unrelated account payloads");
 
 console.log("06-platforms PASS");

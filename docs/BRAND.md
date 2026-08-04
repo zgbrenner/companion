@@ -38,7 +38,7 @@ Warning and danger colors remain semantic and must not be replaced by mint or ir
 
 ## Implementation
 
-The extension ships only the optimized local WOFF2 font assets, the source Orbit C SVG, and four size-specific Chrome toolbar PNGs. Development TTF sources and temporary download workflows are excluded from the production branch. The popup, settings page, Claude widget, ChatGPT widget, Work surface, and Codex-aware web surface share the same core identity while retaining restrained provider-context accents.
+The extension ships only the optimized local WOFF2 font assets, the source Orbit C SVG, and four size-specific Chrome toolbar PNGs. Development TTF sources and temporary download workflows are excluded from the production branch. The popup, settings page, Claude widget, ChatGPT widget, and Work surface share the same core identity while retaining restrained provider-context accents. Narrow legacy Codex route compatibility uses the same identity when such a route is present.
 
 ## Validation
 

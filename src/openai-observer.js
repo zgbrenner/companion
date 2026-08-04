@@ -11,6 +11,7 @@
   const STATE_ATTRIBUTE = "data-companion-openai-bridge";
   const MAX_PENDING = 50;
   const MAX_JSON_BYTES = 2_000_000;
+  const MAX_VALUE = 1_000_000_000;
   const MAX_DEPTH = 7;
   const MAX_VISITED = 500;
   const nativeDispatch = window.dispatchEvent.bind(window);
@@ -106,18 +107,30 @@
     return null;
   }
 
+  function firstReset(entries) {
+    for (const [rawKey, value] of entries) {
+      if (!RESET.has(canonical(rawKey))) continue;
+      if ((typeof value === "string" && value.trim() && value.length <= 160) || (typeof value === "number" && Number.isFinite(value))) {
+        return value;
+      }
+    }
+    return null;
+  }
+
   const USED = new Set(["used", "usage", "consumed", "spent", "amount_used", "usage_used", "used_credits", "credits_used", "credit_used", "used_tokens", "tokens_used", "used_messages", "messages_used", "used_usd", "usd_used", "cost_used"]);
   const LIMIT = new Set(["limit", "quota", "allowance", "total", "maximum", "max", "usage_limit", "credit_limit", "credits_limit", "total_credits", "token_limit", "tokens_limit", "message_limit", "messages_limit", "usd_limit", "budget", "budget_usd"]);
   const PCT = new Set(["pct", "percent", "percentage", "utilization", "utilisation", "usage_percent", "used_percent", "percent_used", "utilization_pct", "utilisation_pct", "usage_pct", "ratio", "fraction"]);
   const RESET = new Set(["reset_at", "resets_at", "reset_time", "resets_time", "reset_date", "resets_date", "next_reset_at", "window_end", "period_end", "expires_at"]);
   const NAME = new Set(["name", "label", "type", "window", "bucket", "period", "product"]);
+  const UNIT = new Set(["unit", "units", "metric", "resource", "currency"]);
+  const BALANCE = new Set(["balance", "remaining", "available", "available_credits", "credits_remaining", "remaining_credits"]);
 
   function bucketFor(text) {
     const key = canonical(text);
     if (/(?:agentic|workspace_agent|workspace_agents|codex|work_usage|work_credit)/.test(key)) return { key: "agentic", label: "Agentic usage" };
-    if (/(?:five_hour|5_hour|5h|session|primary_window|short_window)/.test(key)) return { key: "five-hour", label: "Session limit" };
+    if (/(?:five_hour|5_hour|5h|session|primary(?:_window)?|short_window)/.test(key)) return { key: "five-hour", label: "Session limit" };
     if (/(?:daily|one_day|1_day|24_hour|24h)/.test(key)) return { key: "daily", label: "Daily limit" };
-    if (/(?:seven_day|7_day|7d|weekly|week|secondary_window|long_window)/.test(key)) return { key: "seven-day", label: "Weekly limit" };
+    if (/(?:seven_day|7_day|7d|weekly|week|secondary(?:_window)?|long_window)/.test(key)) return { key: "seven-day", label: "Weekly limit" };
     if (/(?:monthly|month|billing_period)/.test(key)) return { key: "monthly", label: "Monthly allowance" };
     return null;
   }
@@ -132,9 +145,20 @@
   }
 
   function resetValue(value) {
-    if (typeof value !== "string" || value.length > 160) return null;
-    const parsed = Date.parse(value);
-    return Number.isFinite(parsed) ? new Date(parsed).toISOString() : null;
+    let parsed;
+    if (typeof value === "number" && Number.isFinite(value)) {
+      parsed = value < 100_000_000_000 ? value * 1000 : value;
+    } else if (typeof value === "string" && value.length <= 160) {
+      const text = value.trim();
+      if (/^\d+(?:\.\d+)?$/.test(text)) {
+        const numeric = Number(text);
+        parsed = numeric < 100_000_000_000 ? numeric * 1000 : numeric;
+      } else {
+        parsed = Date.parse(text);
+      }
+    }
+    if (!Number.isFinite(parsed) || Math.abs(parsed) > 8_640_000_000_000_000) return null;
+    try { return new Date(parsed).toISOString(); } catch { return null; }
   }
 
   function percentage(value, key) {
@@ -148,18 +172,28 @@
     if (!payload || typeof payload !== "object") return null;
     const buckets = new Map();
     const counters = {};
+    const balances = {};
     let visited = 0;
     let tokenInput = null;
     let tokenOutput = null;
     let tokenTotal = null;
 
     function keepCounter(unit, used, limit, resetsAt) {
-      if (!unit || used == null || !Number.isFinite(used) || used < 0) return;
-      const safeLimit = Number.isFinite(limit) && limit > 0 ? limit : null;
+      if (!unit || used == null || !Number.isFinite(used) || used < 0 || used > MAX_VALUE) return;
+      const safeLimit = Number.isFinite(limit) && limit > 0 && limit <= MAX_VALUE ? limit : null;
       const candidate = { used, limit: safeLimit, resetsAt: resetsAt || null };
       const existing = counters[unit];
       const score = item => (item?.limit != null ? 2 : 1) + (item?.resetsAt ? 1 : 0);
       if (!existing || score(candidate) > score(existing)) counters[unit] = candidate;
+    }
+
+    function keepBalance(unit, balance, unlimited = null) {
+      if (unit !== "credits" || !Number.isFinite(balance) || balance < 0 || balance > MAX_VALUE) return;
+      const candidate = { balance, unlimited: typeof unlimited === "boolean" ? unlimited : null };
+      const existing = balances[unit];
+      if (!existing || existing.balance !== candidate.balance || (existing.unlimited == null && candidate.unlimited != null)) {
+        balances[unit] = candidate;
+      }
     }
 
     function walk(node, path, depth) {
@@ -177,12 +211,18 @@
       const bucket = bucketFor(context);
       const used = firstNumber(entries, USED);
       const limit = firstNumber(entries, LIMIT);
+      const balance = firstNumber(entries, BALANCE);
       const pctEntry = firstNumber(entries, PCT);
-      const reset = resetValue(firstString(entries, RESET));
-      const unit = unitFor(`${context}_${used?.key || ""}_${limit?.key || ""}`);
+      const reset = resetValue(firstReset(entries));
+      const unitText = firstString(entries, UNIT);
+      const unlimitedEntry = entries.find(([rawKey, value]) => canonical(rawKey) === "unlimited" && typeof value === "boolean");
+      const unit = unitFor(`${context}_${used?.key || ""}_${limit?.key || ""}_${unitText || ""}`);
       let pct = pctEntry ? percentage(pctEntry.value, pctEntry.key) : null;
       if (pct == null && used && limit?.value > 0) pct = percentage((used.value / limit.value) * 100, "percent");
       if (used) keepCounter(unit, used.value, limit?.value, reset);
+      if (!used && balance && unit === "credits" && /(?:credit|agentic)/.test(context)) {
+        keepBalance(unit, balance.value, unlimitedEntry?.[1]);
+      }
       if (bucket && pct != null) {
         const candidate = { key: bucket.key, label: bucket.label, pct, resetsAt: reset, used: used?.value ?? null, limit: limit?.value ?? null, unit };
         const existing = buckets.get(bucket.key);
@@ -192,7 +232,7 @@
       for (const [rawKey, rawValue] of entries) {
         const key = canonical(rawKey);
         const number = numeric(rawValue);
-        if (number != null && number >= 0) {
+        if (number != null && number >= 0 && number <= MAX_VALUE) {
           if (["input_tokens", "prompt_tokens", "tokens_input"].includes(key)) tokenInput = Math.max(tokenInput ?? 0, number);
           if (["output_tokens", "completion_tokens", "tokens_output"].includes(key)) tokenOutput = Math.max(tokenOutput ?? 0, number);
           if (["total_tokens", "tokens_total"].includes(key)) tokenTotal = Math.max(tokenTotal ?? 0, number);
@@ -206,13 +246,14 @@
       counters.tokens = { input: tokenInput, output: tokenOutput, total: tokenTotal ?? ((tokenInput ?? 0) + (tokenOutput ?? 0)) };
     }
     const normalizedBuckets = Array.from(buckets.values());
-    if (!normalizedBuckets.length && !Object.keys(counters).length) return null;
+    if (!normalizedBuckets.length && !Object.keys(counters).length && !Object.keys(balances).length) return null;
     return {
       provider: "openai",
       observedAt: Date.now(),
       sourcePath,
       buckets: normalizedBuckets,
       counters,
+      balances,
       maxUtilizationPct: normalizedBuckets.length ? Math.max(...normalizedBuckets.map(item => item.pct)) : null,
     };
   }
@@ -248,6 +289,35 @@
     return Number.isFinite(length) && length >= 0 && length <= MAX_JSON_BYTES;
   }
 
+  async function readBoundedText(response) {
+    if (!response?.body?.getReader) {
+      const text = await response.text();
+      return typeof text === "string" && text.length <= MAX_JSON_BYTES ? text : null;
+    }
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    const chunks = [];
+    let total = 0;
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        total += value?.byteLength || 0;
+        if (total > MAX_JSON_BYTES) {
+          await reader.cancel();
+          return null;
+        }
+        chunks.push(decoder.decode(value, { stream: true }));
+      }
+      chunks.push(decoder.decode());
+      const text = chunks.join("");
+      return text.length <= MAX_JSON_BYTES ? text : null;
+    } catch {
+      try { await reader.cancel(); } catch { /* best effort */ }
+      return null;
+    }
+  }
+
   function safeModelHeader(response) {
     for (const name of ["x-openai-model", "x-model", "openai-model"]) {
       const value = response?.headers?.get?.(name);
@@ -266,8 +336,8 @@
     const contentType = response.headers?.get?.("content-type") || "";
     if (!/json/i.test(contentType)) return;
     try {
-      const text = await response.text();
-      if (text.length > MAX_JSON_BYTES) return;
+      const text = await readBoundedText(response);
+      if (!text) return;
       emitNormalizedUsage(JSON.parse(text), safePath(requestUrl));
     } catch { /* changed or unreadable response shape */ }
   }

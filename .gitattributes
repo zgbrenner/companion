@@ -1,0 +1,6 @@
+# Keep shell entry points executable by Bash after a Windows checkout.
+*.sh text eol=lf
+
+# Keep GitHub Actions workflow syntax stable across Windows and Linux.
+.github/workflows/*.yml text eol=lf
+.github/workflows/*.yaml text eol=lf

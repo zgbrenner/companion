@@ -34,6 +34,7 @@ try {
             credit_limit: 100,
             resets_at: new Date(Date.now() + 3600e3).toISOString(),
           },
+          credits: { balance: "0", unlimited: false },
         }),
       });
       return;
@@ -136,6 +137,7 @@ try {
     throw new Error(`native usage did not reach widget; diagnostic=${JSON.stringify({ ...bridgeDiagnostic, finalState })}; widget=${JSON.stringify(widgetText)}; ${error}`);
   }
   const afterNativeUsage = await page.evaluate(() => document.querySelector("#cuc-openai-widget")?.shadowRoot?.textContent || "");
+  assert(afterNativeUsage.includes("Credits balance") && afterNativeUsage.includes("0 credits"), "widget renders the native credit balance separately from usage");
   assert(!afterNativeUsage.includes("Browser Fixture"), "profile names never reach the widget");
   assert(!afterNativeUsage.includes("fixture@example.com"), "profile emails never reach the widget");
   assert(!afterNativeUsage.includes("browser-secret"), "usage URL query values never reach the widget");

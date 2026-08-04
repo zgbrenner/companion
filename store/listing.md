@@ -25,7 +25,7 @@ Chrome Web Store descriptions are plain text. Paste the text inside the block be
 ```
 COMPANION is a private, local usage and efficiency layer for Claude and ChatGPT.
 
-It docks beneath the active chat composer, follows the page theme, and automatically adapts to Claude, ChatGPT Chat, ChatGPT Work, and Codex-aware web surfaces. There is no second extension to install and no provider switch to manage.
+It docks beneath the active chat composer, follows the page theme, and automatically adapts to Claude, ChatGPT Chat, and ChatGPT Work. Narrow legacy Codex route compatibility is retained when such a route appears. There is no second extension to install and no provider switch to manage.
 
 NATIVE NUMBERS OR NOTHING
 
@@ -62,9 +62,9 @@ SUPPORTED SURFACES
 ▪ Claude.ai
 ▪ ChatGPT Chat
 ▪ ChatGPT Work
-▪ Codex-aware routes and shared agentic usage exposed on ChatGPT web
+▪ ChatGPT Work and shared agentic usage exposed on ChatGPT web
 
-The standalone native Codex desktop shell is not a Chrome extension host, so COMPANION cannot inject into that desktop application. It supports Codex-aware web surfaces and native numeric data that OpenAI exposes through ChatGPT web.
+The standalone native Codex desktop shell is not a Chrome extension host, so COMPANION cannot inject into that desktop application. ChatGPT Chat and Work are supported on the web; legacy Codex route detection is retained only when such a route appears.
 
 COMPANION is an independent, unofficial project. It is not affiliated with, endorsed by, sponsored by, or produced by Anthropic or OpenAI. Claude, ChatGPT, Work, and Codex are trademarks of their respective owners.
 ```
