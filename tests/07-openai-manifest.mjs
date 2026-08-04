@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { EXT_PATH, assert } from "./lib.mjs";
 
 const manifest = JSON.parse(readFileSync(join(EXT_PATH, "manifest.json"), "utf8"));
-assert(manifest.version === "1.2.0", `expected version 1.2.0, got ${manifest.version}`);
+assert(/^\d+\.\d+\.\d+$/.test(manifest.version), `expected a semantic version, got ${manifest.version}`);
 assert(manifest.background?.service_worker === "src/service-worker.js", "composite service worker is configured");
 assert(manifest.action?.default_popup === "src/popup-router.html", "provider-aware popup router is configured");
 

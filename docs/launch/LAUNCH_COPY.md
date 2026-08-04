@@ -1,4 +1,4 @@
-# COMPANION v1.2.0 Launch Copy
+# COMPANION v1.3.0 Launch Copy
 
 Replace `[CHROME WEB STORE URL]` and `[GITHUB URL]` only after those destinations are public and working.
 
@@ -42,7 +42,7 @@ Private usage and efficiency tools for Claude and ChatGPT
 
 ### Short description
 
-COMPANION automatically adapts to Claude, ChatGPT Chat, Work, and Codex-aware web surfaces. It shows native numeric usage when providers expose it, warns before trustworthy limits run hot, trims prompts locally with your approval, and converts files to Markdown in a no-network sandbox. No account, analytics, telemetry, or developer backend.
+COMPANION automatically adapts to Claude, ChatGPT Chat, and ChatGPT Work, with narrow legacy Codex route compatibility when such a route appears. It shows native numeric usage when providers expose it, warns before trustworthy limits run hot, trims prompts locally with your approval, and converts files to Markdown in a no-network sandbox. No account, analytics, telemetry, or developer backend.
 
 ### Topics
 
@@ -67,7 +67,7 @@ On Claude, it shows the usage and limit data Claude exposes to the signed-in acc
 
 It also includes a local Caveman Mode for concise replies, a conservative prompt-trimming preview, and sandboxed file-to-Markdown conversion. Prompts, replies, files, and raw OpenAI account responses are not sent to me. There is no COMPANION server, analytics, or telemetry.
 
-The project supports Claude, ChatGPT Chat, ChatGPT Work, and Codex-aware web routes. The standalone native Codex desktop app cannot host a Chrome extension, so that boundary is stated clearly.
+The project supports Claude, ChatGPT Chat, and ChatGPT Work on the web. Narrow legacy Codex route compatibility is retained when such a route appears; the standalone native Codex desktop app cannot host a Chrome extension, so that boundary is stated clearly.
 
 I would especially value feedback on three things:
 
@@ -117,7 +117,7 @@ A few implementation details that may be interesting here:
 - locally bundled fonts and parsers
 - unminified source and a Chromium regression suite
 
-It supports Claude, ChatGPT Chat, Work, and Codex-aware web routes. A Chrome extension cannot inject into the standalone native Codex desktop shell, so it does not claim to.
+It supports Claude, ChatGPT Chat, and Work on the web. A Chrome extension cannot inject into the standalone native Codex desktop shell, so it does not claim to; narrow legacy route compatibility is only conditional on such a web route appearing.
 
 Install: [CHROME WEB STORE URL]
 Source: [GITHUB URL]
@@ -152,7 +152,7 @@ I originally built COMPANION because Claude’s usage information was useful but
 
 It docks under the Claude composer and shows the native spend and limit data the account exposes: session and weekly limits, Opus usage, reset times, exact usage-credit spend, local history, and optional warnings before a limit runs hot.
 
-The new v1.2 release also works on ChatGPT Chat, Work, and Codex-aware web routes, so the local prompt-trimming and file-to-Markdown tools can follow the same workflow. OpenAI usage rows only appear when OpenAI exposes supported numeric data. It does not estimate missing quotas.
+The new v1.3 release also works on ChatGPT Chat and Work, so the local prompt-trimming and file-to-Markdown tools can follow the same workflow. OpenAI usage rows only appear when OpenAI exposes supported numeric data. It does not estimate missing quotas.
 
 Privacy was the main constraint: no backend, analytics, telemetry, prompt storage, or raw OpenAI response storage. File conversion runs locally in a no-network sandbox.
 
@@ -173,7 +173,7 @@ I built a privacy-first ChatGPT companion that refuses to invent usage numbers
 **Body**
 
 ```
-I have been working on COMPANION, a local Chrome extension for ChatGPT Chat, Work, Codex-aware web routes, and Claude.
+I have been working on COMPANION, a local Chrome extension for ChatGPT Chat, Work, and Claude, with narrow compatibility handling for legacy Codex web routes.
 
 The ChatGPT integration follows a strict rule: it renders only numeric usage, quota, credit, limit, reset, or token fields that OpenAI actually exposes in first-party page responses. Raw account responses stay in the page, and an account with no supported counter gets an honest empty state instead of a token-based guess.
 
@@ -256,7 +256,7 @@ I built COMPANION: one private usage and efficiency layer for Claude and ChatGPT
 ```
 Introducing COMPANION v1.2.
 
-One local Chrome extension for Claude, ChatGPT Chat, Work, and Codex-aware web surfaces.
+One local Chrome extension for Claude, ChatGPT Chat, and Work, with narrow compatibility handling for legacy Codex web routes.
 
 The rule: native numbers or nothing.
 ```
@@ -315,7 +315,7 @@ On Claude, it displays the native usage and limit information available to the s
 
 It also includes local tools for concise replies, conservative prompt trimming, and file-to-Markdown conversion. There is no COMPANION account, backend, analytics, or telemetry. Prompts and replies are not stored, raw OpenAI account responses stay inside the page, and file parsing runs in a no-network sandbox.
 
-It supports Claude, ChatGPT Chat, ChatGPT Work, and Codex-aware web routes. The standalone native Codex desktop application is outside the scope of a Chrome extension, and the product says that clearly.
+It supports Claude, ChatGPT Chat, and ChatGPT Work on the web. The standalone native Codex desktop application is outside the scope of a Chrome extension, and the product says that clearly.
 
 Install: [CHROME WEB STORE URL]
 Source and security documentation: [GITHUB URL]

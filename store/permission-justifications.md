@@ -60,7 +60,7 @@ Applies to:
 - `https://chat.openai.com/*`
 
 ```
-Required to run COMPANION's ChatGPT widget, local Caveman tools, popup routing, and page-world observer on supported Chat, Work, and Codex-aware web routes. The observer passively inspects only first-party responses whose pathname suggests usage or limit data. Raw responses remain in the page world; only bounded normalized numeric fields and a query-free pathname cross into the extension. COMPANION does not create account or billing requests and cannot modify the user's OpenAI account or conversations.
+Required to run COMPANION's ChatGPT widget, local Caveman tools, popup routing, and page-world observer on supported Chat and Work web routes. Narrow legacy Codex route detection remains for compatibility when such a route appears. The observer passively inspects only first-party responses whose pathname suggests usage or limit data. Raw responses remain in the page world; only bounded normalized numeric fields and a query-free pathname cross into the extension. COMPANION does not create account or billing requests and cannot modify the user's OpenAI account or conversations.
 ```
 
 ## Remote code

@@ -2,6 +2,7 @@
   const CUC = globalThis.ClaudeUsageCompanion;
   const CAVEMAN = globalThis.ClaudeUsageCompanionCaveman;
   const PLATFORM = globalThis.CompanionPlatform;
+  const FRESHNESS = globalThis.CompanionOpenAIFreshness;
   if (!CUC || !CAVEMAN || !PLATFORM) return;
 
   const USAGE_KEY = "cuc:openai-usage";
@@ -11,8 +12,11 @@
   const DROPZONE_DEFAULT = "Pick a file and convert it to lean Markdown locally";
   const CONVERTIBLE_EXTENSIONS = new Set(["pdf", "docx", "pptx", "xlsx", "odt", "odp", "ods", "rtf", "csv", "html", "htm", "md", "txt"]);
   const MAX_TEXT_CHARS = 800_000;
+  const MAX_VALUE = 1_000_000_000;
   const OPENAI_BUCKETS = new Set(["agentic", "five-hour", "daily", "seven-day", "monthly"]);
-  const sessionFallbackKey = `new:${crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
+  const newConversationKey = () => `new:${crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
+  let sessionFallbackKey = newConversationKey();
+  let fallbackRouteSignature = "";
   const eventToken = crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
   let settings = { ...CUC.DEFAULT_SETTINGS };
@@ -66,14 +70,17 @@
       "[data-testid*='mode'][data-state='active']",
       "[data-testid*='model'][aria-selected='true']",
     ];
+    let fallback = "";
     for (const selector of selectors) {
       const elements = document.querySelectorAll(selector);
       for (const element of elements) {
         const text = String(element.innerText || element.textContent || element.getAttribute("aria-label") || "").trim();
-        if (/^(chat(?:gpt)?|work|codex)(?:\b|\s)/i.test(text)) return text;
+        if (!/\b(?:chat(?:gpt)?|work|codex)\b/i.test(text)) continue;
+        if (/\bcodex\b/i.test(text) || /\bwork\b/i.test(text)) return text;
+        fallback ||= text;
       }
     }
-    return "";
+    return fallback;
   }
 
   function detectSurface() {
@@ -111,9 +118,13 @@
     "#prompt-textarea",
     "[data-testid='composer-input']",
     "[data-testid='prompt-textarea']",
+    "[data-testid='text-input']",
     "form [contenteditable='true'][role='textbox']",
+    "form [contenteditable='true']",
     "form textarea",
     "[data-testid*='composer'] [contenteditable='true']",
+    "[aria-label*='message' i][role='textbox']",
+    "textarea[placeholder*='message' i]",
   ];
 
   function visible(element) {
@@ -140,9 +151,7 @@
   }
 
   function findComposerAnchor() {
-    const editable = EDITABLE_SELECTORS
-      .flatMap(selector => Array.from(document.querySelectorAll(selector)))
-      .find(visible);
+    const editable = findComposerEditable();
     if (!editable) return null;
     return editable.closest("form, [data-testid*='composer'], [class*='composer']") || editable.parentElement || editable;
   }
@@ -298,6 +307,15 @@
     return rows;
   }
 
+  function balanceRows() {
+    const balance = usage?.balances?.credits;
+    if (!balance || !Number.isFinite(balance.balance) || balance.balance < 0 || balance.balance > MAX_VALUE) return "";
+    const value = balance.unlimited ? "Unlimited" : `${formatNumber(balance.balance)} credits`;
+    return `<div class="cuc-openai-row cuc-openai-balance-row">
+      <div class="cuc-openai-row-head"><span class="cuc-openai-label">Credits balance</span><span class="cuc-openai-value">${escapeHtml(value)}</span></div>
+    </div>`;
+  }
+
   function renderWidget() {
     if (!widgetRoot || !widget) return;
     widget.style.display = settings.showWidget === false ? "none" : "block";
@@ -310,29 +328,49 @@
       live.dataset.active = generationActive ? "true" : "false";
     }
 
-    const rows = usageRows();
+    const freshness = FRESHNESS?.describe?.(usage?.observedAt) || {
+      state: usage ? "expired" : "missing",
+      showValues: false,
+      label: usage ? "Timestamp unavailable" : "Not observed yet",
+    };
+    const rows = freshness.showValues ? usageRows() : [];
     const rowsEl = widgetRoot.querySelector("[data-cuc-openai='rows']");
     if (rowsEl) {
-      const tokenCounter = usage?.counters?.tokens;
+      const tokenCounter = freshness.showValues ? usage?.counters?.tokens : null;
       const tokenRow = tokenCounter && Number.isFinite(tokenCounter.total)
         ? `<div class="cuc-openai-row">
             <div class="cuc-openai-row-head"><span class="cuc-openai-label">Observed tokens</span><span class="cuc-openai-value">${escapeHtml(formatNumber(tokenCounter.total, 0))}</span></div>
             <div class="cuc-openai-reset">${tokenCounter.input != null ? `${escapeHtml(formatNumber(tokenCounter.input, 0))} in` : ""}${tokenCounter.input != null && tokenCounter.output != null ? " · " : ""}${tokenCounter.output != null ? `${escapeHtml(formatNumber(tokenCounter.output, 0))} out` : ""}</div>
           </div>`
         : "";
-      rowsEl.innerHTML = rows.length || tokenRow
-        ? `${rows.map(rowHtml).join("")}${tokenRow}`
-        : `<div class="cuc-openai-empty">Waiting for native usage data from this account. COMPANION does not guess or scrape message text.</div>`;
+      const balances = freshness.showValues ? balanceRows() : "";
+      rowsEl.innerHTML = rows.length || tokenRow || balances
+        ? `${rows.map(rowHtml).join("")}${tokenRow}${balances}`
+        : freshness.state === "expired"
+          ? `<div class="cuc-openai-expired" data-cuc-openai="expired">The last native OpenAI reading is over two hours old. Use ChatGPT or Work to refresh it.</div>`
+          : `<div class="cuc-openai-empty">Waiting for native usage data from this account. COMPANION does not guess or scrape message text.</div>`;
     }
 
     const title = widgetRoot.querySelector("[data-cuc-openai='status-title']");
     const note = widgetRoot.querySelector("[data-cuc-openai='status-note']");
-    if (title) title.textContent = usage ? `${meta.label} usage is connected` : `${meta.label} is ready`;
+    if (title) {
+      title.textContent = !usage
+        ? `${meta.label} is ready`
+        : freshness.state === "stale"
+          ? `${meta.label} usage may be stale`
+          : freshness.state === "expired"
+            ? `${meta.label} usage needs refresh`
+            : `${meta.label} usage is connected`;
+    }
     if (note) {
-      note.textContent = usage
-        ? "Numbers shown here came from OpenAI's own first-party responses."
+      note.textContent = usage && freshness.showValues
+        ? freshness.state === "stale"
+          ? `${freshness.label}. Use ChatGPT or Work to refresh the native reading.`
+          : "Numbers shown here came from OpenAI's own first-party responses."
+        : usage
+          ? `${freshness.label}. COMPANION is hiding old values rather than presenting them as current.`
         : surface === "codex"
-          ? "Codex-aware web surface detected. Native desktop shells cannot host a Chrome content script."
+          ? "Legacy Codex compatibility route detected. Native desktop shells cannot host a Chrome content script."
           : "Caveman Mode and local file conversion work immediately; usage appears only when OpenAI exposes it.";
     }
 
@@ -485,7 +523,32 @@
       || document.querySelector("button[data-testid*='send']:not([disabled]), button[aria-label*='send' i]:not([disabled]), form button[type='submit']:not([disabled])");
   }
 
+  function routeSignature() {
+    try {
+      const url = new URL(location.href);
+      return `${url.origin}${url.pathname}${url.search}`;
+    } catch {
+      return String(location.href || "");
+    }
+  }
+
+  function refreshFallbackConversationKey() {
+    const signature = routeSignature();
+    if (signature !== fallbackRouteSignature) {
+      if (!PLATFORM.conversationIdFromUrl(location.href)) sessionFallbackKey = newConversationKey();
+      fallbackRouteSignature = signature;
+    }
+  }
+
+  function startNewConversationFromClick(event) {
+    const target = event.target?.closest?.("button, a, [role='button']");
+    if (!target) return;
+    const label = `${target.getAttribute("aria-label") || ""} ${target.getAttribute("data-testid") || ""} ${target.textContent || ""}`;
+    if (/\bnew\s+(?:chat|conversation)\b/i.test(label)) sessionFallbackKey = newConversationKey();
+  }
+
   function conversationKey() {
+    refreshFallbackConversationKey();
     return PLATFORM.conversationIdFromUrl(location.href) || sessionFallbackKey;
   }
 
@@ -666,23 +729,32 @@
     const counters = {};
     for (const key of ["credits", "usd", "messages"]) {
       const counter = raw.counters?.[key];
-      if (counter && Number.isFinite(counter.used) && counter.used >= 0) {
+      if (counter && Number.isFinite(counter.used) && counter.used >= 0 && counter.used <= MAX_VALUE) {
         counters[key] = {
           used: counter.used,
-          limit: Number.isFinite(counter.limit) && counter.limit > 0 ? counter.limit : null,
+          limit: Number.isFinite(counter.limit) && counter.limit > 0 && counter.limit <= MAX_VALUE ? counter.limit : null,
           resetsAt: typeof counter.resetsAt === "string" ? counter.resetsAt : null,
         };
       }
     }
-    const tokens = raw.counters?.tokens;
-    if (tokens && [tokens.input, tokens.output, tokens.total].some(Number.isFinite)) {
-      counters.tokens = {
-        input: Number.isFinite(tokens.input) ? tokens.input : null,
-        output: Number.isFinite(tokens.output) ? tokens.output : null,
-        total: Number.isFinite(tokens.total) ? tokens.total : null,
+    const balances = {};
+    for (const key of ["credits", "usd", "messages"]) {
+      const balance = raw.balances?.[key];
+      if (!balance || !Number.isFinite(balance.balance) || balance.balance < 0 || balance.balance > MAX_VALUE) continue;
+      balances[key] = {
+        balance: balance.balance,
+        unlimited: typeof balance.unlimited === "boolean" ? balance.unlimited : null,
       };
     }
-    if (!buckets.length && !Object.keys(counters).length) return null;
+    const tokens = raw.counters?.tokens;
+    if (tokens && [tokens.input, tokens.output, tokens.total].some(value => Number.isFinite(value) && value >= 0 && value <= MAX_VALUE)) {
+      counters.tokens = {
+        input: Number.isFinite(tokens.input) && tokens.input >= 0 && tokens.input <= MAX_VALUE ? tokens.input : null,
+        output: Number.isFinite(tokens.output) && tokens.output >= 0 && tokens.output <= MAX_VALUE ? tokens.output : null,
+        total: Number.isFinite(tokens.total) && tokens.total >= 0 && tokens.total <= MAX_VALUE ? tokens.total : null,
+      };
+    }
+    if (!buckets.length && !Object.keys(counters).length && !Object.keys(balances).length) return null;
     return {
       provider: "openai",
       observedAt: raw.observedAt,
@@ -690,6 +762,7 @@
       maxUtilizationPct: buckets.length ? Math.max(...buckets.map(bucket => bucket.pct)) : null,
       buckets,
       counters,
+      balances,
     };
   }
 
@@ -702,6 +775,7 @@
       maxUtilizationPct: snapshot.maxUtilizationPct,
       buckets: snapshot.buckets,
       counters: snapshot.counters,
+      balances: snapshot.balances,
     }).catch(() => {});
   }
 
@@ -741,6 +815,7 @@
     addEventListener("hashchange", schedulePlacement);
     addEventListener("resize", schedulePlacement, { passive: true });
     document.addEventListener("keydown", interceptSend, true);
+    document.addEventListener("click", startNewConversationFromClick, true);
     document.addEventListener("click", interceptSend, true);
     chrome.storage.onChanged.addListener((changes, area) => {
       if (area === "local" && changes[SETTINGS_KEY]) {
@@ -751,6 +826,7 @@
   }
 
   async function start() {
+    refreshFallbackConversationKey();
     startEventBridge();
     await loadState();
     if (document.readyState === "loading") {

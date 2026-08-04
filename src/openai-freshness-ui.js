@@ -79,7 +79,6 @@
 
   function apply() {
     scheduled = false;
-    document.documentElement?.removeAttribute("data-companion-openai-bridge");
     const host = document.getElementById(WIDGET_ID);
     const root = host?.shadowRoot;
     if (!root) return;
@@ -117,7 +116,7 @@
 
     setText(title, `${label} usage needs refresh`);
     setText(note, `${descriptor.label}. COMPANION is hiding the old values rather than presenting them as current.`);
-    const expiredHtml = `<div class="cuc-openai-expired" data-cuc-openai="expired">The last native OpenAI reading is over two hours old. Use ChatGPT, Work, or a Codex-aware web surface to refresh it.</div>`;
+    const expiredHtml = `<div class="cuc-openai-expired" data-cuc-openai="expired">The last native OpenAI reading is over two hours old. Use ChatGPT Chat or Work to refresh it.</div>`;
     if (rows && rows.innerHTML !== expiredHtml) rows.innerHTML = expiredHtml;
   }
 

@@ -4,8 +4,16 @@
   const SURFACES = {
     chat: { label: "Chat", title: "ChatGPT native usage" },
     work: { label: "Work", title: "Work agentic usage" },
-    codex: { label: "Codex", title: "Codex-aware usage" },
+    codex: { label: "Codex compatibility", title: "Legacy Codex route usage" },
   };
+  const activeSurface = (() => {
+    try {
+      const value = new URL(location.href).searchParams.get("surface");
+      return ["chat", "work", "codex"].includes(value) ? value : null;
+    } catch {
+      return null;
+    }
+  })();
   let currentSnapshot = null;
 
   function escapeHtml(value) {
@@ -45,7 +53,7 @@
 
   function render(snapshot) {
     currentSnapshot = snapshot || null;
-    const surfaceKey = ["chat", "work", "codex"].includes(snapshot?.surface) ? snapshot.surface : "chat";
+    const surfaceKey = activeSurface || (["chat", "work", "codex"].includes(snapshot?.surface) ? snapshot.surface : "chat");
     const meta = SURFACES[surfaceKey];
     document.body.dataset.surface = surfaceKey;
     document.getElementById("surface").innerHTML = `<span aria-hidden="true"></span>${meta.label}`;
@@ -67,7 +75,7 @@
     if (!snapshot) {
       title.textContent = "Watching for OpenAI data";
       note.textContent = "COMPANION shows only numeric usage that OpenAI exposes. No estimates and no message scraping.";
-      rows.innerHTML = `<div class="empty">Use Chat, Work, or a Codex-aware web surface. Usage appears here as soon as OpenAI returns a supported counter or limit.</div>`;
+      rows.innerHTML = `<div class="empty">Use ChatGPT Chat or Work. Usage appears here as soon as OpenAI returns a supported counter or limit.</div>`;
       return;
     }
 
@@ -76,7 +84,7 @@
       note.textContent = descriptor.state === "expired"
         ? "The last native reading is too old to present as current, so COMPANION is hiding it."
         : "This native usage reading has no trustworthy observation time, so COMPANION is hiding it.";
-      rows.innerHTML = `<div class="empty">Use ChatGPT, Work, or a Codex-aware web surface to collect a fresh native usage reading.</div>`;
+      rows.innerHTML = `<div class="empty">Use ChatGPT Chat or Work to collect a fresh native usage reading.</div>`;
       return;
     }
 
@@ -102,8 +110,12 @@
     const tokensHtml = tokenCounter && Number.isFinite(tokenCounter.total)
       ? `<article class="row"><div class="row-head"><span class="label">Observed tokens</span><span class="value">${escapeHtml(formatNumber(tokenCounter.total, 0))}</span></div><div class="reset">${tokenCounter.input != null ? `${escapeHtml(formatNumber(tokenCounter.input, 0))} input` : ""}${tokenCounter.input != null && tokenCounter.output != null ? " · " : ""}${tokenCounter.output != null ? `${escapeHtml(formatNumber(tokenCounter.output, 0))} output` : ""}</div></article>`
       : "";
-    rows.innerHTML = bucketHtml || tokensHtml
-      ? `${bucketHtml}${tokensHtml}`
+    const creditBalance = snapshot.balances?.credits;
+    const balanceHtml = creditBalance && Number.isFinite(creditBalance.balance)
+      ? `<article class="row"><div class="row-head"><span class="label">Credits balance</span><span class="value">${escapeHtml(creditBalance.unlimited ? "Unlimited" : `${formatNumber(creditBalance.balance)} credits`)}</span></div></article>`
+      : "";
+    rows.innerHTML = bucketHtml || tokensHtml || balanceHtml
+      ? `${bucketHtml}${tokensHtml}${balanceHtml}`
       : `<div class="empty">This response contained no supported numeric usage fields.</div>`;
   }
 

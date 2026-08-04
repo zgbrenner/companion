@@ -74,6 +74,8 @@ windowTarget.fetch = async input => {
   return new Response(JSON.stringify({
     profile: { name: "Ada Lovelace", email: "ada@example.com" },
     agentic_usage: { used_credits: 40, credit_limit: 100, resets_at: reset },
+    rate_limit: { primary_window: { used_percent: 4, reset_at: Math.floor((Date.now() + 7200e3) / 1000) } },
+    credits: { balance: "0", unlimited: false },
   }), { headers: { "content-type": "application/json", "content-length": "180" } });
 };
 
@@ -125,6 +127,8 @@ await windowTarget.fetch("https://chatgpt.com/backend-api/usage?access_token=sec
 await waitFor(() => usageEvents.length === 1, "secret channel receives one usage event");
 assert(usageEvents[0].snapshot?.buckets?.[0]?.key === "agentic", "usage event contains normalized agentic bucket");
 assert(usageEvents[0].snapshot?.sourcePath === "/backend-api/usage", "source path excludes query strings and their sensitive values");
+assert(usageEvents[0].snapshot?.buckets?.some(bucket => bucket.key === "five-hour" && bucket.resetsAt), "usage event keeps native Unix reset timestamps");
+assert(usageEvents[0].snapshot?.balances?.credits?.balance === 0, "usage event keeps native credit balance without raw account data");
 const serialized = JSON.stringify(usageEvents[0]);
 assert(!serialized.includes("Ada Lovelace"), "profile name never crosses the bridge");
 assert(!serialized.includes("ada@example.com"), "profile email never crosses the bridge");

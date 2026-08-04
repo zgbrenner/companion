@@ -1,4 +1,4 @@
-# Chrome Web Store Reviewer Test Instructions — COMPANION v1.2.0
+# Chrome Web Store Reviewer Test Instructions — COMPANION v1.3.0
 
 These instructions are written for Chrome Web Store review and can also be used for internal release testing.
 
@@ -17,7 +17,7 @@ OpenAI and Claude expose different data to different account types. The extensio
 3. Enable Developer mode.
 4. Choose **Load unpacked**.
 5. Select the extracted ZIP directory containing `manifest.json`.
-6. Confirm the extension loads as **COMPANION**, version `1.2.0`, with the Orbit C icon.
+6. Confirm the extension loads as **COMPANION**, version `1.3.0`, with the Orbit C icon.
 
 ## Basic popup test without provider data
 
@@ -57,17 +57,17 @@ Claude usage requests are read-only and same-origin. COMPANION does not modify t
 
 COMPANION does not create account, billing, quota, or usage requests to OpenAI. It passively observes first-party page responses and normalizes supported numeric fields inside the page before forwarding them to the extension.
 
-## Work and Codex-aware web test
+## ChatGPT Work and legacy route compatibility test
 
 Availability depends on the reviewer account and current ChatGPT interface.
 
-1. Navigate to ChatGPT Work or a Codex-aware web route if available.
+1. Navigate to ChatGPT Work. If a legacy Codex-aware web route is present for the account, it may be used as an additional compatibility check.
 2. Confirm COMPANION updates the surface label automatically.
 3. Confirm Work uses the restrained violet context accent.
-4. Confirm Codex-aware web state uses the graphite and indigo context accent.
+4. If the legacy route is available, confirm its compatibility state uses the graphite and indigo context accent.
 5. Confirm no manual provider or surface setting is required.
 
-The standalone native Codex desktop application is not a Chrome extension host. COMPANION supports Codex-aware web surfaces and shared agentic usage that OpenAI exposes on ChatGPT web.
+The standalone native Codex desktop application is not a Chrome extension host. COMPANION supports ChatGPT Chat and Work on the web and retains narrow legacy route compatibility.
 
 ## Caveman Mode test
 
