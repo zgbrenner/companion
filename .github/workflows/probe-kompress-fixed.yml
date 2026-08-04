@@ -1,0 +1,59 @@
+name: probe-kompress-fixed
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feat/lifejacket-mode
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install pinned dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check \
+            "optimum-onnx[onnxruntime]==0.1.0" \
+            "transformers==4.57.6" \
+            "onnx==1.22.0" \
+            "onnxruntime==1.22.1" \
+            "huggingface_hub==0.36.0"
+          python -m pip install --disable-pip-version-check torch --index-url https://download.pytorch.org/whl/cpu
+          npm install --no-save "@huggingface/transformers@4.2.0"
+      - name: Export and quantize pinned Apache-2.0 model
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/probe-kompress.py 2>&1 | tee kompress-python.log
+      - name: Load q8 graph through Transformers.js WebAssembly
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/probe-kompress.mjs 2>&1 | tee kompress-js.log
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kompress-browser-probe-fixed
+          path: |
+            kompress-probe.json
+            kompress-python.log
+            kompress-js.log
+          if-no-files-found: warn
+          retention-days: 3
