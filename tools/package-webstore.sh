@@ -1,44 +1,58 @@
 #!/usr/bin/env bash
-# Build a deterministic Chrome Web Store upload ZIP at
-# dist/companion-<version>.zip. The archive contains only manifest.json,
-# icons/, and src/ at its root.
+# Build the deterministic Chrome Web Store ZIP at dist/companion-<version>.zip.
+# Only manifest.json, icons/, and src/ are placed at the archive root.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
-if ! command -v python3 >/dev/null 2>&1; then
-  echo "error: python3 is required to build the deterministic release package" >&2
-  exit 1
-fi
+for command in python3 node; do
+  if ! command -v "$command" >/dev/null 2>&1; then
+    echo "error: $command is required to build the release package" >&2
+    exit 1
+  fi
+done
 
-if [ ! -f manifest.json ]; then
-  echo "error: manifest.json not found at repository root" >&2
-  exit 1
-fi
+for required in \
+  manifest.json \
+  package.json \
+  icons \
+  src \
+  src/models/lifejacket/onnx/model_quantized.onnx \
+  src/models/lifejacket/provenance.json \
+  src/models/lifejacket/SHA256SUMS \
+  src/vendor/lifejacket/vendor-manifest.json \
+  src/vendor/lifejacket/transformers.web.min.js \
+  src/vendor/officeparser.browser.slim.iife.js \
+  src/vendor/pdf.worker.min.mjs; do
+  if [ ! -e "$required" ]; then
+    echo "error: required release input is missing: $required" >&2
+    exit 1
+  fi
+done
 
-if [ ! -d icons ] || [ ! -d src ]; then
-  echo "error: icons/ and src/ are required" >&2
-  exit 1
-fi
+node tools/verify-lifejacket-assets.mjs # writes dist/lifejacket-assets.json
 
 VERSION="$(python3 - <<'PY'
 import json
-with open('manifest.json', encoding='utf-8') as handle:
-    manifest = json.load(handle)
+from pathlib import Path
+manifest = json.loads(Path('manifest.json').read_text(encoding='utf-8'))
+package = json.loads(Path('package.json').read_text(encoding='utf-8'))
 version = manifest.get('version')
 if not isinstance(version, str) or not version:
-    raise SystemExit('manifest version is missing')
+    raise SystemExit('error: manifest version is missing')
+if package.get('version') != version:
+    raise SystemExit(f"error: package.json version {package.get('version')!r} does not match manifest {version!r}")
 print(version)
 PY
 )"
 
 DIST_DIR="$ROOT_DIR/dist"
 ZIP_PATH="$DIST_DIR/companion-${VERSION}.zip"
+INVENTORY_PATH="$DIST_DIR/companion-${VERSION}-inventory.json"
 mkdir -p "$DIST_DIR"
-rm -f "$ZIP_PATH" "$ZIP_PATH.sha256"
+rm -f "$ZIP_PATH" "$ZIP_PATH.sha256" "$INVENTORY_PATH"
 
-# Reject common development, secret, and temporary files before packaging.
 STRAY="$(find src icons \
   \( -name '*.map' -o -name '.env*' -o -name '*.test.js' -o -name '*.spec.js' \
      -o -name '__tests__' -o -name '*.orig' -o -name '*.rej' -o -name '*.swp' \
@@ -51,24 +65,23 @@ if [ -n "$STRAY" ]; then
   exit 1
 fi
 
-# Refuse known self-update or remotely executed script patterns. Provider HTTPS
-# URLs remain valid in host permissions and connect-src; this check targets code
-# loading, not first-party data access.
 REMOTE_CODE_PATTERN="(raw\\.githubusercontent\\.com|<script[^>]+src=['\"]https?://|importScripts\\(['\"]https?://|import\\(['\"]https?://)"
+REMOTE_SCAN="$(mktemp)"
+trap 'rm -f -- "$REMOTE_SCAN"' EXIT
 if grep -RInE \
+  --exclude='transformers.web.min.js' \
   --include='*.js' --include='*.html' --include='manifest.json' \
   "$REMOTE_CODE_PATTERN" \
-  manifest.json src >/tmp/companion-remote-code-scan.txt 2>/dev/null; then
+  manifest.json src >"$REMOTE_SCAN" 2>/dev/null; then
   echo "error: possible remote-code or self-update reference found:" >&2
-  cat /tmp/companion-remote-code-scan.txt >&2
-  rm -f /tmp/companion-remote-code-scan.txt
+  cat "$REMOTE_SCAN" >&2
   exit 1
 fi
-rm -f /tmp/companion-remote-code-scan.txt
 
-python3 - "$ZIP_PATH" <<'PY'
+python3 - "$ZIP_PATH" "$INVENTORY_PATH" <<'PY'
 from __future__ import annotations
 
+import hashlib
 import json
 import pathlib
 import stat
@@ -76,12 +89,12 @@ import sys
 import zipfile
 
 zip_path = pathlib.Path(sys.argv[1])
+inventory_path = pathlib.Path(sys.argv[2])
 root = pathlib.Path.cwd()
 fixed_timestamp = (2020, 1, 1, 0, 0, 0)
 
 with (root / 'manifest.json').open(encoding='utf-8') as handle:
     manifest = json.load(handle)
-
 if manifest.get('manifest_version') != 3:
     raise SystemExit('error: release package must use Manifest V3')
 if manifest.get('name') != 'COMPANION':
@@ -98,11 +111,11 @@ for entry in roots:
             raise SystemExit(f'error: symlink is not allowed in release package: {path}')
         if path.is_file():
             files.append(path)
-
 files.sort(key=lambda path: path.relative_to(root).as_posix())
 if not files:
     raise SystemExit('error: release package is empty')
 
+inventory = []
 zip_path.parent.mkdir(parents=True, exist_ok=True)
 with zipfile.ZipFile(
     zip_path,
@@ -119,6 +132,11 @@ with zipfile.ZipFile(
         info.create_system = 3
         info.external_attr = (stat.S_IFREG | 0o644) << 16
         archive.writestr(info, data, compress_type=zipfile.ZIP_DEFLATED, compresslevel=9)
+        inventory.append({
+            'path': relative,
+            'bytes': len(data),
+            'sha256': hashlib.sha256(data).hexdigest(),
+        })
 
 with zipfile.ZipFile(zip_path) as archive:
     names = archive.namelist()
@@ -143,9 +161,29 @@ with zipfile.ZipFile(zip_path) as archive:
         )
         if any(forbidden):
             raise SystemExit(f'error: forbidden release asset: {name}')
-    if 'manifest.json' not in names:
-        raise SystemExit('error: archive is missing manifest.json')
+    required_names = {
+        'manifest.json',
+        'src/models/lifejacket/onnx/model_quantized.onnx',
+        'src/models/lifejacket/provenance.json',
+        'src/models/lifejacket/SHA256SUMS',
+        'src/vendor/lifejacket/vendor-manifest.json',
+        'src/vendor/lifejacket/transformers.web.min.js',
+        'src/vendor/officeparser.browser.slim.iife.js',
+        'src/vendor/pdf.worker.min.mjs',
+    }
+    missing = sorted(required_names.difference(names))
+    if missing:
+        raise SystemExit(f"error: archive is missing required release assets: {', '.join(missing)}")
 
+inventory_document = {
+    'schema': 1,
+    'version': manifest['version'],
+    'archive': zip_path.name,
+    'fileCount': len(inventory),
+    'uncompressedBytes': sum(item['bytes'] for item in inventory),
+    'files': inventory,
+}
+inventory_path.write_text(json.dumps(inventory_document, indent=2, sort_keys=True) + '\n', encoding='utf-8')
 print(f'Built {zip_path}')
 print(f'Files: {len(files)}')
 print(f'Bytes: {zip_path.stat().st_size}')

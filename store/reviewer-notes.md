@@ -1,8 +1,8 @@
-# Chrome Web Store Reviewer Notes — COMPANION v1.3.0
+# Chrome Web Store Reviewer Notes — COMPANION v1.4.0
 
 ## Single purpose
 
-COMPANION is one local efficiency layer for supported Claude and ChatGPT web surfaces. It displays provider-reported numeric usage and limits when available, provides optional threshold warnings, offers a user-controlled local prompt-trim preview, and converts user-selected files to Markdown locally.
+COMPANION is one local efficiency layer for supported Claude and ChatGPT web surfaces. It displays provider-reported numeric usage and limits when available, provides optional threshold warnings, offers a user-controlled Lifejacket prompt-compression preview, and converts user-selected files to Markdown locally.
 
 ## Account-dependent data
 

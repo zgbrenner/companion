@@ -10,7 +10,7 @@ const mustExist = path => assert(existsSync(pathFor(path)), `${path} exists`);
 const manifest = JSON.parse(read("manifest.json"));
 const version = manifest.version;
 assert(manifest.name === "COMPANION", "release keeps the all-caps product name");
-assert(version === "1.3.0", "release version is 1.3.0");
+assert(version === "1.4.0", "release version is 1.4.0");
 
 const changelog = read("CHANGELOG.md");
 assert(changelog.includes(`### ${version}`), `changelog has a finalized ${version} section`);
@@ -30,7 +30,7 @@ assert(listing.includes("132 characters or fewer"), "store listing records the s
 assert(!listing.includes("Companion only talks to claude.ai"), "store copy does not make the stale Claude-only claim");
 
 const privacy = read("store/privacy-policy.md");
-assert(privacy.includes("Last updated: July 21, 2026"), "privacy policy date is current");
+assert(privacy.includes("Last updated: August 4, 2026"), "privacy policy date is current");
 for (const term of ["claude.ai", "chatgpt.com", "chat.openai.com", "OpenAI usage snapshot", "No analytics"]) {
   assert(privacy.includes(term), `privacy policy includes ${term}`);
 }
@@ -38,7 +38,7 @@ assert(!privacy.includes("communicates with **claude.ai only**"), "privacy polic
 
 const permissions = read("store/permission-justifications.md");
 for (const term of [
-  "### alarms",
+  "### `alarms`",
   "chatgpt.com",
   "chat.openai.com",
   "No, I am not using remote code",

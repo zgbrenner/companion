@@ -45,22 +45,22 @@ Click the toolbar icon for the popup: session spend, today, this month, a 14-day
 
 Open Settings from the widget's **⚙**, the popup's **Settings** button, or `chrome://extensions` → Details → Extension options. Everything **auto-saves** — there's no Save button; the top bar confirms "All changes saved."
 
-- **Display** — dollars/tokens/both; show or hide the widget; show or hide Caveman Mode; the model used for token estimates.
+- **Display** — dollars/tokens/both; show or hide the widget; show or hide Lifejacket Mode; the model used for token estimates.
 - **Alerts** — desktop notification when a limit runs hot (85% / 95%); plain-English pace warnings.
 - **Claude connection** — show/hide Claude's real limits; show/hide the monthly usage-credit view; a live connection-status panel (detected organization — masked, with reveal/copy — the cached monthly cap, and how long ago it was detected); "Re-detect account"; and a "How the connection works" explainer.
 - **Data & privacy** — a summary of what is and isn't stored; **Download CSV** (daily spend history, no chat text); and **Clear all local data** (a clearly separated destructive action).
 
 ---
 
-## 5. Caveman Mode (optional — stretch your quota)
+## 5. Lifejacket Mode (optional — stretch your quota)
 
-Flip the red **Caveman Mode** switch in the widget when you're running low on quota:
+Turn on **Lifejacket Mode** in Settings or in the provider panel when you're running low on quota:
 
-- **Brief replies** — Claude is asked, once per conversation, to answer in the fewest words that fully and accurately resolve your request. Turning it on in an existing chat sends the instruction as a message (your draft is preserved); in a new chat it rides on top of your first message.
-- **Prompt trimming** — when you send, a preview shows a locally-trimmed version of your prompt with the savings. Choose **Send trimmed**, edit it first, or **Send original**. Nothing is auto-sent, and trimming only deletes filler — it never rewrites your meaning or touches code, quotes, or URLs.
-- **File → Markdown** — click the drop zone to pick a PDF/DOCX/PPTX/XLSX/CSV/HTML file; it's converted to lean Markdown locally and dropped into the chat box to paste.
+- **Brief replies** — a visible concise-reply instruction is appended to the review preview. It is never hidden in a system message.
+- **Prompt compression** — when you send, the bundled Q8 model proposes a conservative local rewrite. Review, edit, **Send optimized**, **Send original**, or **Cancel**; nothing is auto-sent, and protected code, links, numbers, and requirements are preserved or the original is kept.
+- **File → Markdown** — click the drop zone to pick a PDF/DOCX/PPTX/XLSX/CSV/HTML file; it is converted to lean Markdown locally and inserted into the draft.
 
-Don't want the feature at all? Turn off **Show Caveman Mode in the widget** in Settings → Display.
+Each child feature can be disabled independently, or turn off **Show Lifejacket Mode** in Settings to hide the panel.
 
 ---
 

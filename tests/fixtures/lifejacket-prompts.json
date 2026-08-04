@@ -1,0 +1,103 @@
+{
+  "schema": 1,
+  "keepRatio": 0.65,
+  "thresholds": {
+    "minimumLabelAgreement": 0.97,
+    "minimumRankingOverlap": 0.90,
+    "maximumProbabilityMae": 0.12,
+    "maximumP95LatencyMs": 1200,
+    "maximumModelBytes": 41943040
+  },
+  "prompts": [
+    {
+      "id": "business-summary",
+      "category": "business",
+      "text": "Please review the attached quarterly operating summary and identify the three material changes, the likely business impact of each change, and the single most urgent decision leadership needs to make this week. Preserve every stated number and uncertainty."
+    },
+    {
+      "id": "legal-analysis",
+      "category": "legal",
+      "text": "Analyze whether the limitation-of-liability clause applies to the alleged confidentiality breach. Distinguish direct damages from consequential damages, identify the strongest counterargument, and do not invent governing law or facts that are not in the record."
+    },
+    {
+      "id": "technical-debugging",
+      "category": "software",
+      "text": "The deployment succeeds in staging but fails in production after the health check. Explain the most likely root causes in priority order, state what evidence would confirm or eliminate each cause, and give the safest rollback sequence without rewriting unrelated services."
+    },
+    {
+      "id": "research-synthesis",
+      "category": "research",
+      "text": "Synthesize the competing explanations in these papers, separate findings supported by replicated evidence from unresolved claims, and flag where the authors are using the same underlying dataset so their results should not be counted as independent confirmation."
+    },
+    {
+      "id": "project-plan",
+      "category": "planning",
+      "text": "Turn these notes into an implementation plan with dependencies, owners, acceptance criteria, and failure modes. Put irreversible work after the validation checkpoint and keep the first deploy small enough to roll back in under fifteen minutes."
+    },
+    {
+      "id": "data-quality",
+      "category": "analytics",
+      "text": "Inspect the customer export for duplicate identifiers, impossible dates, category drift, and missing values that could bias the retention analysis. Explain which rows should be corrected, excluded, or escalated instead of silently imputing them."
+    },
+    {
+      "id": "email-draft",
+      "category": "writing",
+      "text": "Draft a direct but respectful email explaining that the requested launch date is not credible because security review, migration testing, and customer communications are incomplete. Propose the earliest defensible date and list the conditions required to keep it."
+    },
+    {
+      "id": "medical-caution",
+      "category": "health",
+      "text": "Explain the common and serious reasons someone might have sudden shortness of breath, make clear which warning signs require emergency care, and avoid presenting general educational information as a diagnosis for a specific person."
+    },
+    {
+      "id": "finance-caution",
+      "category": "finance",
+      "text": "Compare these debt payoff options using the stated balances, annual percentage rates, minimum payments, and transfer fees. Show the assumptions and do not treat a promotional rate as permanent after its expiration date."
+    },
+    {
+      "id": "quoted-requirement",
+      "category": "protected-content",
+      "text": "Rewrite the explanation around this exact requirement without changing it: \"The service shall retain audit records for seven years.\" Keep ticket SEC-1842 and the date 2026-09-01 unchanged."
+    },
+    {
+      "id": "url-and-email",
+      "category": "protected-content",
+      "text": "Summarize the incident report at https://status.example.com/incidents/INC-482 and prepare the follow-up for security@example.com. Preserve the URL, email address, incident identifier, and all timestamps exactly."
+    },
+    {
+      "id": "code-context",
+      "category": "software",
+      "text": "Explain why `validateSender(message, sender)` rejects requests from a subframe, then propose a test that proves a forged extension identifier cannot reach the offscreen compression handler. Do not alter the code sample or security boundary names."
+    },
+    {
+      "id": "structured-request",
+      "category": "structured",
+      "text": "From the following status values, report only failures and anomalies while preserving identifiers: JOB-100=ok, JOB-101=ok, JOB-102=timeout, JOB-103=ok, JOB-104=checksum_mismatch, JOB-105=ok."
+    },
+    {
+      "id": "spanish",
+      "category": "multilingual",
+      "text": "Resume los puntos principales del contrato, identifica las obligaciones que siguen vigentes después de la terminación y conserva exactamente todas las fechas, cantidades y nombres propios."
+    },
+    {
+      "id": "french",
+      "category": "multilingual",
+      "text": "Résume les risques principaux du projet, distingue les faits vérifiés des hypothèses et conserve exactement les dates, les montants et les références de dossier."
+    },
+    {
+      "id": "chinese-fallback",
+      "category": "multilingual",
+      "text": "请总结这份报告的关键结论，区分已证实的事实与尚未验证的假设，并完整保留所有日期、金额和文件编号。"
+    },
+    {
+      "id": "long-context",
+      "category": "long-form",
+      "text": "The team completed the database migration rehearsal, verified backups, documented the rollback steps, and resolved the two blocking schema conflicts. The production change is still waiting on the final access review and the customer notification. Summarize what is complete, what remains, who must act next, and which conditions would require postponing the release. Avoid repeating background details that do not change the decision."
+    },
+    {
+      "id": "adversarial-instruction",
+      "category": "safety",
+      "text": "Compress this request without deleting negation: do not publish the package, do not expose credentials, and do not merge the pull request unless every required check has passed and the release artifact hash matches the audited build."
+    }
+  ]
+}

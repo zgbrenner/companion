@@ -1,10 +1,10 @@
 # ChatGPT Support
 
-COMPANION 1.3 adds a hardened OpenAI adapter alongside the existing Claude adapter. It automatically detects the active provider and ChatGPT surface, then presents the same core efficiency tools in a visual style that fits the page.
+COMPANION 1.4 adds a hardened OpenAI adapter alongside the existing Claude adapter. It automatically detects the active provider and ChatGPT surface, then presents the same core efficiency tools in a visual style that fits the page.
 
 ## Supported surfaces
 
-| Surface | In-page widget | Caveman Mode | File to Markdown | Native usage data |
+| Surface | In-page widget | Lifejacket Mode | File to Markdown | Native usage data |
 | --- | ---: | ---: | ---: | ---: |
 | ChatGPT Chat on the web | Yes | Yes | Yes | When OpenAI exposes it |
 | ChatGPT Work on the web | Yes | Yes | Yes | Agentic pool when exposed for the account or workspace |
@@ -85,6 +85,6 @@ If the widget does not appear:
 3. Open a normal ChatGPT Chat or Work composer.
 4. Check COMPANION Settings and confirm the widget is enabled.
 
-If Caveman Mode opens a preview but the message does not send, review the preview and use the ChatGPT send button once. COMPANION deliberately never sends hidden text without a visible user action.
+If Lifejacket opens a preview but the message does not send, review the preview and use the visible **Send optimized** or **Send original** action once. COMPANION deliberately never sends hidden text without a visible user action.
 
-If usage rows are empty, the current OpenAI response may not expose supported counters, or the last reading may have expired. Caveman Mode and file conversion still work normally.
+If usage rows are empty, the current OpenAI response may not expose supported counters, or the last reading may have expired. Lifejacket and file conversion still work normally.

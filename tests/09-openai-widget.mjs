@@ -1,5 +1,5 @@
 // ChatGPT integration harness: intercepted first-party page with a realistic
-// composer, native usage response, surface switching, dark mode, safe Caveman
+// composer, native usage response, surface switching, dark mode, Lifejacket
 // preview behavior, and a page-world attempt to steal the old bridge token.
 import { launchExtension, assert } from "./lib.mjs";
 
@@ -10,13 +10,20 @@ try {
     // seeding this test. Otherwise the install task can race and overwrite the
     // fixture between storage.set() and the ChatGPT content script's loadState().
     await new Promise(resolve => setTimeout(resolve, 300));
-    const desired = { cavemanMode: true, showCavemanMode: true, showWidget: true };
+    const desired = {
+      lifejacketMode: true,
+      showLifejacketMode: true,
+      lifejacketPromptCompression: false,
+      lifejacketReplyBrevity: true,
+      lifejacketFileConversion: true,
+      showWidget: true,
+    };
     const deadline = Date.now() + 2000;
     while (Date.now() < deadline) {
       await chrome.storage.local.set({ "cuc:settings": desired });
       await new Promise(resolve => setTimeout(resolve, 50));
       const stored = await chrome.storage.local.get(["cuc:settings"]);
-      if (stored["cuc:settings"]?.cavemanMode === true) return;
+      if (stored["cuc:settings"]?.lifejacketMode === true) return;
     }
     throw new Error("could not seed stable ChatGPT settings fixture");
   });
@@ -156,16 +163,17 @@ try {
   });
   await page.waitForFunction(() => document.querySelector("#cuc-openai-widget")?.classList.contains("cuc-openai-dark"), undefined, { timeout: 10000 });
 
-  await page.waitForFunction(() => document.querySelector("#cuc-openai-widget")?.shadowRoot
-    ?.querySelector("[data-cuc-openai-action='caveman-toggle']")?.getAttribute("aria-checked") === "true", undefined, { timeout: 10000 });
+  await page.waitForSelector("#cuc-lifejacket");
+  await page.waitForFunction(() => document.querySelector("#cuc-lifejacket")?.shadowRoot
+    ?.querySelector("[data-lifejacket-setting='lifejacketMode']")?.getAttribute("aria-checked") === "true", undefined, { timeout: 10000 });
   await page.locator("#prompt-textarea").fill("Could you please basically summarize this very long request?");
   await page.locator("#prompt-textarea").press("Enter");
   await page.waitForFunction(() => {
-    const root = document.querySelector("#cuc-openai-widget")?.shadowRoot;
-    return !root?.querySelector("[data-cuc-openai='trim-dialog']")?.hasAttribute("hidden");
+    const root = document.querySelector("#cuc-lifejacket")?.shadowRoot;
+    return !root?.querySelector("[data-lifejacket='preview-dialog']")?.hasAttribute("hidden");
   }, undefined, { timeout: 10000 });
-  const preview = await page.evaluate(() => document.querySelector("#cuc-openai-widget")?.shadowRoot?.querySelector("[data-cuc-openai='trim-text']")?.value || "");
-  assert(preview.length > 0 && preview.length < "Could you please basically summarize this very long request?".length, "Caveman preview offers a shorter prompt after a real Enter keypress");
+  const preview = await page.evaluate(() => document.querySelector("#cuc-lifejacket")?.shadowRoot?.querySelector("[data-lifejacket='preview-text']")?.value || "");
+  assert(preview.includes("Reply briefly.") && preview.length > "Could you please basically summarize this very long request?".length, "Lifejacket preview appends its visible brevity instruction after a real Enter keypress");
   assert(errors.length === 0, `ChatGPT harness errors: ${errors.join(" | ")}`);
 
   await page.close();

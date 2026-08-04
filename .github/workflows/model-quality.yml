@@ -1,0 +1,71 @@
+name: model-quality
+
+on:
+  pull_request:
+    paths:
+      - "package-lock.json"
+      - "requirements-lifejacket-build.txt"
+      - "src/lifejacket-*.js"
+      - "tools/build-lifejacket-model.py"
+      - "tools/evaluate-lifejacket-model.py"
+      - "tools/vendor-lifejacket-runtime.mjs"
+      - "tools/verify-lifejacket-assets.mjs"
+      - "tests/fixtures/lifejacket-prompts.json"
+      - ".github/workflows/model-quality.yml"
+  schedule:
+    - cron: "17 9 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: model-quality-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fidelity-and-latency:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build pinned Q8 Lifejacket assets
+        id: build
+        uses: ./.github/actions/build-extension
+        with:
+          run-tests: "false"
+          build-package: "false"
+          install-chromium: "false"
+
+      - name: Compare Q8 model with pinned FP32 source
+        shell: bash
+        run: |
+          set -o pipefail
+          python3 tools/evaluate-lifejacket-model.py 2>&1 | tee lifejacket-model-quality.log
+
+      - name: Upload model quality and latency evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lifejacket-model-quality-${{ github.run_id }}
+          path: |
+            dist/lifejacket-model-quality.json
+            dist/lifejacket-model-quality.md
+            dist/lifejacket-assets.json
+            lifejacket-model-quality.log
+            src/models/lifejacket/provenance.json
+            src/models/lifejacket/SHA256SUMS
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Publish model gate summary
+        if: always()
+        shell: bash
+        run: |
+          if [ -f dist/lifejacket-model-quality.md ]; then
+            cat dist/lifejacket-model-quality.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "## Lifejacket model quality" >> "$GITHUB_STEP_SUMMARY"
+            echo "The evaluator did not produce a report." >> "$GITHUB_STEP_SUMMARY"
+          fi

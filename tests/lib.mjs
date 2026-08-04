@@ -15,10 +15,16 @@ export async function launchExtension() {
   const profile = mkdtempSync(join(tmpdir(), "cuc-test-"));
   const options = {
     headless: true,
+    // Playwright adds --disable-extensions to its defaults. Ignore those
+    // defaults so the explicit MV3 load flags are honored.
+    ignoreDefaultArgs: true,
     args: [
       "--headless=new",
+      "--no-sandbox",
       `--disable-extensions-except=${EXT_PATH}`,
       `--load-extension=${EXT_PATH}`,
+      `--user-data-dir=${profile}`,
+      "--remote-debugging-pipe",
     ],
   };
   if (process.env.CHROMIUM_BIN) {
@@ -32,8 +38,20 @@ export async function launchExtension() {
     options.channel = "chromium";
   }
   const context = await chromium.launchPersistentContext(profile, options);
-  let [worker] = context.serviceWorkers();
-  if (!worker) worker = await context.waitForEvent("serviceworker", { timeout: 15000 });
+  const isCompanionWorker = candidate => {
+    try {
+      return new URL(candidate.url()).pathname.endsWith("/src/service-worker.js");
+    } catch {
+      return false;
+    }
+  };
+  let worker = context.serviceWorkers().find(isCompanionWorker);
+  if (!worker) {
+    worker = await context.waitForEvent("serviceworker", {
+      predicate: isCompanionWorker,
+      timeout: 15000,
+    });
+  }
   // chrome.* bindings can lag the worker's appearance under CDP.
   for (let i = 0; i < 50; i += 1) {
     const ready = await worker
@@ -41,6 +59,17 @@ export async function launchExtension() {
       .catch(() => false);
     if (ready) break;
     await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  // A fresh profile may still be finishing the install handler, which seeds
+  // the settings object. Wait for that one-time write before a test mutates
+  // settings, otherwise the install default can race and overwrite it.
+  for (let i = 0; i < 50; i += 1) {
+    const initialized = await worker.evaluate(async () => {
+      const stored = await chrome.storage.local.get("cuc:settings");
+      return !!stored["cuc:settings"];
+    }).catch(() => false);
+    if (initialized) break;
+    await new Promise(resolve => setTimeout(resolve, 20));
   }
   const extensionId = new URL(worker.url()).host;
   return { context, worker, extensionId };

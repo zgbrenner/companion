@@ -1,0 +1,23 @@
+{
+  "name": "companion-extension",
+  "version": "1.4.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "test": "node tests/run.mjs",
+    "test:lifejacket": "node tests/19-lifejacket-core.mjs && node tests/20-lifejacket-assets.mjs",
+    "vendor:lifejacket": "node tools/vendor-lifejacket-runtime.mjs",
+    "model:lifejacket": "python3 tools/build-lifejacket-model.py",
+    "verify:lifejacket": "node tools/verify-lifejacket-assets.mjs",
+    "build:lifejacket": "node tools/vendor-lifejacket-runtime.mjs && python3 tools/build-lifejacket-model.py && node tools/verify-lifejacket-assets.mjs",
+    "package:webstore": "bash tools/package-webstore.sh",
+    "build:extension": "npm run build:lifejacket && node tests/run.mjs && bash tools/package-webstore.sh"
+  },
+  "devDependencies": {
+    "axe-core": "4.12.1",
+    "playwright": "1.61.1"
+  }
+}

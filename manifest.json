@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
   "name": "COMPANION",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "minimum_chrome_version": "111",
-  "description": "COMPANION is a private, local usage and efficiency layer for Claude and ChatGPT Chat and Work web surfaces.",
+  "description": "Private Claude and ChatGPT usage tools with local Lifejacket prompt compression and file-to-Markdown conversion.",
   "permissions": [
     "storage",
     "activeTab",
@@ -19,7 +19,7 @@
     "https://chat.openai.com/*"
   ],
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'none'; base-uri 'none'; connect-src 'self' https://claude.ai https://*.claude.ai https://chatgpt.com https://*.chatgpt.com https://chat.openai.com; img-src 'self' data:; style-src 'self' 'unsafe-inline';",
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; object-src 'none'; base-uri 'none'; connect-src 'self' https://claude.ai https://*.claude.ai https://chatgpt.com https://*.chatgpt.com https://chat.openai.com; img-src 'self' data:; style-src 'self' 'unsafe-inline';",
     "sandbox": "sandbox allow-scripts; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' blob:; worker-src blob:; child-src blob:; connect-src blob: data:; object-src 'none'; base-uri 'none';"
   },
   "sandbox": {
@@ -39,9 +39,11 @@
       ],
       "js": [
         "src/shared.js",
+        "src/lifejacket-settings.js",
+        "src/lifejacket-core.js",
         "src/native-usage.js",
-        "src/caveman.js",
-        "src/content.js"
+        "src/content.js",
+        "src/lifejacket-content.js"
       ],
       "css": [
         "src/brand-fonts.css",
@@ -68,12 +70,14 @@
       ],
       "js": [
         "src/shared.js",
-        "src/caveman.js",
+        "src/lifejacket-settings.js",
+        "src/lifejacket-core.js",
         "src/platform.js",
         "src/openai-freshness.js",
         "src/openai-channel.js",
         "src/openai-content.js",
-        "src/openai-freshness-ui.js"
+        "src/openai-freshness-ui.js",
+        "src/lifejacket-content.js"
       ],
       "run_at": "document_start",
       "css": [
@@ -98,7 +102,8 @@
       "resources": [
         "src/widget.css",
         "src/fonts/league-spartan-bold.woff2",
-        "src/fonts/atkinson-hyperlegible-next-variable.woff2"
+        "src/fonts/atkinson-hyperlegible-next-variable.woff2",
+        "src/lifejacket.css"
       ],
       "matches": [
         "https://claude.ai/*",
@@ -109,7 +114,8 @@
       "resources": [
         "src/openai-widget.css",
         "src/fonts/league-spartan-bold.woff2",
-        "src/fonts/atkinson-hyperlegible-next-variable.woff2"
+        "src/fonts/atkinson-hyperlegible-next-variable.woff2",
+        "src/lifejacket.css"
       ],
       "matches": [
         "https://chatgpt.com/*",
@@ -134,5 +140,5 @@
     },
     "default_popup": "src/popup-router.html"
   },
-  "options_page": "src/options.html"
+  "options_page": "src/options-lifejacket.html"
 }

@@ -292,9 +292,9 @@ def main() -> None:
     brand(base, 62, 50, 54, 27, subtitle="Local efficiency tools")
     draw.text((62, 150), "FINISH MORE WORK", font=face(52, 800), fill=SOFT)
     draw.text((62, 210), "BEFORE THE LIMIT.", font=face(52, 800), fill=SOFT)
-    wrapped(draw, (66, 294), "Caveman Mode stays visible and user-controlled. Nothing is silently sent, and selected files are parsed in a no-network sandbox.", face(21), "#B8C5D4", 500, 8, 5)
+    wrapped(draw, (66, 294), "Lifejacket Mode stays visible and user-controlled. Nothing is silently sent, and selected files are parsed in a no-network sandbox.", face(21), "#B8C5D4", 500, 8, 5)
     y = 470
-    for number, title, body in (("1", "Concise replies", "Preserve important facts, steps, and caveats."), ("2", "Prompt preview", "Use the trim, edit it, send the original, or cancel."), ("3", "File → Markdown", "PDF and Office conversion stays on-device.")):
+    for number, title, body in (("1", "Shorter answers", "Preserve important facts, steps, and caveats."), ("2", "Prompt preview", "Review optimized text, send original, or cancel."), ("3", "File to Markdown", "PDF and Office conversion stays on-device.")):
         draw.rounded_rectangle((62, y, 560, y + 88), radius=20, fill="#172033", outline=SLATE, width=2)
         draw.ellipse((82, y + 20, 130, y + 68), fill=MINT_DEEP)
         number_font = face(18, 700)

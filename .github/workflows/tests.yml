@@ -4,48 +4,113 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   extension-tests:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 35
     env:
-      PLAYWRIGHT_VERSION: "1.61.1"
-      AXE_CORE_VERSION: "4.12.1"
+      REQUIRE_LIFEJACKET_ASSETS: "1"
+      REQUIRE_GENERATED_LAUNCH_ASSETS: "1"
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+
+      - name: Upload temporary source snapshot
+        uses: actions/upload-artifact@v4
         with:
-          node-version: 22
-      - name: Cache Playwright Chromium
-        uses: actions/cache@v4
+          name: companion-pr25-source
+          path: .
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Build pinned local runtime and model
+        id: build
+        uses: ./.github/actions/build-extension
         with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ env.PLAYWRIGHT_VERSION }}
-      - name: Install pinned test dependencies
-        run: |
-          npm install --no-save "playwright@${PLAYWRIGHT_VERSION}" "axe-core@${AXE_CORE_VERSION}"
-          npx playwright install --with-deps chromium
+          run-tests: "false"
+          build-package: "false"
+          install-chromium: "false"
+
+      - name: Install pinned Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Render current extension surfaces
+        run: node tests/18-brand-snapshots.mjs
+
+      - name: Generate launch and review assets
+        run: python3 tools/generate-launch-assets.py
+
       - name: Run extension test suite
         shell: bash
         run: |
-          set +e
+          set -o pipefail
           node tests/run.mjs 2>&1 | tee extension-test-output.log
-          status=${PIPESTATUS[0]}
-          exit "$status"
+
+      - name: Build deterministic Web Store package
+        run: bash tools/package-webstore.sh
+
+      - name: Verify package reproducibility
+        shell: bash
+        run: |
+          version="${{ steps.build.outputs.version }}"
+          package="dist/companion-${version}.zip"
+          first="$(sha256sum "$package" | cut -d' ' -f1)"
+          cp "$package" "/tmp/companion-first.zip"
+          bash tools/package-webstore.sh
+          second="$(sha256sum "$package" | cut -d' ' -f1)"
+          test "$first" = "$second"
+          cmp --silent "/tmp/companion-first.zip" "$package"
+          echo "Deterministic package: $second"
+
+      - name: Upload verified release candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: companion-${{ steps.build.outputs.version }}-verified
+          path: |
+            dist/companion-${{ steps.build.outputs.version }}.zip
+            dist/companion-${{ steps.build.outputs.version }}.zip.sha256
+            dist/companion-${{ steps.build.outputs.version }}-inventory.json
+            dist/lifejacket-assets.json
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Upload extension test transcript
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: extension-test-output
+          name: extension-test-output-${{ github.run_id }}
           path: extension-test-output.log
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 14
-      - name: Upload rendered brand snapshots
+
+      - name: Upload rendered browser snapshots
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: brand-snapshots
-          path: test-artifacts/brand
+          name: browser-snapshots-${{ github.run_id }}
+          path: test-artifacts
           if-no-files-found: warn
           retention-days: 14
+
+      - name: Write job summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## COMPANION verification"
+            echo
+            echo "- Version: \`${{ steps.build.outputs.version }}\`"
+            echo "- Lifejacket model: \`${{ steps.build.outputs.model_hash }}\`"
+            if [ -f "dist/companion-${{ steps.build.outputs.version }}.zip.sha256" ]; then
+              echo "- Package: \`$(cut -d' ' -f1 "dist/companion-${{ steps.build.outputs.version }}.zip.sha256")\`"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

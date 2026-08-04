@@ -2,6 +2,14 @@
 
 All notable changes to COMPANION are recorded here. The most recent release is at the top.
 
+### 1.4.0 (Lifejacket + ChatGPT release)
+
+- Merged the complete Lifejacket local prompt, reply, and file workflow with first-class ChatGPT Chat and Work support.
+- Repaired MobileBERT Q8 quantization with selective sensitive-layer preservation; the release model now passes fidelity, latency, and size gates.
+- Fixed the settings wrapper, aligned browser coverage with the shipped shadow-DOM selectors, and exercised compression through the local offscreen route.
+- Added model metadata hashes, bounded HTTPS-only runtime downloads, exclusive temporary files, bounded compression concurrency, and safer release workflow permissions.
+- Added deterministic release provenance, package/review assets, and current v1.4.0 documentation.
+
 ### 1.3.0 (ChatGPT first-class hardening)
 
 - Made ChatGPT Chat and Work web support a first-class path while retaining narrow compatibility detection for legacy Codex web routes. The standalone Codex desktop app remains outside Chrome extension injection.

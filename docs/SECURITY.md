@@ -1,47 +1,31 @@
-# Security and Privacy
+# COMPANION Security and Privacy Architecture
 
-This document describes COMPANION's security architecture, data handling, permissions, network behavior, threat model, and audit steps. COMPANION is an unofficial Manifest V3 extension for Claude.ai and ChatGPT Chat and Work web surfaces, with narrow legacy Codex route compatibility.
+**Version:** 1.4.0
+**Last updated:** August 4, 2026
 
-## Security summary
+COMPANION is a Chrome Manifest V3 extension for supported Claude and ChatGPT web surfaces. It has no developer backend, account system, analytics, telemetry, advertising, or remote code.
 
-- All first-party code ships unminified and reviewable.
-- There is no COMPANION server, analytics SDK, telemetry endpoint, remote logger, or tracker.
-- Host access is limited to exact Claude and ChatGPT HTTPS origins.
-- The extension uses `activeTab`, not the broad `tabs` permission.
-- Provider access is read-only.
-- Prompt and reply text are never persisted or transmitted by COMPANION.
-- User-selected files are converted locally in an opaque-origin sandbox with no extension API access and no network access.
-- Raw OpenAI account responses never cross from the page world into the extension.
+This document describes the trust boundaries for Claude native usage reads, OpenAI numeric usage observation, the shared toolbar badge, Lifejacket Mode, local file conversion, browser storage, and the release supply chain.
 
-## 1. Data handling
+## Security principles
 
-| Data | Read? | Stored locally? | Sent off-device by COMPANION? |
-| --- | --- | --- | --- |
-| Prompt text | Transiently, only for an optional local Caveman preview | No | No |
-| Claude or ChatGPT reply text | No | No | No |
-| User-selected file contents | Parsed locally in the conversion sandbox | No | No |
-| Claude usage numbers | Yes, from Claude's own usage endpoints | Daily history and short-lived caches | No |
-| OpenAI usage numbers | Yes, when first-party ChatGPT responses expose supported numeric fields | Latest normalized snapshot | No |
-| Raw OpenAI account response | Inspected transiently in the page world | No | No |
-| Claude organization UUID | Yes, to address the account's own usage endpoint | Cached locally for a bounded period | No |
-| Session or authentication cookies | Never read | Never | Never |
-| User settings | n/a | Yes | No |
+1. **Least privilege.** Exact provider host permissions, no `<all_urls>`, and no broad `tabs` permission.
+2. **Separate provider boundaries.** Claude and OpenAI use distinct adapters, messages, storage keys, and validation paths.
+3. **No prompt or reply storage.** Conversation text is not persisted by COMPANION.
+4. **No runtime code or model downloads.** JavaScript, WASM, tokenizer files, and Q8 weights ship inside the extension package.
+5. **Fail closed.** Unsupported usage fields are omitted; unsafe compression returns the original prompt; parser failures leave the draft unchanged.
+6. **Visible user control.** Lifejacket never silently sends a transformed prompt.
+7. **Reproducible releases.** Sources, dependencies, package contents, checksums, SBOM, and provenance are gated in CI.
 
-Local data is stored in `chrome.storage.local` and `chrome.storage.session`. Clearing COMPANION's local data removes settings, usage history, cached readings, badge ownership, and notification deduplication state.
+## Requested permissions
 
-## 2. Permissions
-
-From `manifest.json`:
-
-| Permission | Purpose |
-| --- | --- |
-| `storage` | Store settings and numeric usage history locally. |
-| `activeTab` | Let the toolbar popup inspect the currently active provider tab after the user opens the popup. |
-| `notifications` | Optional 85% and 95% limit alerts. |
-| `offscreen` | Host the privileged relay used by the sandboxed file-conversion pipeline. |
-| `alarms` | Remove an OpenAI warning badge when its native usage reading becomes more than two hours old, even if no ChatGPT tab remains open. |
-
-The alarm contains only the provider name and observation timestamp. It does not contain account, conversation, prompt, or usage payload data. COMPANION does not request the broad `tabs` permission.
+| Permission | Purpose | Boundary |
+| --- | --- | --- |
+| `storage` | Settings, bounded provider usage snapshots, Claude spend history, badge ownership, and migration state | Prompt, reply, and file contents are never stored |
+| `activeTab` | Route the popup after explicit user interaction | No persistent broad tab history |
+| `notifications` | Optional native-limit warnings | No message text in notifications |
+| `offscreen` | Run bundled Q8/WASM inference and host the local document-conversion relay | Extension-owned page with validated messages |
+| `alarms` | Expire stale usage and reconcile the shared badge | No content collection |
 
 Host permissions are limited to:
 
@@ -51,165 +35,180 @@ Host permissions are limited to:
 - `https://*.chatgpt.com/*`
 - `https://chat.openai.com/*`
 
-There is no `<all_urls>` permission.
+## Claude usage boundary
 
-## 3. Network behavior
+The Claude adapter makes read-only same-origin requests to recognized usage endpoints using the browser's existing signed-in session.
 
-### Claude
+- COMPANION does not read or store the session cookie.
+- Responses are schema-validated and reduced to recognized usage fields.
+- Unexpected keys and malformed values are ignored.
+- Claude and OpenAI state remain separate.
+- Dollar values come from Claude's own usage-credit counter.
+- Token figures are derived ranges and labeled accordingly.
 
-COMPANION issues read-only same-origin requests to Claude usage endpoints, including organization usage and the optional overage-spend limit. The browser attaches the user's existing Claude session because the request is same-origin. COMPANION never reads or stores the session cookie.
+## OpenAI page-world boundary
 
-### OpenAI
+Some first-party numeric usage data is visible only in the page's JavaScript world. COMPANION uses two scripts with different privileges:
 
-The OpenAI page observer does not create account or billing requests. It passively observes first-party ChatGPT responses whose path suggests usage, limits, quota, credits, billing, subscription, rate limits, or agentic usage.
+1. a manifest-declared `MAIN`-world observer sees first-party responses and immediately normalizes recognized bounded numeric fields;
+2. an isolated content script receives only that normalized object over a random per-page event channel.
 
-Before anything crosses the page boundary, the observer reduces the response to supported numeric fields:
+The isolated script and service worker validate extension identity, top-frame status, exact origin, message size, allowed keys, units, bucket names, ranges, timestamps, and expiry. Raw OpenAI responses and conversation text do not cross the bridge or enter extension storage.
 
-- utilization percentages
-- used and limit values
-- reset timestamps
-- supported token counters
-- a short source pathname
+## Shared badge boundary
 
-Query strings are removed from source metadata. Raw response bodies, profile fields, conversation content, and URL query values are not forwarded.
+Claude and OpenAI use separate usage adapters but one toolbar badge. A serialized badge owner records provider, level, source, and timestamp. A stale alarm or older provider update cannot clear a newer warning owned by another provider.
 
-### Third parties
+## Lifejacket Mode boundary
 
-COMPANION has no third-party runtime endpoint. Store updates are handled by the browser or by the user's unpacked-extension workflow.
+Lifejacket has a master switch and three independent child controls. New installations default to master off.
 
-## 4. Architecture and trust boundaries
+### Prompt interception
 
-```text
-Claude page world
-  injected.js observes model and generation signals
-        │ narrow authenticated events
-        ▼
-Claude isolated content script
-  UI, native usage reads, Caveman Mode
+The content script intercepts only an unmodified Enter press in a recognized visible composer or a recognized send/submit button associated with that composer.
 
-ChatGPT page world
-  openai-observer.js observes first-party usage responses
-        │ normalized JSON on random per-page event names
-        ▼
-OpenAI isolated content script
-  openai-channel.js validates channel + payload
-  openai-content.js renders UI and forwards validated numbers
+It does not intercept Shift+Enter, modified Enter, composition events, unrelated editable fields, subframes, or unsupported origins.
 
-Provider content scripts
-        │ chrome.runtime messages with sender and schema validation
-        ▼
-Service worker
-  provider backgrounds + serialized badge owner
-  local storage, bounded expiry alarm, badge, notifications
-        │
-        ▼
-Offscreen relay
-        │ bytes in / Markdown out
-        ▼
-Opaque-origin sandbox
-  office and PDF parser, no chrome.* APIs, no network
-```
+### Privileged message validation
 
-### Claude bridge
+The service worker accepts Lifejacket compression and file-conversion messages only when:
 
-The existing Claude adapter uses its own page-world observer and authenticated event contract. Claude and OpenAI message names, storage keys, and background handlers remain separate.
+- `sender.id` matches `chrome.runtime.id`;
+- `sender.frameId` is zero;
+- the sender URL is HTTPS on an allowed Claude or ChatGPT origin;
+- message type, size, file extension, and compression ratio pass validation.
 
-### OpenAI bridge
+Compression text is limited to 120,000 characters. File data is bounded before the offscreen relay receives it.
 
-At `document_start`, the isolated OpenAI script creates a random channel identifier in a temporary DOM mailbox. The MAIN-world observer reads and removes the mailbox immediately, then emits later usage and generation events on event names derived from that random identifier.
+### Local model runtime
 
-The mailbox contains no account data and exists only during startup. Later event payloads are JSON strings containing normalized numeric data. The isolated adapter rejects malformed, oversized, or unexpected payloads before forwarding anything to the background.
+Lifejacket uses a bundled MobileBERT LLMLingua-2-style token classifier:
 
-The background then validates again:
+- pinned model revision and source SHA-256;
+- dynamic per-channel QUInt8/Q8 weights with selective FP16 preservation for sensitive layers;
+- local CPU/WASM execution on one thread;
+- remote model loading disabled;
+- no remote module imports;
+- no provider API key;
+- no prompt telemetry.
 
-- extension sender identity
-- top-frame origin
-- exact trusted HTTPS host
-- allowed message keys
-- allowed surface and bucket names
-- units
-- timestamps
-- numeric ranges and size limits
+The offscreen page does not persist model input or output. It returns a candidate to the requesting content script for preview.
 
-This creates defense in depth. A page script would need the ephemeral random channel and would still have to satisfy the isolated-world and background schemas.
+### Compression safeguards
 
-### Shared toolbar badge
+Before compression, Lifejacket separates protected spans:
 
-Claude and OpenAI retain separate usage adapters, but the browser exposes one shared toolbar badge. `badge-state.js` serializes ownership updates from both providers and stores only `{provider, observedAt, alarmName}` in session storage.
+- fenced and inline code;
+- Markdown links;
+- URLs and email addresses;
+- quoted strings;
+- number-bearing tokens;
+- JSON, YAML, table, and shell-like lines;
+- negation, obligations, exceptions, and bounds.
 
-A high OpenAI reading schedules one alarm for two hours after its observation time. When the alarm fires, the badge is cleared only if that exact OpenAI snapshot still owns it. A newer Claude reading, a newer OpenAI reading, or a low reading replaces or removes ownership, so an obsolete alarm cannot clear the wrong provider's badge.
+A candidate is rejected when a protected span is missing, protected-span order changes, the candidate is empty or larger, retained non-whitespace content falls below 40%, or inference fails or times out.
 
-## 5. Content Security Policy
+The tokenizer `[UNK]` ratio is checked after model inference. A chunk with more than 20% unknown tokens remains unchanged and produces a visible warning. This avoids trusting scores computed mostly from unknown-token placeholders.
 
-Extension pages allow only packaged scripts and exact provider network destinations. Remote scripts and `eval` are not permitted in privileged extension pages.
+These controls reduce obvious semantic failures. They do not prove semantic equivalence because compression is inherently lossy.
 
-The file-conversion sandbox intentionally has a separate CSP. It permits the bundled parser and local blob worker, but has an opaque origin, no `chrome.*` access, and no HTTP, HTTPS, or WebSocket egress.
+### Review-before-send invariant
 
-## 6. Credentials and sessions
+Lifejacket always presents an editable modal with **Send optimized**, **Send original**, and **Cancel**. A failed model request fills the preview with the original prompt. No fallback path silently submits.
 
-COMPANION never reads, stores, logs, or transmits provider passwords, authentication tokens, or session cookies.
+### Reply-brevity instruction
 
-Claude usage reads are same-origin and credentialed by the browser. The only Claude identifier cached by COMPANION is the non-secret organization UUID needed to address the user's own usage endpoint.
+The optional brevity sentence is visibly appended at the end of the final preview. It is never inserted into a hidden system message or private provider payload.
 
-The OpenAI adapter does not retain request headers, cookies, query strings, or raw account responses.
+## File-to-Markdown sandbox
 
-## 7. File-conversion sandbox
+Markdown and text files are read directly by the isolated content script. Other supported formats are converted through an opaque-origin sandbox declared in `manifest.json`.
 
-Caveman Mode's file-to-Markdown feature accepts user-selected formats such as PDF, DOCX, PPTX, XLSX, CSV, HTML, text, and OpenDocument files.
+The sandbox has no `chrome.*` API access, extension-origin privileges, network access, provider-session access, or persistent storage. It receives one selected file's bytes and returns Markdown through `postMessage`. The privileged offscreen page reads the bundled parser and PDF worker, but untrusted document parsing occurs inside the sandbox.
 
-The privileged offscreen page relays bytes but does not run the third-party parser. Parsing occurs inside a manifest-declared sandbox page with:
+Limits:
 
-- opaque origin
-- no extension APIs
-- no provider-session access
-- no network egress
-- no persistent file storage
+- 20 MB selected file;
+- 800,000 inserted Markdown characters;
+- no Optical Character Recognition;
+- no extracted images.
 
-The resulting Markdown is returned to the active composer only after the user selects a file.
+## Stored data
 
-## 8. Prompt handling
+### `chrome.storage.local`
 
-Caveman Mode is local and user-controlled:
+May contain settings, Claude daily spend deltas, cached Claude account configuration, bounded OpenAI usage snapshots when session storage fallback is required, provider warning state, and migration metadata.
 
-- A fixed visible instruction requests concise replies.
-- Prompt compression is deterministic and extractive-only.
-- Protected content such as code blocks, quotes, URLs, and email addresses is not paraphrased.
-- The user reviews the preview before sending.
-- Prompt text is not written to extension storage.
+It does not contain prompt or reply text, file bytes, converted Markdown, model input/output, cookies, passwords, authentication tokens, API keys, or raw provider response payloads.
 
-## 9. Threat model
+### `chrome.storage.session`
 
-| Threat | Mitigation |
-| --- | --- |
-| Hostile page script forges usage data | Random per-page channel, temporary mailbox removed at startup, strict isolated and background validation. |
-| Raw OpenAI account data leaks into extension storage | Normalization happens in the page world; only bounded numeric snapshots cross the bridge. |
-| Sensitive URL query values are retained | Source metadata stores the pathname only. |
-| Third-party lookalike endpoint is inspected | Observer accepts exact ChatGPT HTTPS origins only. |
-| Old OpenAI alarm clears a newer Claude or OpenAI badge | Serialized badge ownership requires an exact provider and observation-time match before clearing. |
-| Stale OpenAI badge remains indefinitely | A single bounded alarm clears the badge after two hours if that snapshot still owns it. |
-| Oversized or malformed runtime message | Schema, key, unit, timestamp, numeric, and size validation. |
-| File-parser exploit | Parser is confined to an opaque-origin sandbox with no network or extension privileges. |
-| Prompt, reply, or file exfiltration | No COMPANION backend; content is not persisted or transmitted; sandbox has no network. |
-| Session-cookie theft | Cookies are never read. |
-| Account modification | Provider behavior is read-only; COMPANION issues no state-changing account request. |
-| Over-broad site access | Exact Claude and ChatGPT hosts only; no `<all_urls>` and no broad `tabs` permission. |
+May contain ephemeral session-spend state, short-lived OpenAI numeric snapshots, and transient provider data. It clears when the browser session ends.
 
-## 10. How to audit
+### Complete local reset
 
-1. Review `manifest.json` for permissions, host access, content-script worlds, CSP, and sandbox declarations.
-2. Review `src/openai-observer.js`, `src/openai-channel.js`, and `src/openai-background.js` for OpenAI normalization and validation.
-3. Review `src/injected.js`, `src/native-usage.js`, and `src/background.js` for Claude behavior.
-4. Review `src/badge-state.js` and `src/badge-router.js` for cross-provider badge ownership and expiry.
-5. Search for analytics SDKs, telemetry URLs, or remote script loading. None should exist.
-6. Search storage writes for prompt, reply, and file contents. None should exist.
-7. Run the committed Chromium suite. It checks provider isolation, native OpenAI usage rendering, query-string stripping, page-event forgery resistance, freshness, badge ownership, sandboxed conversion, and accessibility.
-8. Inspect the conversion sandbox in DevTools. Its origin is `null`, it has no `chrome` object, and its CSP forbids network egress.
+The Settings page clears local and session storage and removes the toolbar badge. Provider accounts, conversations, and server-side history are not touched.
 
-## 11. Known limitations
+## Content Security Policy
 
-- Claude and OpenAI expose internal web response shapes that can change. COMPANION fails closed by omitting unsupported usage rows rather than guessing.
-- A browser extension cannot inject into the standalone native Codex desktop shell unless that shell provides an extension-enabled browser surface.
-- When loaded unpacked, the extension is only as trustworthy as the local repository folder. Restrict write access to that folder.
-- The vendored office and PDF parser should be reviewed and updated periodically even though it runs inside the sandbox.
+Extension pages allow only bundled scripts. `wasm-unsafe-eval` is present solely because ONNX Runtime Web must compile the bundled WASM binary. It does not permit remote JavaScript.
 
-For installation and everyday use, see [QUICKSTART.md](QUICKSTART.md). For OpenAI-specific semantics, see [OPENAI_SUPPORT.md](OPENAI_SUPPORT.md). For version history, see [../CHANGELOG.md](../CHANGELOG.md).
+The extension-page policy permits scripts and workers from `'self'`, blocks blob-backed extension workers, blocks objects and foreign base URLs, restricts connections to the extension and exact provider origins, and does not include ordinary `'unsafe-eval'`. The file-conversion sandbox has its own opaque-origin policy for its isolated parser worker.
+
+The separate parser sandbox permits the minimum script/WASM capabilities required by the vendored parser while denying network access.
+
+## Runtime and model supply chain
+
+The released extension does not install or execute the npm dependency graph of Transformers.js.
+
+The build instead:
+
+1. downloads two immutable npm tarballs at pinned URLs;
+2. verifies exact SHA-512 Subresource Integrity values;
+3. checks package name, version, and declared license;
+4. extracts only the browser bundle and required ONNX Runtime WASM pair;
+5. ships reviewed Apache-2.0 and MIT notices;
+6. records file hashes in a vendor manifest.
+
+The model build:
+
+1. downloads from a pinned Hugging Face commit;
+2. validates exact source size and SHA-256;
+3. applies deterministic per-channel QUInt8 MatMul/Gemm quantization with explicitly documented FP16 preservation for sensitive weights;
+4. runs ONNX structural validation;
+5. enforces a 40 MiB model ceiling and 55 MiB generated-asset ceiling;
+6. writes provenance and `SHA256SUMS`;
+7. refuses to package the FP32 source.
+
+## CI/CD security gates
+
+Pull requests and releases use:
+
+- locked `npm ci --ignore-scripts` installation;
+- pinned Python build requirements;
+- model and runtime integrity checks;
+- complete Chromium extension tests;
+- Q8-to-FP32 label agreement, ranking overlap, probability drift, latency, and size gates;
+- deterministic ZIP reproduction;
+- CodeQL extended security queries;
+- GitHub dependency review;
+- npm and Python dependency audits;
+- Gitleaks history and diff scanning;
+- forbidden-package-surface checks;
+- CycloneDX SBOM generation;
+- GitHub artifact provenance attestations.
+
+Chrome Web Store API v2 publishing is optional and runs only in a protected GitHub environment. Authentication uses a short-lived Google service-account access token. The default path stages the package after review instead of immediately rolling it out.
+
+## Known limitations
+
+- Provider DOM and private response shapes can change.
+- Native usage fields differ by account and plan.
+- Compression is lossy and may remove context that safeguards do not recognize.
+- The MobileBERT vocabulary is not equally strong across languages and domains.
+- Browser CPU/WASM inference can be slower on low-end hardware, especially on first load.
+- Local file conversion is not a malware scanner and does not perform OCR.
+
+## Reporting a security issue
+
+Do not include cookies, credentials, private prompts, account identifiers, or unredacted provider responses in a public issue. Send reproducible security reports to `zgbrenner@gmail.com` with the extension version, browser version, affected provider, and a minimal redacted reproduction.

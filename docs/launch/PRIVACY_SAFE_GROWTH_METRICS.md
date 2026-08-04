@@ -79,7 +79,7 @@ COMPANION cannot observe private in-product activation without adding telemetry.
 | Successful first use | Voluntary tester reports and support messages |
 | Widget mounted correctly | Absence and frequency of mount-related issues by provider and browser version |
 | User understood native-data boundaries | Questions and confusion themes in reviews, issues, and launch comments |
-| Caveman Mode understood | Voluntary feedback and feature-specific issue volume |
+| Lifejacket Mode understood | Voluntary feedback and feature-specific issue volume |
 | File conversion works | Conversion bug reports by format and browser |
 | Privacy model understood | Frequency of repeated permission or data-handling questions |
 
@@ -116,7 +116,7 @@ Classify reviews and feedback into:
 - usage accuracy
 - data availability expectations
 - visual fit
-- Caveman Mode
+- Lifejacket Mode
 - file conversion
 - privacy and permissions
 - performance

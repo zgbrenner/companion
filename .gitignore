@@ -2,6 +2,11 @@ dist/
 node_modules/
 release-artifact/
 test-artifacts/
+.cache/lifejacket/
+src/models/lifejacket/*
+!src/models/lifejacket/.gitkeep
+src/models/lifejacket/onnx/
+src/vendor/lifejacket/
 __pycache__/
 *.pyc
 .DS_Store

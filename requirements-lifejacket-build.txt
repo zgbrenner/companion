@@ -1,0 +1,6 @@
+onnx==1.22.0
+onnxruntime==1.27.0
+tokenizers==0.21.4
+Pillow==12.3.0
+fonttools==4.63.0
+brotli==1.2.0

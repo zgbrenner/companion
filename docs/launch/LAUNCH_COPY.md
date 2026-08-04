@@ -1,4 +1,4 @@
-# COMPANION v1.3.0 Launch Copy
+# COMPANION v1.4.0 Launch Copy
 
 Replace `[CHROME WEB STORE URL]` and `[GITHUB URL]` only after those destinations are public and working.
 
@@ -23,7 +23,7 @@ Every post should link directly to an installable or useful destination. Do not 
 
 ### One-sentence description
 
-COMPANION is a privacy-first Chrome extension that shows provider-reported Claude and ChatGPT usage when available, warns before native limits run hot, and adds local prompt-trimming and file-to-Markdown tools.
+COMPANION is a privacy-first Chrome extension that shows provider-reported Claude and ChatGPT usage when available, warns before native limits run hot, and adds local Lifejacket prompt-compression and file-to-Markdown tools.
 
 ### Launch links
 
@@ -65,7 +65,7 @@ COMPANION follows one rule: native numbers or nothing.
 
 On Claude, it shows the usage and limit data Claude exposes to the signed-in account, including exact usage-credit spend, rolling limits, reset times, and local history. On ChatGPT web surfaces, it shows only supported numeric usage, quota, credit, limit, reset, or token fields that OpenAI exposes to the page. When a trustworthy value is unavailable, it says so instead of guessing.
 
-It also includes a local Caveman Mode for concise replies, a conservative prompt-trimming preview, and sandboxed file-to-Markdown conversion. Prompts, replies, files, and raw OpenAI account responses are not sent to me. There is no COMPANION server, analytics, or telemetry.
+It also includes local Lifejacket Mode for concise replies, conservative Q8 prompt compression with a visible review, and sandboxed file-to-Markdown conversion. Prompts, replies, files, and raw OpenAI account responses are not sent to me. There is no COMPANION server, analytics, or telemetry.
 
 The project supports Claude, ChatGPT Chat, and ChatGPT Work on the web. Narrow legacy Codex route compatibility is retained when such a route appears; the standalone native Codex desktop app cannot host a Chrome extension, so that boundary is stated clearly.
 
@@ -104,7 +104,7 @@ The design rule is “native numbers or nothing.”
 
 For Claude, it reads the signed-in account’s own usage and limit endpoints and shows exact usage-credit spend, rolling limits, reset times, and local history. For ChatGPT web surfaces, it passively observes first-party responses and normalizes only supported numeric usage, quota, credit, limit, reset, or token fields inside the page. Raw account responses do not cross into the extension. If OpenAI exposes nothing useful for that account, the UI says it is waiting instead of showing an estimate.
 
-The extension also has an optional local prompt-trimming preview and local file-to-Markdown conversion. File parsing runs in an opaque-origin sandbox with no network or extension API access. There is no backend, telemetry, analytics, remote code, or broad all-sites permission.
+The extension also has an optional local Lifejacket preview and local file-to-Markdown conversion. File parsing runs in an opaque-origin sandbox with no network or extension API access. There is no backend, telemetry, analytics, remote code, or broad all-sites permission.
 
 A few implementation details that may be interesting here:
 
@@ -152,7 +152,7 @@ I originally built COMPANION because Claude’s usage information was useful but
 
 It docks under the Claude composer and shows the native spend and limit data the account exposes: session and weekly limits, Opus usage, reset times, exact usage-credit spend, local history, and optional warnings before a limit runs hot.
 
-The new v1.3 release also works on ChatGPT Chat and Work, so the local prompt-trimming and file-to-Markdown tools can follow the same workflow. OpenAI usage rows only appear when OpenAI exposes supported numeric data. It does not estimate missing quotas.
+The new v1.4 release also works on ChatGPT Chat and Work, so Lifejacket's local prompt-compression, concise-reply, and file-to-Markdown tools can follow the same workflow. OpenAI usage rows only appear when OpenAI exposes supported numeric data. It does not estimate missing quotas.
 
 Privacy was the main constraint: no backend, analytics, telemetry, prompt storage, or raw OpenAI response storage. File conversion runs locally in a no-network sandbox.
 
@@ -177,7 +177,7 @@ I have been working on COMPANION, a local Chrome extension for ChatGPT Chat, Wor
 
 The ChatGPT integration follows a strict rule: it renders only numeric usage, quota, credit, limit, reset, or token fields that OpenAI actually exposes in first-party page responses. Raw account responses stay in the page, and an account with no supported counter gets an honest empty state instead of a token-based guess.
 
-It also adds an optional concise-response mode, local prompt-trimming preview, and local file-to-Markdown conversion. Nothing is silently sent, and the file parser has no network access.
+It also adds an optional concise-response mode, local Lifejacket prompt-compression preview, and local file-to-Markdown conversion. Nothing is silently sent, and the file parser has no network access.
 
 There is no COMPANION account, backend, analytics, or telemetry.
 
