@@ -85,7 +85,8 @@ if (process.env.REQUIRE_LIFEJACKET_ASSETS === '1') {
     assert.ok(fs.existsSync(file), `required generated asset missing: ${path.relative(root, file)}`);
     assert.ok(fs.statSync(file).size > 0, `generated asset is empty: ${path.relative(root, file)}`);
   }
-  const modelBytes = fs.statSync(model).size;
+  const modelData = fs.readFileSync(model);
+  const modelBytes = modelData.byteLength;
   assert.ok(modelBytes < 40 * 1024 * 1024, `Q8 model exceeds 40 MiB: ${modelBytes}`);
   const provenance = JSON.parse(fs.readFileSync(provenancePath, 'utf8'));
   assert.equal(provenance.source.repository, 'atjsh/llmlingua-2-js-mobilebert-meetingbank');
@@ -98,7 +99,7 @@ if (process.env.REQUIRE_LIFEJACKET_ASSETS === '1') {
     assert.ok(provenance.model_files[file]?.bytes > 0, `provenance hashes ${file}`);
     assert.match(provenance.model_files[file]?.sha256 || '', /^[a-f0-9]{64}$/);
   }
-  const hash = crypto.createHash('sha256').update(fs.readFileSync(model)).digest('hex');
+  const hash = crypto.createHash('sha256').update(modelData).digest('hex');
   assert.equal(provenance.output.onnx.sha256, hash);
   assert.equal(provenance.output.onnx.bytes, modelBytes);
   const generatedVendor = JSON.parse(fs.readFileSync(vendorManifest, 'utf8'));

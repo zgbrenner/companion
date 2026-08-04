@@ -116,6 +116,7 @@ for (const [label, sender, message, expected] of [
   ['forged extension', { ...validSender, id: 'other' }, { type: 'cuc:lifejacket-compress', text: 'x', keepRatio: 0.65 }, /sender/i],
   ['subframe', { ...validSender, frameId: 2 }, { type: 'cuc:lifejacket-compress', text: 'x', keepRatio: 0.65 }, /frame/i],
   ['wrong origin', { ...validSender, url: 'https://evil.example/', tab: { url: 'https://evil.example/' } }, { type: 'cuc:lifejacket-compress', text: 'x', keepRatio: 0.65 }, /origin/i],
+  ['lookalike ChatGPT origin', { ...validSender, url: 'https://evilchatgpt.com/', tab: { url: 'https://evilchatgpt.com/' } }, { type: 'cuc:lifejacket-compress', text: 'x', keepRatio: 0.65 }, /origin/i],
   ['empty text', validSender, { type: 'cuc:lifejacket-compress', text: '', keepRatio: 0.65 }, /text/i],
   ['oversize text', validSender, { type: 'cuc:lifejacket-compress', text: 'x'.repeat(120_001), keepRatio: 0.65 }, /size/i],
   ['bad ratio', validSender, { type: 'cuc:lifejacket-compress', text: 'x', keepRatio: 0.2 }, /ratio/i],
@@ -147,7 +148,7 @@ assert.match(source, /MAX_CONVERT_DATAURL_CHARS\s*=\s*30_000_000/);
 assert.match(source, /MAX_PENDING_COMPRESSIONS\s*=\s*2/);
 assert.match(source, /enqueueLifejacketCompression/);
 assert.match(source, /sender\.frameId/);
-assert(source.includes('chatgpt.com'));
+assert.match(source, /['"]chatgpt\.com['"]|\.chatgpt\.com/);
 assert(source.includes('claude.ai'));
 assert.match(source, /cuc:lifejacket-convert-file/);
 assert.match(source, /message\?\.type === 'cuc:convert-file' && isChatGptSender/);
