@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Installation, support, and troubleshooting for COMPANION."><meta name="theme-color" content="#111827">
+  <link rel="canonical" href="{{SITE_URL}}/support/"><link rel="icon" href="/assets/orbit-c.svg" type="image/svg+xml"><link rel="stylesheet" href="/assets/site.css">
+  <title>Support — COMPANION</title>
+</head>
+<body>
+  <a class="skip-link" href="#content">Skip to content</a>
+  <div class="legal-header"><header class="site-header"><div class="shell header-inner"><a class="brand" href="/"><img src="/assets/orbit-c.svg" width="34" height="34" alt=""><span>COMPANION</span></a><nav class="site-nav" aria-label="Primary"><a href="/">Home</a><a href="/privacy/">Privacy</a><a href="/security/">Security</a><a href="https://github.com/zgbrenner/companion" target="_blank" rel="noopener noreferrer">GitHub</a></nav></div></header><div class="shell legal-hero"><p class="section-label">Help</p><h1>Support</h1><p>Installation guidance, practical troubleshooting, and the right place to report a problem.</p></div></div>
+  <main class="legal-main" id="content"><div class="shell legal-layout">
+    <nav class="legal-nav" aria-label="Support sections"><a href="#install">Install</a><a href="#usage">Usage data</a><a href="#lifejacket">Lifejacket</a><a href="#files">Files</a><a href="#reset">Reset</a><a href="#report">Report a bug</a></nav>
+    <article class="legal-content">
+      <section id="install"><h2>Installation</h2><p>The public Chrome Web Store launch is coming soon. Until then, use a verified release artifact or build from source.</p><ol><li>Download and extract a COMPANION release package from GitHub.</li><li>Open <code>chrome://extensions</code>.</li><li>Enable Developer mode.</li><li>Select Load unpacked.</li><li>Choose the extracted folder that contains <code>manifest.json</code>.</li><li>Open or reload Claude.ai or ChatGPT.com.</li></ol><p>For source builds and release verification, follow the repository README and release notes.</p></section>
+      <section id="usage"><h2>Usage information is blank</h2><ul><li>Confirm you are signed in to a supported Claude or ChatGPT web surface.</li><li>Reload the provider tab after installing or updating the extension.</li><li>Open the extension popup and confirm the active provider context.</li><li>Remember that COMPANION does not invent missing counters. A blank value may mean the provider exposes no supported native numeric field to that account or surface.</li><li>Provider changes can temporarily require an extension update.</li></ul></section>
+      <section id="lifejacket"><h2>Lifejacket did not shorten a prompt</h2><p>This can be correct behavior. Lifejacket keeps the original when a candidate is longer, removes too much content, changes protected spans, has poor tokenizer coverage, or encounters a model, validation, or runtime failure. Prompt compression and reply brevity are separate controls.</p></section>
+      <section id="files"><h2>A file did not convert correctly</h2><p>Confirm the file is supported and within the current size limit. Scanned documents require OCR, which COMPANION does not include. Complex tables, tracked changes, embedded media, macros, annotations, and unusual document structures may not survive conversion perfectly. Review the Markdown before sending it.</p></section>
+      <section id="reset"><h2>Reset or remove local data</h2><p>Use the Data &amp; privacy section in COMPANION settings to clear local history and operational caches. Uninstalling the extension removes browser-managed COMPANION storage. There is no remote account to delete.</p></section>
+      <section id="report"><h2>Report a bug or request a feature</h2><p>Use <a href="https://github.com/zgbrenner/companion/issues" target="_blank" rel="noopener noreferrer">GitHub Issues</a> for reproducible non-sensitive bugs and feature requests. Include the COMPANION version, browser version, provider surface, expected behavior, actual behavior, and minimal reproduction steps.</p><p>Send security-sensitive reports to <a href="mailto:zgbrenner@gmail.com">zgbrenner@gmail.com</a>. Never include passwords, cookies, account tokens, private prompts, or private files.</p></section>
+    </article>
+  </div></main>
+  <footer class="site-footer"><div class="shell footer-grid"><div class="footer-brand"><a class="brand" href="/"><img src="/assets/orbit-c.svg" width="30" height="30" alt=""><span>COMPANION</span></a></div><nav aria-label="Legal"><a href="/privacy/">Privacy</a><a href="/terms/">Terms</a><a href="/security/">Security</a><a href="/support/">Support</a><a href="/accessibility/">Accessibility</a></nav><p class="footer-note">Independent and unofficial. <span data-year>2026</span> COMPANION.</p></div></footer>
+  <script src="/assets/site.js" defer></script>
+</body>
+</html>

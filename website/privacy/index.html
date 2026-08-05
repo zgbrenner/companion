@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Privacy policy for the COMPANION browser extension and website.">
+  <meta name="theme-color" content="#111827"><link rel="canonical" href="{{SITE_URL}}/privacy/">
+  <link rel="icon" href="/assets/orbit-c.svg" type="image/svg+xml"><link rel="stylesheet" href="/assets/site.css">
+  <title>Privacy Policy — COMPANION</title>
+</head>
+<body>
+  <a class="skip-link" href="#content">Skip to content</a>
+  <div class="legal-header">
+    <header class="site-header"><div class="shell header-inner"><a class="brand" href="/"><img src="/assets/orbit-c.svg" width="34" height="34" alt=""><span>COMPANION</span></a><nav class="site-nav" aria-label="Primary"><a href="/">Home</a><a href="/security/">Security</a><a href="/support/">Support</a><a href="https://github.com/zgbrenner/companion" target="_blank" rel="noopener noreferrer">GitHub</a></nav></div></header>
+    <div class="shell legal-hero"><p class="section-label">Legal</p><h1>Privacy Policy</h1><p>COMPANION is designed so that the developer does not receive your prompts, replies, files, model inputs, or browsing history.</p><p class="legal-meta">Effective August 5, 2026</p></div>
+  </div>
+  <main class="legal-main" id="content">
+    <div class="shell legal-layout">
+      <nav class="legal-nav" aria-label="Privacy policy sections"><a href="#summary">Summary</a><a href="#website">Website</a><a href="#extension">Extension data</a><a href="#providers">Provider access</a><a href="#retention">Retention</a><a href="#sharing">Sharing</a><a href="#choices">Your choices</a><a href="#contact">Contact</a></nav>
+      <article class="legal-content">
+        <section id="summary"><h2>Summary</h2><div class="legal-callout"><strong>COMPANION has no account system, developer backend, analytics, advertising, or telemetry.</strong> The extension performs its transformations locally and stores only limited settings, numeric usage information, and operational state in browser storage.</div><p>This policy applies to the COMPANION website and Chrome extension. It explains what the software processes, what remains on your device, and the narrow circumstances in which infrastructure providers may process technical request information.</p></section>
+
+        <section id="website"><h2>The website</h2><p>The website does not use analytics scripts, advertising pixels, marketing cookies, account forms, or behavioral tracking. It does not intentionally collect personal information from visitors.</p><p>The website is intended to be hosted through Cloudflare Pages. Like most hosting and security providers, Cloudflare may process standard network and request information, such as an IP address, user agent, requested URL, timestamp, and security signals, to deliver and protect the site. That processing is governed by Cloudflare’s own terms and privacy practices. COMPANION does not add a separate analytics layer or use that information to build visitor profiles.</p></section>
+
+        <section id="extension"><h2>What the extension processes</h2><h3>Stored locally</h3><ul><li>Extension settings and feature preferences.</li><li>Claude numeric spend samples and derived local history.</li><li>Bounded, normalized OpenAI numeric usage snapshots when supported fields are observed.</li><li>Small caches and timestamps needed to operate usage displays, alerts, and reset windows.</li></ul><h3>Processed temporarily, not stored by COMPANION</h3><ul><li>Prompt text needed for optional Lifejacket compression and preview.</li><li>User-selected file contents needed for local conversion to Markdown.</li><li>Provider response data needed to identify supported numeric usage fields.</li></ul><h3>Not collected or stored</h3><ul><li>Prompt or reply history.</li><li>Passwords, authentication tokens, or session cookies.</li><li>Raw OpenAI account or conversation payloads.</li><li>User-selected file contents after local processing.</li><li>General browsing history.</li></ul></section>
+
+        <section id="providers"><h2>Claude and ChatGPT boundaries</h2><p>On Claude, usage reads are read-only and same-origin. Your browser authenticates those requests through your existing signed-in session. COMPANION does not read or store the session cookie.</p><p>On ChatGPT web surfaces, raw first-party responses remain in the page context. A randomized page channel forwards only normalized JSON containing recognized, bounded numeric fields. Extension components validate the origin, sender, frame, keys, units, ranges, timestamps, bucket names, and payload size before using those fields.</p><p>When you choose to send a prompt, the relevant provider receives that prompt under its own terms and privacy policy. COMPANION does not control the provider’s processing.</p></section>
+
+        <section id="retention"><h2>Retention and deletion</h2><p>Local settings and numeric history remain in browser storage until you clear COMPANION data, reset the relevant history, remove the extension, or the browser removes that storage. Prompt text and file contents are not retained by COMPANION after the local operation completes.</p><p>Because COMPANION has no account or developer database, there is no remote user profile for the developer to retrieve, export, or delete.</p></section>
+
+        <section id="sharing"><h2>Sale, sharing, and advertising</h2><p>COMPANION does not sell personal information, share personal information for cross-context behavioral advertising, serve ads, or disclose extension data to data brokers. It has no analytics or advertising partners.</p><p>The developer may disclose information if required by law, but the local architecture is deliberately designed so the developer does not possess your prompts, files, provider credentials, or extension history in the first place.</p></section>
+
+        <section id="choices"><h2>Your choices</h2><ul><li>Turn off or hide the usage widget, alerts, badges, and Lifejacket tools independently.</li><li>Clear local COMPANION data from the extension settings.</li><li>Remove the extension to delete its browser-managed local storage.</li><li>Review the source code, permissions, and security documentation on GitHub before installation.</li></ul><p>COMPANION is not directed at children and does not knowingly create profiles about children. It has no account registration or age-targeted advertising.</p></section>
+
+        <section id="changes"><h2>Changes to this policy</h2><p>This policy may be updated when the extension’s behavior, permissions, hosting, or legal requirements materially change. The effective date at the top will be revised. Material privacy changes should also be described in the project’s release notes.</p></section>
+
+        <section id="contact"><h2>Contact</h2><p>Privacy questions may be sent to <a href="mailto:zgbrenner@gmail.com">zgbrenner@gmail.com</a>. Do not include passwords, session cookies, account tokens, private prompts, or private files in a report.</p></section>
+      </article>
+    </div>
+  </main>
+  <footer class="site-footer"><div class="shell footer-grid"><div class="footer-brand"><a class="brand" href="/"><img src="/assets/orbit-c.svg" width="30" height="30" alt=""><span>COMPANION</span></a></div><nav aria-label="Legal"><a href="/privacy/">Privacy</a><a href="/terms/">Terms</a><a href="/security/">Security</a><a href="/support/">Support</a><a href="/accessibility/">Accessibility</a></nav><p class="footer-note">Independent and unofficial. <span data-year>2026</span> COMPANION.</p></div></footer>
+  <script src="/assets/site.js" defer></script>
+</body>
+</html>
