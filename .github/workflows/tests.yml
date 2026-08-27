@@ -23,15 +23,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Upload temporary source snapshot
-        uses: actions/upload-artifact@v4
-        with:
-          name: companion-pr25-source
-          path: .
-          include-hidden-files: true
-          if-no-files-found: error
-          retention-days: 1
-
       - name: Build pinned local runtime and model
         id: build
         uses: ./.github/actions/build-extension
