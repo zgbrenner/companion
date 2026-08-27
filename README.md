@@ -9,7 +9,7 @@
 <p><strong>Native numbers or nothing. Local transformations or nothing.</strong> See provider-reported usage when it is available, use Lifejacket Mode to reduce avoidable prompt and reply tokens, and keep prompts, replies, files, and history private.</p>
 
 <p>
-  <img alt="Version 1.4.0" src="https://img.shields.io/badge/version-1.4.0-7C6CFF?style=for-the-badge" />
+  <img alt="Version 1.4.1" src="https://img.shields.io/badge/version-1.4.1-7C6CFF?style=for-the-badge" />
   <img alt="Chrome Manifest V3" src="https://img.shields.io/badge/Chrome-Manifest%20V3-111827?style=for-the-badge&logo=googlechrome&logoColor=white" />
   <img alt="No analytics or telemetry" src="https://img.shields.io/badge/analytics%20%26%20telemetry-none-168363?style=for-the-badge" />
 </p>
@@ -19,12 +19,12 @@
   <a href="docs/LIFEJACKET_MODE.md">Lifejacket Mode</a> ·
   <a href="docs/SECURITY.md">Security</a> ·
   <a href="store/privacy-policy.md">Privacy policy</a> ·
-  <a href="RELEASE_NOTES_1.4.0.md">Release notes</a>
+  <a href="RELEASE_NOTES_1.4.1.md">Release notes</a>
 </p>
 
-<img alt="COMPANION widget" src="docs/images/widget.png" width="900">
+<img alt="COMPANION overview with the Claude and ChatGPT usage popups" src="store/screenshots/01-overview.png" width="900">
 
-<sub>The Chrome Web Store URL will be added after v1.4.0 completes review. Release artifacts are built and tested from pinned inputs.</sub>
+<sub>The Chrome Web Store URL will be added after v1.4.1 completes review. Release artifacts are built and tested from pinned inputs.</sub>
 
 </div>
 
@@ -98,15 +98,19 @@ Read the full **[Lifejacket architecture and safety boundaries](docs/LIFEJACKET_
 
 ### Claude usage and history
 
-<img alt="COMPANION Claude usage popup" src="docs/images/popup.png" width="900">
+<img alt="COMPANION Claude usage popup" src="store/screenshots/02-claude-usage.png" width="900">
+
+### ChatGPT, Work, and Codex-aware surfaces
+
+<img alt="COMPANION on ChatGPT Chat, Work, and Codex-aware surfaces" src="store/screenshots/03-chatgpt-work-codex.png" width="900">
 
 ### Privacy-first settings
 
-<img alt="COMPANION privacy and settings" src="docs/images/settings.png" width="900">
+<img alt="COMPANION privacy and settings" src="store/screenshots/04-settings-privacy.png" width="900">
 
-### Dark composer integration
+### Local efficiency tools
 
-<img alt="COMPANION dark widget" src="docs/images/widget-dark.png" width="900">
+<img alt="COMPANION Lifejacket local efficiency tools" src="store/screenshots/05-local-efficiency-tools.png" width="900">
 
 ## Privacy is an architecture decision
 
@@ -181,7 +185,7 @@ opaque-origin parser sandbox ──► Markdown preview/composer
 
 ### Chrome Web Store
 
-The public Chrome Web Store link will be inserted after v1.4.0 review and final smoke testing.
+The public Chrome Web Store link will be inserted after v1.4.1 review and final smoke testing.
 
 ### Verified release candidate
 
@@ -196,7 +200,7 @@ Use the artifact produced by the `release-package` GitHub Actions workflow. It c
 - test transcript;
 - release notes.
 
-1. Download and extract `companion-1.4.0.zip`.
+1. Download and extract `companion-1.4.1.zip`.
 2. Open `chrome://extensions`.
 3. Enable **Developer mode**.
 4. Choose **Load unpacked**.
@@ -225,7 +229,7 @@ bash tools/package-webstore.sh
 The deterministic package is written to:
 
 ```text
-dist/companion-1.4.0.zip
+dist/companion-1.4.1.zip
 ```
 
 A SHA-256 checksum and file-by-file inventory are written beside it.
@@ -264,8 +268,9 @@ The committed suite covers:
 | **[OpenAI Support](docs/OPENAI_SUPPORT.md)** | Chat, Work, Codex-aware behavior, usage semantics, and limitations |
 | **[Security and Privacy](docs/SECURITY.md)** | Permissions, data flow, threat model, and audit steps |
 | **[Privacy Policy](store/privacy-policy.md)** | Public Chrome Web Store privacy policy |
-| **[Release Notes](RELEASE_NOTES_1.4.0.md)** | v1.4.0 changes and upgrade behavior |
+| **[Release Notes](RELEASE_NOTES_1.4.1.md)** | v1.4.1 changes and upgrade behavior |
 | **[Changelog](CHANGELOG.md)** | Version history |
+| **[Releasing](docs/RELEASING.md)** | Continuous delivery to the Chrome Web Store |
 | **[Contributing](CONTRIBUTING.md)** | Development and review guidance |
 
 ## Accuracy boundaries

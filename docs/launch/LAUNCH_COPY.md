@@ -1,4 +1,4 @@
-# COMPANION v1.4.0 Launch Copy
+# COMPANION v1.4.1 Launch Copy
 
 Replace `[CHROME WEB STORE URL]` and `[GITHUB URL]` only after those destinations are public and working.
 

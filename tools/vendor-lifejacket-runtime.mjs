@@ -13,6 +13,7 @@ const packageCache = path.join(root, '.cache', 'lifejacket', 'npm');
 const extractionRoot = path.join(root, '.cache', 'lifejacket', 'runtime-packages');
 const MAX_PACKAGE_BYTES = 64 * 1024 * 1024;
 const PACKAGE_REGISTRY_HOST = 'registry.npmjs.org';
+const EXTENSION_VERSION = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json'), 'utf8')).version;
 const protectedSharedAssets = [
   path.join(sharedVendorRoot, 'officeparser.browser.slim.iife.js'),
   path.join(sharedVendorRoot, 'pdf.worker.min.mjs'),
@@ -81,7 +82,7 @@ async function downloadPackage(spec) {
   }
   const response = await fetch(spec.url, {
     redirect: 'error',
-    headers: { 'user-agent': 'COMPANION-Lifejacket-build/1.4.0' },
+    headers: { 'user-agent': `COMPANION-Lifejacket-build/${EXTENSION_VERSION}` },
   });
   if (!response.ok) throw new Error(`Unable to download ${spec.name}: HTTP ${response.status}`);
   const responseUrl = new URL(response.url || spec.url);

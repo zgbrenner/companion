@@ -2,7 +2,7 @@
 
 ## Supported version
 
-Security fixes are applied to the latest published COMPANION release. During the v1.3.0 release-candidate period, reports should reference the exact commit or package checksum tested.
+Security fixes are applied to the latest published COMPANION release, currently v1.4.1. Reports should reference the exact release version, commit, or package checksum tested.
 
 ## Report privately
 

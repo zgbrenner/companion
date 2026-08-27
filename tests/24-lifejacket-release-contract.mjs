@@ -9,7 +9,7 @@ const exists = relative => fs.existsSync(path.join(root, relative));
 
 const manifest = JSON.parse(read('manifest.json'));
 const pkg = JSON.parse(read('package.json'));
-assert.equal(manifest.version, '1.4.0');
+assert.equal(manifest.version, '1.4.1');
 assert.equal(pkg.version, manifest.version, 'package and extension versions stay aligned');
 assert.match(manifest.description, /Lifejacket/i);
 assert.match(manifest.content_security_policy.extension_pages, /wasm-unsafe-eval/);
@@ -27,7 +27,7 @@ assert.match(packageTool, /files\.sort/);
 assert.doesNotMatch(packageTool, /version[^\n]*1\.2\.0|manifest\.get\(['"]version['"]\)\s*!=\s*['"]1\.2\.0/);
 
 for (const file of [
-  'RELEASE_NOTES_1.4.0.md',
+  'RELEASE_NOTES_1.4.1.md',
   'docs/LIFEJACKET_MODE.md',
   'docs/SECURITY.md',
   'store/privacy-policy.md',
@@ -45,7 +45,7 @@ assert.match(lifejacketDocs, /never (?:downloads|fetched).*runtime|no runtime do
 assert.match(lifejacketDocs, /original prompt|send original/i);
 assert.match(lifejacketDocs, /fail(?:s)? (?:closed|back)|fallback/i);
 
-for (const file of ['README.md', 'src/options.html', 'store/listing.md', 'RELEASE_NOTES_1.4.0.md']) {
+for (const file of ['README.md', 'src/options.html', 'store/listing.md', 'RELEASE_NOTES_1.4.1.md']) {
   const currentCopy = read(file);
   assert.doesNotMatch(currentCopy, /Caveman Mode/i, `current user-facing copy is renamed in ${file}`);
   assert.match(currentCopy, /Lifejacket Mode/i, `Lifejacket is documented in ${file}`);

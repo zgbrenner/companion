@@ -21,6 +21,7 @@ from onnx import TensorProto, helper, numpy_helper
 from onnxruntime.quantization import QuantType, quantize_dynamic
 
 ROOT = Path(__file__).resolve().parents[1]
+EXTENSION_VERSION = json.loads((ROOT / "manifest.json").read_text(encoding="utf-8"))["version"]
 CACHE_ROOT = ROOT / ".cache" / "lifejacket" / "source"
 OUTPUT_ROOT = ROOT / "src" / "models" / "lifejacket"
 SOURCE_REPOSITORY = "atjsh/llmlingua-2-js-mobilebert-meetingbank"
@@ -146,7 +147,7 @@ def download(relative_path: str, destination: Path) -> None:
     )
     request = urllib.request.Request(
         url,
-        headers={"User-Agent": "COMPANION-Lifejacket-build/1.4.0"},
+        headers={"User-Agent": f"COMPANION-Lifejacket-build/{EXTENSION_VERSION}"},
     )
     last_error: Exception | None = None
     for attempt in range(4):

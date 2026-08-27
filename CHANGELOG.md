@@ -2,12 +2,21 @@
 
 All notable changes to COMPANION are recorded here. The most recent release is at the top.
 
+### 1.4.1 (Release automation + store readiness)
+
+- Added a continuous release pipeline: a version bump pushed to the main branch now builds, tests, attests, creates the GitHub release, and uploads and publishes the package to the Chrome Web Store through a `workflow_call`-based auto-release workflow.
+- Regenerated the promotional tile, marquee, and all five store screenshots as current-brand artwork built from real product renders.
+- Unified store screenshot naming under one numbered scheme, replacing the earlier widget-light and popup-light filenames.
+- Repaired the release-asset guard in CI so a missing generated launch asset fails the release workflow instead of being silently skipped.
+- Updated the store listing and submission documents with the public website links at https://companion.pages.dev.
+- Removed a leftover temporary source-export workflow from CI. No extension behavior, permission, or storage changes shipped in this release.
+
 ### 1.4.0 (Lifejacket + ChatGPT release)
 
 - Merged the complete Lifejacket local prompt, reply, and file workflow with first-class ChatGPT Chat and Work support.
 - Repaired MobileBERT Q8 quantization with selective sensitive-layer preservation; the release model now passes fidelity, latency, and size gates.
 - Fixed the settings wrapper, aligned browser coverage with the shipped shadow-DOM selectors, and exercised compression through the local offscreen route.
-- Added model metadata hashes, bounded HTTPS-only runtime downloads, exclusive temporary files, bounded compression concurrency, and safer release workflow permissions.
+- Added model metadata hashes, bounded HTTPS-only build-time downloads, exclusive temporary files, bounded compression concurrency, and safer release workflow permissions.
 - Added deterministic release provenance, package/review assets, and current v1.4.0 documentation.
 
 ### 1.3.0 (ChatGPT first-class hardening)

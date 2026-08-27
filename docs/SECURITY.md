@@ -1,6 +1,6 @@
 # COMPANION Security and Privacy Architecture
 
-**Version:** 1.4.0
+**Version:** 1.4.1
 **Last updated:** August 4, 2026
 
 COMPANION is a Chrome Manifest V3 extension for supported Claude and ChatGPT web surfaces. It has no developer backend, account system, analytics, telemetry, advertising, or remote code.
