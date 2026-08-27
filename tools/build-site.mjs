@@ -2,7 +2,7 @@ import { cp, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promi
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const DEFAULT_SITE_URL = 'https://companion.pages.dev';
+const DEFAULT_SITE_URL = 'https://getcompanion.pages.dev';
 const ROUTES = ['/', '/privacy/', '/terms/', '/security/', '/support/', '/accessibility/'];
 
 function normalizeSiteUrl(value) {

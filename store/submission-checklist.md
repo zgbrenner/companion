@@ -13,7 +13,7 @@ This checklist covers package creation, Chrome Web Store review, controlled test
 
 ## 2. Repository and policy availability
 
-- [ ] The public GitHub repository and the public website (https://companion.pages.dev) are the listing's public references. Confirm both are live and current before submission.
+- [ ] The public GitHub repository and the public website (https://getcompanion.pages.dev) are the listing's public references. Confirm both are live and current before submission.
 - [ ] Make `store/privacy-policy.md` available at a public HTTPS URL before entering the privacy-policy field.
 - [ ] Ensure the public privacy policy, `store/listing.md`, `store/permission-justifications.md`, `manifest.json`, and the actual extension behavior agree.
 - [ ] Confirm the public support destination works. A public GitHub issue tracker is recommended after the repository becomes public.

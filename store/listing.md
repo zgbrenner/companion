@@ -96,19 +96,19 @@ English (United States)
 
 ## Dashboard URLs
 
-Paste these into the matching Chrome Web Store dashboard fields. Replace `companion.pages.dev` everywhere below if the site is later served from a custom domain.
+Paste these into the matching Chrome Web Store dashboard fields. Replace `getcompanion.pages.dev` everywhere below if the site is later served from a custom domain.
 
-- Homepage URL: `https://companion.pages.dev/`
-- Support URL: `https://companion.pages.dev/support/`
-- Privacy policy URL (Privacy tab): `https://companion.pages.dev/privacy/`
+- Homepage URL: `https://getcompanion.pages.dev/`
+- Support URL: `https://getcompanion.pages.dev/support/`
+- Privacy policy URL (Privacy tab): `https://getcompanion.pages.dev/privacy/`
 
 ## Support links
 
 Reference material behind the dashboard URLs:
 
-- Public privacy policy page: `https://companion.pages.dev/privacy/` (kept in sync with `store/privacy-policy.md`)
+- Public privacy policy page: `https://getcompanion.pages.dev/privacy/` (kept in sync with `store/privacy-policy.md`)
 - Reviewer instructions: `store/test-instructions.md`
-- Security architecture: `docs/SECURITY.md` and `https://companion.pages.dev/security/`
+- Security architecture: `docs/SECURITY.md` and `https://getcompanion.pages.dev/security/`
 - Lifejacket architecture: `docs/LIFEJACKET_MODE.md`
 - Issue tracker: `https://github.com/zgbrenner/companion/issues`
 

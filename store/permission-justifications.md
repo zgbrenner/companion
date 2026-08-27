@@ -120,7 +120,7 @@ COMPANION handles only the data necessary for visible usage, alert, Lifejacket p
 The privacy policy URL must be public before submission. Use the developer-controlled policy page published from this repository:
 
 ```text
-https://companion.pages.dev/privacy/
+https://getcompanion.pages.dev/privacy/
 ```
 
 The page carries the same policy text as `store/privacy-policy.md`; keep the two in sync whenever either changes. The public policy, dashboard disclosures, extension behavior, and this document must agree.

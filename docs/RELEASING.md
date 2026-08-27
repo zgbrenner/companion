@@ -33,7 +33,7 @@ The Chrome Web Store API cannot create items, so the first submission is manual:
 1. Register the developer account (one-time fee) and enable 2-step verification.
 2. Create the item in the [developer dashboard](https://chrome.google.com/webstore/devconsole) by uploading a built `dist/companion-<version>.zip` (from `npm run build:extension` or the release artifact).
 3. Complete the **Store listing** tab from `store/listing.md` and the artwork in `store/` (five screenshots, promo tile, optional marquee).
-4. Complete the **Privacy** tab from `store/permission-justifications.md`, with the privacy policy URL `https://companion.pages.dev/privacy/`.
+4. Complete the **Privacy** tab from `store/permission-justifications.md`, with the privacy policy URL `https://getcompanion.pages.dev/privacy/`.
 5. Note the **item ID** (from the item's dashboard URL) and the **publisher ID** (Publisher → Settings).
 
 ### 2. Service account (manual)

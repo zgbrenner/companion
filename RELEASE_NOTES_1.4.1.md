@@ -12,7 +12,7 @@ COMPANION 1.4.1 completes the Chrome Web Store release pipeline and refreshes th
 
 - Regenerates the promotional tile, marquee, and all five store screenshots as current-brand artwork built from real product renders.
 - Unifies screenshot naming under one numbered scheme: `01-overview.png`, `02-claude-usage.png`, `03-chatgpt-work-codex.png`, `04-settings-privacy.png`, and `05-local-efficiency-tools.png` replace the earlier widget-light and popup-light names.
-- Updates the store listing and submission documents with the public website links at https://companion.pages.dev.
+- Updates the store listing and submission documents with the public website links at https://getcompanion.pages.dev.
 
 ## Upgrade behavior
 

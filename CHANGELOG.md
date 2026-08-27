@@ -8,7 +8,7 @@ All notable changes to COMPANION are recorded here. The most recent release is a
 - Regenerated the promotional tile, marquee, and all five store screenshots as current-brand artwork built from real product renders.
 - Unified store screenshot naming under one numbered scheme, replacing the earlier widget-light and popup-light filenames.
 - Repaired the release-asset guard in CI so a missing generated launch asset fails the release workflow instead of being silently skipped.
-- Updated the store listing and submission documents with the public website links at https://companion.pages.dev.
+- Updated the store listing and submission documents with the public website links at https://getcompanion.pages.dev.
 - Removed a leftover temporary source-export workflow from CI. No extension behavior, permission, or storage changes shipped in this release.
 
 ### 1.4.0 (Lifejacket + ChatGPT release)
