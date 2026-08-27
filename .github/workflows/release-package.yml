@@ -157,7 +157,7 @@ jobs:
           cp docs/launch/PRIVACY_SAFE_GROWTH_METRICS.md launch-artifact/docs/launch/
 
       - name: Upload Chrome Web Store and launch assets
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: companion-v${{ steps.metadata.outputs.version }}-launch-assets
           path: launch-artifact
@@ -173,7 +173,7 @@ jobs:
             dist/companion-${{ steps.build.outputs.version }}.cdx.json
 
       - name: Upload verified release bundle
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ steps.version.outputs.artifact_name }}
           path: |
@@ -354,7 +354,7 @@ jobs:
 
       - name: Upload Chrome Web Store API evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: chrome-web-store-${{ needs.build-release.outputs.version }}
           path: |
