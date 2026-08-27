@@ -42,7 +42,7 @@ jobs:
       should_release: ${{ steps.decide.outputs.should_release }}
       version: ${{ steps.decide.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Compare manifest version against shipped releases
         id: decide

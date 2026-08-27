@@ -21,7 +21,7 @@ jobs:
       REQUIRE_LIFEJACKET_ASSETS: "1"
       REQUIRE_GENERATED_LAUNCH_ASSETS: "1"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Build pinned local runtime and model
         id: build
