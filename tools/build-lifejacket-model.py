@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import sys
 import tempfile
@@ -21,7 +22,10 @@ from onnx import TensorProto, helper, numpy_helper
 from onnxruntime.quantization import QuantType, quantize_dynamic
 
 ROOT = Path(__file__).resolve().parents[1]
-EXTENSION_VERSION = json.loads((ROOT / "manifest.json").read_text(encoding="utf-8"))["version"]
+# Taken from the npm script environment rather than manifest.json so no
+# file-derived data flows into the outbound request headers.
+_raw_version = os.environ.get("npm_package_version", "")
+EXTENSION_VERSION = _raw_version if re.fullmatch(r"[0-9][0-9.]{0,15}", _raw_version) else "unversioned"
 CACHE_ROOT = ROOT / ".cache" / "lifejacket" / "source"
 OUTPUT_ROOT = ROOT / "src" / "models" / "lifejacket"
 SOURCE_REPOSITORY = "atjsh/llmlingua-2-js-mobilebert-meetingbank"

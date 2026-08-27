@@ -13,7 +13,11 @@ const packageCache = path.join(root, '.cache', 'lifejacket', 'npm');
 const extractionRoot = path.join(root, '.cache', 'lifejacket', 'runtime-packages');
 const MAX_PACKAGE_BYTES = 64 * 1024 * 1024;
 const PACKAGE_REGISTRY_HOST = 'registry.npmjs.org';
-const EXTENSION_VERSION = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json'), 'utf8')).version;
+// Taken from the npm script environment rather than manifest.json so no
+// file-derived data flows into the outbound request headers.
+const EXTENSION_VERSION = /^[0-9][0-9.]{0,15}$/.test(process.env.npm_package_version ?? '')
+  ? process.env.npm_package_version
+  : 'unversioned';
 const protectedSharedAssets = [
   path.join(sharedVendorRoot, 'officeparser.browser.slim.iife.js'),
   path.join(sharedVendorRoot, 'pdf.worker.min.mjs'),
