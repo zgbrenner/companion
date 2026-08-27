@@ -39,7 +39,7 @@ jobs:
           git commit -m "build: lock Lifejacket dependencies"
           git push origin "HEAD:${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
       - name: Upload lockfile
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: package-lock
           path: package-lock.json

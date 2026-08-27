@@ -127,7 +127,7 @@ jobs:
           fi
       - name: Upload audited package inventory
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: security-package-inventory-${{ github.run_id }}
           path: |
