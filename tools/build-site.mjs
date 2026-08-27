@@ -99,11 +99,11 @@ export async function buildSite({
     ['icons/icon128.png', 'assets/icon128.png'],
     ['src/fonts/atkinson-hyperlegible-next-variable.woff2', 'assets/atkinson-hyperlegible-next-variable.woff2'],
     ['src/fonts/league-spartan-bold.woff2', 'assets/league-spartan-bold.woff2'],
-    ['store/screenshots/01-widget-light.png', 'assets/01-widget-light.png'],
-    ['store/screenshots/02-popup-light.png', 'assets/02-popup-light.png'],
-    ['store/screenshots/03-settings-light.png', 'assets/03-settings-light.png'],
-    ['store/screenshots/04-widget-dark.png', 'assets/04-widget-dark.png'],
-    ['store/screenshots/05-popup-dark.png', 'assets/05-popup-dark.png'],
+    ['store/screenshots/01-overview.png', 'assets/01-overview.png'],
+    ['store/screenshots/02-claude-usage.png', 'assets/02-claude-usage.png'],
+    ['store/screenshots/03-chatgpt-work-codex.png', 'assets/03-chatgpt-work-codex.png'],
+    ['store/screenshots/04-settings-privacy.png', 'assets/04-settings-privacy.png'],
+    ['store/screenshots/05-local-efficiency-tools.png', 'assets/05-local-efficiency-tools.png'],
     ['store/promo-tile-440x280.png', 'assets/promo-tile-440x280.png']
   ];
 
