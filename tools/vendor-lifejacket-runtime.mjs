@@ -13,6 +13,11 @@ const packageCache = path.join(root, '.cache', 'lifejacket', 'npm');
 const extractionRoot = path.join(root, '.cache', 'lifejacket', 'runtime-packages');
 const MAX_PACKAGE_BYTES = 64 * 1024 * 1024;
 const PACKAGE_REGISTRY_HOST = 'registry.npmjs.org';
+// Taken from the npm script environment rather than manifest.json so no
+// file-derived data flows into the outbound request headers.
+const EXTENSION_VERSION = /^[0-9][0-9.]{0,15}$/.test(process.env.npm_package_version ?? '')
+  ? process.env.npm_package_version
+  : 'unversioned';
 const protectedSharedAssets = [
   path.join(sharedVendorRoot, 'officeparser.browser.slim.iife.js'),
   path.join(sharedVendorRoot, 'pdf.worker.min.mjs'),
@@ -81,7 +86,7 @@ async function downloadPackage(spec) {
   }
   const response = await fetch(spec.url, {
     redirect: 'error',
-    headers: { 'user-agent': 'COMPANION-Lifejacket-build/1.4.0' },
+    headers: { 'user-agent': `COMPANION-Lifejacket-build/${EXTENSION_VERSION}` },
   });
   if (!response.ok) throw new Error(`Unable to download ${spec.name}: HTTP ${response.status}`);
   const responseUrl = new URL(response.url || spec.url);

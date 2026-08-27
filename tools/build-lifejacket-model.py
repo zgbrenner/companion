@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import sys
 import tempfile
@@ -21,6 +22,10 @@ from onnx import TensorProto, helper, numpy_helper
 from onnxruntime.quantization import QuantType, quantize_dynamic
 
 ROOT = Path(__file__).resolve().parents[1]
+# Taken from the npm script environment rather than manifest.json so no
+# file-derived data flows into the outbound request headers.
+_raw_version = os.environ.get("npm_package_version", "")
+EXTENSION_VERSION = _raw_version if re.fullmatch(r"[0-9][0-9.]{0,15}", _raw_version) else "unversioned"
 CACHE_ROOT = ROOT / ".cache" / "lifejacket" / "source"
 OUTPUT_ROOT = ROOT / "src" / "models" / "lifejacket"
 SOURCE_REPOSITORY = "atjsh/llmlingua-2-js-mobilebert-meetingbank"
@@ -146,7 +151,7 @@ def download(relative_path: str, destination: Path) -> None:
     )
     request = urllib.request.Request(
         url,
-        headers={"User-Agent": "COMPANION-Lifejacket-build/1.4.0"},
+        headers={"User-Agent": f"COMPANION-Lifejacket-build/{EXTENSION_VERSION}"},
     )
     last_error: Exception | None = None
     for attempt in range(4):

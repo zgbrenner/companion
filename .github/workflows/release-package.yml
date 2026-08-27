@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - "v*"
+  workflow_call:
   workflow_dispatch:
     inputs:
       create_release:
@@ -30,6 +31,10 @@ on:
       - docs/launch/**
       - RELEASE_NOTES_*.md
       - .github/workflows/release-package.yml
+
+# workflow_call runs (from auto-release on pushes to main) behave like tag
+# pushes: the caller has already created the matching v<version> tag, so
+# github.event_name stays "push" and the same release and store gates apply.
 
 concurrency:
   group: release-package-${{ github.ref }}
@@ -121,9 +126,10 @@ jobs:
           chmod +x tools/package-webstore.sh
           bash tools/package-webstore.sh
 
-      - name: Regenerate launch and store-review assets
-        shell: bash
-        run: python3 tools/generate-launch-assets.py
+      # Launch and store-review assets (tools/generate-launch-assets.py) were
+      # already produced by the build-extension action with the brand fonts
+      # injected; regenerating here without those fonts would silently
+      # downgrade the artwork to the DejaVu fallback.
 
       - name: Stage launch artwork bundle
         shell: bash
@@ -132,7 +138,12 @@ jobs:
           mkdir -p launch-artifact/store/screenshots launch-artifact/docs/launch/assets
           cp store/promo-tile-440x280.png launch-artifact/store/
           cp store/marquee-1400x560.png launch-artifact/store/
-          cp store/screenshots/0*.png launch-artifact/store/screenshots/
+          cp store/screenshots/01-overview.png \
+             store/screenshots/02-claude-usage.png \
+             store/screenshots/03-chatgpt-work-codex.png \
+             store/screenshots/04-settings-privacy.png \
+             store/screenshots/05-local-efficiency-tools.png \
+             launch-artifact/store/screenshots/
           cp docs/launch/assets/*.png launch-artifact/docs/launch/assets/
           cp store/listing.md launch-artifact/store/
           cp store/privacy-policy.md launch-artifact/store/
@@ -272,7 +283,11 @@ jobs:
           CHROME_WEB_STORE_PUBLISHER_ID: ${{ secrets.CHROME_WEB_STORE_PUBLISHER_ID }}
           CHROME_WEB_STORE_EXTENSION_ID: ${{ secrets.CHROME_WEB_STORE_EXTENSION_ID }}
           VERSION: ${{ needs.build-release.outputs.version }}
-          STAGED_PUBLISH: ${{ github.event_name == 'push' || inputs.staged_publish }}
+          # Pushes (tag pushes and auto-release calls from main) publish
+          # automatically once review passes; set the repository variable
+          # CHROME_WEB_STORE_STAGED_PUBLISH=true to hold approved versions
+          # staged instead. Manual dispatches keep their staged_publish input.
+          STAGED_PUBLISH: ${{ (github.event_name == 'workflow_dispatch' && inputs.staged_publish) || (github.event_name != 'workflow_dispatch' && vars.CHROME_WEB_STORE_STAGED_PUBLISH == 'true') }}
         shell: bash
         run: |
           set -euo pipefail
@@ -284,32 +299,49 @@ jobs:
           base="https://chromewebstore.googleapis.com/v2/publishers/${CHROME_WEB_STORE_PUBLISHER_ID}/items/${CHROME_WEB_STORE_EXTENSION_ID}"
           upload="https://chromewebstore.googleapis.com/upload/v2/publishers/${CHROME_WEB_STORE_PUBLISHER_ID}/items/${CHROME_WEB_STORE_EXTENSION_ID}:upload"
 
+          # Only one submission can be in review at a time. If an older
+          # version is still pending, withdraw it so this newer verified
+          # build replaces it; tolerate failure when nothing is pending.
+          curl --silent --show-error \
+            -X POST \
+            -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+            -H "Content-Length: 0" \
+            "${base}:cancelSubmission" \
+            | tee chrome-web-store-cancel.json || true
+
           curl --silent --show-error --fail-with-body \
             -X POST \
             -H "Authorization: Bearer ${ACCESS_TOKEN}" \
-            -H "X-Goog-Upload-Protocol: raw" \
-            -H "X-Goog-Upload-File-Name: $(basename "$package")" \
             -H "Content-Type: application/zip" \
             --data-binary "@${package}" \
             "$upload" | tee chrome-web-store-upload.json
 
-          state=""
-          for attempt in $(seq 1 24); do
-            curl --silent --show-error --fail-with-body \
-              -H "Authorization: Bearer ${ACCESS_TOKEN}" \
-              "${base}:fetchStatus" | tee chrome-web-store-status.json
-            state="$(jq -r '.lastAsyncUploadState // .uploadState // empty' chrome-web-store-status.json)"
-            case "$state" in
-              SUCCEEDED) break ;;
-              FAILED) echo "Chrome Web Store upload failed" >&2; exit 1 ;;
-              *) sleep 5 ;;
-            esac
-          done
+          # The upload response can already be terminal; poll fetchStatus
+          # only while the upload is still processing asynchronously.
+          state="$(jq -r '.uploadState // empty' chrome-web-store-upload.json)"
+          if [ "$state" = "FAILED" ]; then
+            echo "Chrome Web Store upload failed" >&2
+            jq -r '.uploadError[]?.message // empty' chrome-web-store-upload.json >&2 || true
+            exit 1
+          fi
+          if [ "$state" != "SUCCEEDED" ]; then
+            for attempt in $(seq 1 24); do
+              curl --silent --show-error --fail-with-body \
+                -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+                "${base}:fetchStatus" | tee chrome-web-store-status.json
+              state="$(jq -r '.lastAsyncUploadState // empty' chrome-web-store-status.json)"
+              case "$state" in
+                SUCCEEDED) break ;;
+                FAILED) echo "Chrome Web Store upload failed" >&2; exit 1 ;;
+                *) sleep 5 ;;
+              esac
+            done
+          fi
           test "$state" = "SUCCEEDED"
 
-          publish_type="STAGED_PUBLISH"
-          if [ "$STAGED_PUBLISH" = "false" ]; then
-            publish_type="DEFAULT_PUBLISH"
+          publish_type="DEFAULT_PUBLISH"
+          if [ "$STAGED_PUBLISH" = "true" ]; then
+            publish_type="STAGED_PUBLISH"
           fi
           jq -n --arg publishType "$publish_type" \
             '{publishType: $publishType, blockOnWarnings: true}' > chrome-web-store-publish-request.json
@@ -326,6 +358,7 @@ jobs:
         with:
           name: chrome-web-store-${{ needs.build-release.outputs.version }}
           path: |
+            chrome-web-store-cancel.json
             chrome-web-store-upload.json
             chrome-web-store-status.json
             chrome-web-store-publish-request.json

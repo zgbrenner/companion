@@ -1,4 +1,4 @@
-# COMPANION v1.4.0 Launch Playbook
+# COMPANION v1.4.1 Launch Playbook
 
 ## Objective
 
@@ -84,7 +84,7 @@ Before the Chrome Web Store submission requires public URLs:
 
 ### Store submission
 
-- Submit v1.4.0 with **deferred publishing** enabled.
+- Submit v1.4.1 with **deferred publishing** enabled.
 - Use the exact listing, permission, and reviewer materials under `store/`.
 - Monitor the publisher email and dashboard.
 - Respond to reviewer questions with direct technical facts and file references.
@@ -124,7 +124,7 @@ Once approval is confirmed:
 
 - Add the Chrome Web Store URL to the README.
 - Add the store URL to `docs/launch/LAUNCH_COPY.md` in place of the marked launch-link line.
-- Create the `v1.4.0` GitHub release from `RELEASE_NOTES_1.4.0.md`.
+- Create the `v1.4.1` GitHub release from `RELEASE_NOTES_1.4.1.md`.
 - Add the release URL to Product Hunt and launch posts where appropriate.
 - Confirm every link works in a signed-out browser.
 
@@ -162,7 +162,7 @@ All times are Pacific. Adjust based on the maker's ability to respond.
 
 - Publish the Chrome Web Store listing if deferred publishing is still active.
 - Make the repository public if that is the selected strategy.
-- Publish the GitHub `v1.4.0` release.
+- Publish the GitHub `v1.4.1` release.
 - Confirm installation from a clean browser profile.
 
 ### 7:00 AM

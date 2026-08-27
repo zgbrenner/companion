@@ -39,7 +39,7 @@ COMPANION supports Claude, ChatGPT Chat, and ChatGPT Work on the web. Narrow leg
 ## Key facts
 
 - Product: Chrome Manifest V3 extension
-- Release: v1.4.0
+- Release: v1.4.1
 - Price at launch: free
 - Source model: open source when the repository is made public
 - Supported browser family: Chromium-based browsers that support the required Manifest V3 APIs
@@ -141,7 +141,7 @@ No. A Chrome extension cannot inject into a native desktop shell that does not h
 
 ### How is it funded?
 
-At v1.4.0, COMPANION is released as a free independent project. Do not publish a different funding claim unless the model changes.
+At v1.4.1, COMPANION is released as a free independent project. Do not publish a different funding claim unless the model changes.
 
 ## Suggested story angles
 

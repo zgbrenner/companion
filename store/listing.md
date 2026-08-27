@@ -12,7 +12,7 @@ COMPANION
 
 Chrome Web Store summaries must be 132 characters or fewer.
 
-**Character count: 131 / 132**
+**Character count: 119 / 132**
 
 ```text
 See native Claude and ChatGPT usage, compress prompts locally with Lifejacket Mode, and keep prompts and files private.
@@ -94,15 +94,23 @@ COMPANION helps users monitor provider-reported limits, reduce avoidable prompt 
 
 English (United States)
 
+## Dashboard URLs
+
+Paste these into the matching Chrome Web Store dashboard fields. Replace `getcompanion.pages.dev` everywhere below if the site is later served from a custom domain.
+
+- Homepage URL: `https://getcompanion.pages.dev/`
+- Support URL: `https://getcompanion.pages.dev/support/`
+- Privacy policy URL (Privacy tab): `https://getcompanion.pages.dev/privacy/`
+
 ## Support links
 
-Before public submission, confirm that these destinations are publicly accessible:
+Reference material behind the dashboard URLs:
 
-- Privacy policy: `store/privacy-policy.md`
+- Public privacy policy page: `https://getcompanion.pages.dev/privacy/` (kept in sync with `store/privacy-policy.md`)
 - Reviewer instructions: `store/test-instructions.md`
-- Security architecture: `docs/SECURITY.md`
+- Security architecture: `docs/SECURITY.md` and `https://getcompanion.pages.dev/security/`
 - Lifejacket architecture: `docs/LIFEJACKET_MODE.md`
-- Issue tracker: GitHub Issues after the repository becomes public
+- Issue tracker: `https://github.com/zgbrenner/companion/issues`
 
 ## Store assets
 

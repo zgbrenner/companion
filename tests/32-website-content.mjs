@@ -23,7 +23,7 @@ for (const phrase of [
   'Claude and ChatGPT'
 ]) assert.match(home, new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'));
 
-for (const asset of ['01-widget-light.png', '02-popup-light.png', '03-settings-light.png', '04-widget-dark.png']) {
+for (const asset of ['01-overview.png', '02-claude-usage.png', '03-chatgpt-work-codex.png', '04-settings-privacy.png']) {
   assert.match(home, new RegExp(`/assets/${asset.replace('.', '\\.')}`));
 }
 

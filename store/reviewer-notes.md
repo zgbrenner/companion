@@ -1,4 +1,4 @@
-# Chrome Web Store Reviewer Notes — COMPANION v1.4.0
+# Chrome Web Store Reviewer Notes — COMPANION v1.4.1
 
 ## Single purpose
 

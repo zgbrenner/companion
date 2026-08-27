@@ -10,7 +10,7 @@ const mustExist = path => assert(existsSync(pathFor(path)), `${path} exists`);
 const manifest = JSON.parse(read("manifest.json"));
 const version = manifest.version;
 assert(manifest.name === "COMPANION", "release keeps the all-caps product name");
-assert(version === "1.4.0", "release version is 1.4.0");
+assert(version === "1.4.1", "release version is 1.4.1");
 
 const changelog = read("CHANGELOG.md");
 assert(changelog.includes(`### ${version}`), `changelog has a finalized ${version} section`);
@@ -21,7 +21,7 @@ assert(readme.includes("<h1>COMPANION</h1>"), "README uses the approved wordmark
 for (const term of ["Claude", "ChatGPT", "Work", "Codex", "Chrome Web Store", "privacy"]) {
   assert(readme.includes(term), `README includes ${term}`);
 }
-assert(readme.includes("docs/images/popup.png"), "README includes an existing product render");
+assert(readme.includes("store/screenshots/02-claude-usage.png"), "README includes an existing product render");
 
 const listing = read("store/listing.md");
 assert(listing.includes("Chrome Web Store Listing — COMPANION"), "store listing uses the current brand");
@@ -119,7 +119,7 @@ if (generatedAssetsPresent) {
     assert(actual[0] === expected[0] && actual[1] === expected[1], `${path} is ${expected[0]}x${expected[1]}`);
   }
 } else {
-  assert(process.env.REQUIRE_GENERATED_ASSETS !== "1", "release workflow must generate every required launch asset");
+  assert(process.env.REQUIRE_GENERATED_LAUNCH_ASSETS !== "1", "release workflow must generate every required launch asset");
 }
 
 console.log("20-release-readiness PASS");

@@ -1,4 +1,4 @@
-# Chrome Web Store Submission Checklist — COMPANION v1.4.0
+# Chrome Web Store Submission Checklist — COMPANION v1.4.1
 
 This checklist covers package creation, Chrome Web Store review, controlled testing, and coordinated public launch.
 
@@ -13,7 +13,7 @@ This checklist covers package creation, Chrome Web Store review, controlled test
 
 ## 2. Repository and policy availability
 
-- [ ] Decide whether the repository will become public before submission. It is currently private.
+- [ ] The public GitHub repository and the public website (https://getcompanion.pages.dev) are the listing's public references. Confirm both are live and current before submission.
 - [ ] Make `store/privacy-policy.md` available at a public HTTPS URL before entering the privacy-policy field.
 - [ ] Ensure the public privacy policy, `store/listing.md`, `store/permission-justifications.md`, `manifest.json`, and the actual extension behavior agree.
 - [ ] Confirm the public support destination works. A public GitHub issue tracker is recommended after the repository becomes public.
@@ -23,14 +23,14 @@ This checklist covers package creation, Chrome Web Store review, controlled test
 
 - [ ] Confirm `manifest.json` contains:
   - [ ] name `COMPANION`
-  - [ ] version `1.4.0`
+  - [ ] version `1.4.1`
   - [ ] exact Claude and ChatGPT HTTPS host permissions only
   - [ ] `storage`, `activeTab`, `notifications`, `offscreen`, and `alarms`
   - [ ] no `<all_urls>` permission
   - [ ] no broad `tabs` permission
   - [ ] no remote update URL or remote-code loader
-- [ ] Confirm `CHANGELOG.md` contains a finalized `1.4.0` section.
-- [ ] Confirm `RELEASE_NOTES_1.4.0.md` matches the shipped functionality.
+- [ ] Confirm `CHANGELOG.md` contains a finalized `1.4.1` section.
+- [ ] Confirm `RELEASE_NOTES_1.4.1.md` matches the shipped functionality.
 - [ ] Run the full numbered test suite and retain the transcript.
 - [ ] Review `docs/SECURITY.md` and `store/reviewer-notes.md` one final time.
 
@@ -43,7 +43,7 @@ The release workflow is the preferred source of the upload ZIP.
 - [ ] Confirm the checksum matches locally:
 
   ```bash
-  sha256sum -c companion-1.4.0.zip.sha256
+  sha256sum -c companion-1.4.1.zip.sha256
   ```
 
 - [ ] Alternatively, build locally:
@@ -156,7 +156,7 @@ Accuracy is more important than minimizing the number of disclosed categories. L
 - [ ] Add the final Chrome Web Store URL to `README.md`, launch copy, Product Hunt draft, and social posts.
 - [ ] Decide whether to make the GitHub repository public. Public source is an important trust and growth asset for this privacy-focused extension.
 - [ ] Set repository description, topics, social preview, issue templates, and discussions if enabled.
-- [ ] Prepare the `v1.4.0` GitHub release using `RELEASE_NOTES_1.4.0.md`.
+- [ ] Prepare the `v1.4.1` GitHub release using `RELEASE_NOTES_1.4.1.md`.
 - [ ] Confirm the public privacy-policy and support links work while signed out.
 - [ ] Confirm the launch assets and posts contain the final store URL.
 
@@ -166,7 +166,7 @@ Follow `docs/launch/LAUNCH_PLAYBOOK.md`.
 
 - [ ] Publish the approved Chrome Web Store listing.
 - [ ] Publish the GitHub repository if public source is part of the launch.
-- [ ] Publish the `v1.4.0` GitHub release.
+- [ ] Publish the `v1.4.1` GitHub release.
 - [ ] Launch on Product Hunt only when the listing is live and installable.
 - [ ] Publish the Hacker News, Reddit, X, LinkedIn, and community posts at sensible intervals rather than simultaneously spamming every channel.
 - [ ] Ask for feedback and honest reviews after users have experienced the product. Do not coordinate votes, incentivize ratings, or mass-message strangers.

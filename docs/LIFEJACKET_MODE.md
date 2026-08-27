@@ -10,7 +10,7 @@ It has one master switch and three independently saved child controls:
 
 Lifejacket is optional. Turning off the master switch disables all three tools without erasing the child preferences.
 
-## Compressor selected for v1.4.0
+## Compressor selected for v1.4.0 and unchanged in v1.4.1
 
 | Property | Pinned value |
 | --- | --- |

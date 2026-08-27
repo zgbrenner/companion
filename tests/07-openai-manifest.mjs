@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { EXT_PATH, assert } from "./lib.mjs";
 
 const manifest = JSON.parse(readFileSync(join(EXT_PATH, "manifest.json"), "utf8"));
-assert(manifest.version === "1.4.0", `expected version 1.4.0, got ${manifest.version}`);
+assert(manifest.version === "1.4.1", `expected version 1.4.1, got ${manifest.version}`);
 assert(manifest.background?.service_worker === "src/service-worker.js", "composite service worker is configured");
 assert(manifest.action?.default_popup === "src/popup-router.html", "provider-aware popup router is configured");
 assert(/wasm-unsafe-eval/.test(manifest.content_security_policy?.extension_pages || ""), "local ONNX Runtime can compile bundled WASM");

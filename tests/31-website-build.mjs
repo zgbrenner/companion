@@ -20,12 +20,12 @@ await writeFile(path.join(root, 'icons', 'orbit-c.svg'), '<svg/>');
 await writeFile(path.join(root, 'icons', 'icon128.png'), 'icon');
 await writeFile(path.join(root, 'src', 'fonts', 'atkinson-hyperlegible-next-variable.woff2'), 'font-a');
 await writeFile(path.join(root, 'src', 'fonts', 'league-spartan-bold.woff2'), 'font-b');
-await writeFile(path.join(root, 'store', 'screenshots', '01-widget-light.png'), 'shot');
+await writeFile(path.join(root, 'store', 'screenshots', '01-overview.png'), 'shot');
 
 for (const file of ['icon16.png', 'icon32.png', 'icon48.png']) {
   await writeFile(path.join(root, 'icons', file), 'icon');
 }
-for (const file of ['02-popup-light.png', '03-settings-light.png', '04-widget-dark.png', '05-popup-dark.png']) {
+for (const file of ['02-claude-usage.png', '03-chatgpt-work-codex.png', '04-settings-privacy.png', '05-local-efficiency-tools.png']) {
   await writeFile(path.join(root, 'store', 'screenshots', file), 'shot');
 }
 await writeFile(path.join(root, 'store', 'promo-tile-440x280.png'), 'promo');
@@ -49,7 +49,7 @@ await access(path.join(outDir, 'assets', 'orbit-c.svg'));
 await access(path.join(outDir, 'assets', 'icon128.png'));
 await access(path.join(outDir, 'assets', 'atkinson-hyperlegible-next-variable.woff2'));
 await access(path.join(outDir, 'assets', 'league-spartan-bold.woff2'));
-await access(path.join(outDir, 'assets', '01-widget-light.png'));
+await access(path.join(outDir, 'assets', '01-overview.png'));
 await assert.rejects(access(path.join(outDir, 'stale.txt')));
 
 const allText = [
